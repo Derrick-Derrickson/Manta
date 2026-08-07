@@ -67,6 +67,12 @@ and compares bytes, which is what keeps the two halves from drifting.
 **`erc/`** — the rules of specification §16, each a pass over the elaborated
 design.
 
+**`rules/`** — the user-rules language of `docs/rules.md`: a parser for
+`.mantaRules` and a small interpreter over the elaborated design. It reuses the
+manta lexer unchanged, since a rules file is written in the same tokens. Its
+attributes are `#` fields, which are already legal manta, so a decorated design
+needs no rules file to compile.
+
 **`fmt/`, `annotate/`, `export/`** — the three tools that consume the pipeline's
 output. The formatter rewrites whole files from the AST; the annotator makes
 surgical byte-range edits and never reformats.

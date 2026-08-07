@@ -127,6 +127,128 @@ int compareMagnitude(const Dimensioned& a, const Dimensioned& b) noexcept {
     return ma < mb ? -1 : 1;
 }
 
+bool unitsCompatible(const Dimensioned& a, const Dimensioned& b) noexcept {
+    return a.unit == b.unit && a.differential == b.differential;
+}
+
+Dimensioned zeroOf(Unit unit) noexcept {
+    Dimensioned d;
+    d.unit = unit;
+    return d;
+}
+
+namespace {
+
+// Brings two values to a common exponent so their mantissas can be combined.
+// Scales the coarser one down rather than the finer one up, which is what keeps
+// the result exact.
+bool align(const Dimensioned& a, const Dimensioned& b, std::int64_t& ma, std::int64_t& mb,
+           std::int32_t& exp) noexcept {
+    ma = a.mantissa;
+    mb = b.mantissa;
+    exp = a.exp10;
+    std::int32_t eb = b.exp10;
+
+    while (exp > eb) {
+        if (ma > INT64_MAX / 10 || ma < INT64_MIN / 10) return false;
+        ma *= 10;
+        --exp;
+    }
+    while (eb > exp) {
+        if (mb > INT64_MAX / 10 || mb < INT64_MIN / 10) return false;
+        mb *= 10;
+        --eb;
+    }
+    return true;
+}
+
+}  // namespace
+
+Dimensioned addValues(const Dimensioned& a, const Dimensioned& b, bool& ok) noexcept {
+    ok = unitsCompatible(a, b);
+    if (!ok) return {};
+
+    std::int64_t ma = 0, mb = 0;
+    std::int32_t exp = 0;
+    if (!align(a, b, ma, mb, exp)) {
+        ok = false;
+        return {};
+    }
+    // Overflow here would need quantities no component parameter reaches, but
+    // silently wrapping would be worse than saying so.
+    if ((mb > 0 && ma > INT64_MAX - mb) || (mb < 0 && ma < INT64_MIN - mb)) {
+        ok = false;
+        return {};
+    }
+
+    Dimensioned out;
+    out.mantissa = ma + mb;
+    out.exp10 = exp;
+    out.unit = a.unit;
+    out.differential = a.differential;
+    return out;
+}
+
+Dimensioned subtractValues(const Dimensioned& a, const Dimensioned& b, bool& ok) noexcept {
+    Dimensioned negated = b;
+    if (negated.mantissa == INT64_MIN) {
+        ok = false;
+        return {};
+    }
+    negated.mantissa = -negated.mantissa;
+    return addValues(a, negated, ok);
+}
+
+Dimensioned scaleValue(const Dimensioned& a, std::int64_t factor) noexcept {
+    Dimensioned out = a;
+    if (factor != 0 && (a.mantissa > INT64_MAX / (factor < 0 ? -factor : factor) ||
+                        a.mantissa < INT64_MIN / (factor < 0 ? -factor : factor))) {
+        return a;  // saturate rather than wrap
+    }
+    out.mantissa = a.mantissa * factor;
+    return out;
+}
+
+std::string_view unitName(Unit u) noexcept {
+    switch (u) {
+        case Unit::None: return "number";
+        case Unit::Ohm: return "resistance";
+        case Unit::Farad: return "capacitance";
+        case Unit::Henry: return "inductance";
+        case Unit::Volt: return "voltage";
+        case Unit::Ampere: return "current";
+        case Unit::Watt: return "power";
+        case Unit::Hertz: return "frequency";
+        case Unit::Metre: return "length";
+        case Unit::Second: return "time";
+        case Unit::Celsius: return "temperature";
+        case Unit::Percent: return "percentage";
+    }
+    return "number";
+}
+
+bool unitFromName(std::string_view name, Unit& out) noexcept {
+    struct Entry {
+        std::string_view name;
+        Unit unit;
+    };
+    static constexpr Entry kNames[] = {
+        {"number", Unit::None},         {"resistance", Unit::Ohm},
+        {"capacitance", Unit::Farad},   {"inductance", Unit::Henry},
+        {"voltage", Unit::Volt},        {"current", Unit::Ampere},
+        {"power", Unit::Watt},          {"frequency", Unit::Hertz},
+        {"length", Unit::Metre},        {"time", Unit::Second},
+        {"temperature", Unit::Celsius}, {"percentage", Unit::Percent},
+    };
+    for (const Entry& e : kNames) {
+        if (e.name == name) {
+            out = e.unit;
+            return true;
+        }
+    }
+    return false;
+}
+
 std::string Dimensioned::canonical() const {
     // Split into sign, digits and decimal exponent.
     bool negative = mantissa < 0;

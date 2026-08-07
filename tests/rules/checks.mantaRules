@@ -1,0 +1,54 @@
+// The rules the conformance fixtures exercise.
+
+rules logic-levels {
+    #VOH : voltage;
+    #VOL : voltage;
+    #VIH : voltage;
+    #VIL : voltage;
+
+    check drive-high for net.driver -> net.receiver {
+        when    driver.direction == out & receiver.direction == in;
+        when    has(driver.VOH) & has(receiver.VIH);
+        require driver.VOH >= receiver.VIH;
+        error   "{driver} drives {net} to {driver.VOH},"
+                " but {receiver} needs at least {receiver.VIH}";
+    };
+
+    check pull-low for net.driver -> net.receiver {
+        when    driver.direction == out & receiver.direction == in;
+        when    has(driver.VOL) & has(receiver.VIL);
+        require driver.VOL <= receiver.VIL;
+        error   "{driver} pulls {net} down to {driver.VOL},"
+                " but {receiver} needs at most {receiver.VIL}";
+    };
+};
+
+rules power-budget {
+    #SUPPLY : current;
+    #DRAW   : current;
+
+    check current-budget for net {
+        when    any(pins.SUPPLY);
+        require sum(pins.DRAW) <= sum(pins.SUPPLY);
+        error   "net {net} draws {sum(pins.DRAW)} against {sum(pins.SUPPLY)} available";
+    };
+
+    // Only input pins count toward the draw, which is what the filter is for.
+    check input-draw for net {
+        when    any(pins.SUPPLY);
+        require sum(pins.DRAW where direction == in) <= sum(pins.SUPPLY);
+        warning "net {net} inputs draw {sum(pins.DRAW where direction == in)}";
+    };
+};
+
+rules library-policy {
+    check needs-footprint for part {
+        require has(part.footprint) & part.footprint != "";
+        error   "part {part.name} declares no footprint";
+    };
+
+    check pin-count for component {
+        require count(pins) > 0;
+        error   "component {component.designator} has no pins";
+    };
+};

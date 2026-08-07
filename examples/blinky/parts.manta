@@ -69,7 +69,7 @@ part LDO-3V3 {
     2 = GND< &TYPE=POWER &~NET=GND;
     3 = EN<;
     4 = NC &TYPE=NC;
-    5 = VOUT> &TYPE=POWER;
+    5 = VOUT> &TYPE=POWER #SUPPLY=600mA;
 };
 
 part MCU-8PIN {
@@ -102,7 +102,7 @@ part CONN-USB-C {
     #value      = USB-C;
     #!type      = connector;
 
-    1 = VBUS> &TYPE=POWER;
+    1 = VBUS> &TYPE=POWER #SUPPLY=500mA;
     2 = GND< &TYPE=POWER &~NET=GND;
     3 = CC1<> &SWAP=cc;
     4 = CC2<> &SWAP=cc;

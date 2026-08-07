@@ -59,6 +59,13 @@ struct Diagnostic {
     Span span;
     std::string message;
     std::vector<DiagNote> notes;
+    // A user rule's code, which is the check's own name. Empty for every
+    // built-in diagnostic, whose code comes from the table.
+    std::string userCode;
+
+    [[nodiscard]] std::string_view code() const {
+        return userCode.empty() ? diagInfo(id).code : std::string_view(userCode);
+    }
 
     // Ordering key for deterministic output (spec 15.8): by file, then byte
     // offset, then id, so a parallel compile can merge without perturbing order.

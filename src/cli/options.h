@@ -31,6 +31,12 @@ struct Options {
     bool showHelp = false;
     bool showVersion = false;
 
+    // Rule files, for compile, link and check. Repeatable.
+    std::vector<std::string> ruleFiles;
+    // -W names that matched no built-in diagnostic. They may name a user rule,
+    // which is not known until the rules load, so they are held until then.
+    std::vector<std::pair<std::string, Severity>> pendingSeverities;
+
     // compile
     std::string output;
     std::vector<std::string> includeDirs;

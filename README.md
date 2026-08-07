@@ -54,6 +54,12 @@ The two-stage model of specification §15.1:
 | `manta export` | one `.mantaNets` | a layout tool's netlist |
 | `manta fmt` | sources | rewritten sources |
 
+`compile`, `link` and `check` also take `--rules <file>`: a `.mantaRules` file of
+project-specific checks — logic-level compatibility, current budgets, library
+policy — over `#` fields the design carries. Because `#` is already the open
+namespace, a decorated design compiles with no rules file, so rules are pure
+checking rather than a build dependency. See `docs/rules.md`.
+
 A complete build:
 
 ```sh
@@ -166,7 +172,7 @@ ctest --preset linux-release
 
 `docs/spec.md` is the specification, editorially corrected against this
 implementation; the corrections are listed in its opening note and justified in
-`docs/assumptions.md`.
+`docs/assumptions.md`. `docs/rules.md` specifies the user-rules language.
 
 ## Specification notes
 

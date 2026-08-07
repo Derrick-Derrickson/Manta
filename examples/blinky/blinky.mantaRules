@@ -1,0 +1,69 @@
+// Project rules for blinky.
+//
+// These are checks the language cannot know about: they depend on what this
+// project decided its '#' fields mean. The fields themselves are ordinary manta
+// and need no rules file to be legal, so a design decorated this way compiles
+// and links whether or not these rules are loaded. What the rules add is
+// checking.
+
+// ---------------------------------------------------------------------------
+// Logic levels
+//
+// A driver has to clear every receiver's threshold on the net it drives. This
+// is the check that catches a 3V3 CMOS output feeding a 5V TTL input, which is
+// a mistake no amount of connectivity checking can see.
+// ---------------------------------------------------------------------------
+rules logic-levels {
+    #VOH : voltage;      // output high, worst case
+    #VOL : voltage;      // output low, worst case
+    #VIH : voltage;      // input threshold, high
+    #VIL : voltage;      // input threshold, low
+
+    check drive-high for net.driver -> net.receiver {
+        when    driver.direction == out & receiver.direction == in;
+        when    has(driver.VOH) & has(receiver.VIH);
+        require driver.VOH >= receiver.VIH;
+        error   "{driver} drives {net} to {driver.VOH},"
+                " but {receiver} needs at least {receiver.VIH}";
+    };
+
+    check pull-low for net.driver -> net.receiver {
+        when    driver.direction == out & receiver.direction == in;
+        when    has(driver.VOL) & has(receiver.VIL);
+        require driver.VOL <= receiver.VIL;
+        error   "{driver} pulls {net} down to {driver.VOL},"
+                " but {receiver} needs at most {receiver.VIL}";
+    };
+};
+
+// ---------------------------------------------------------------------------
+// Current budget
+//
+// What a rail can provide against the sum of everything hanging off it. The
+// guard means the check applies only to nets something actually supplies, so a
+// signal net is silently skipped rather than reported as a rail with no budget.
+// ---------------------------------------------------------------------------
+rules power-budget {
+    #SUPPLY : current;   // what a source pin can provide
+    #DRAW   : current;   // what a consumer pin takes
+
+    check current-budget for net {
+        when    any(pins.SUPPLY);
+        require sum(pins.DRAW) <= sum(pins.SUPPLY);
+        error   "net {net} draws {sum(pins.DRAW)}"
+                " against {sum(pins.SUPPLY)} available";
+    };
+};
+
+// ---------------------------------------------------------------------------
+// Library policy
+//
+// A part rule runs at compile as well as at link, so a library is checked
+// before it ever reaches a board.
+// ---------------------------------------------------------------------------
+rules library-policy {
+    check every-part-has-a-footprint for part {
+        require has(part.footprint) & part.footprint != "";
+        error   "part {part.name} declares no footprint";
+    };
+};

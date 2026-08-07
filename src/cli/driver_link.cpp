@@ -8,6 +8,7 @@
 
 #include "cli/console.h"
 #include "cli/driver.h"
+#include "cli/rules_loader.h"
 #include "erc/erc.h"
 #include "json/json.h"
 #include "link/elaborate.h"
@@ -149,6 +150,33 @@ int runLink(const Options& opts) {
     if (!opts.noErc) {
         ErcChecker erc(design, interner, diags);
         erc.run();
+    }
+
+    // 5b. User rules. These are a project's own checks over the same design,
+    // and they run whether or not --no-erc was given: the built-in rules and a
+    // project's rules answer different questions.
+    if (!opts.ruleFiles.empty()) {
+        SeverityPolicy policy = opts.severity;
+        LoadedRuleFiles rules =
+            loadRuleFiles(opts, sources, arena, interner, diags, policy);
+        if (!rules.ok) return finish(diags, opts, kExitUsage);
+        diags.setPolicy(std::move(policy));
+
+        RuleEvaluator evaluator(rules.rules, interner, diags);
+        evaluator.runOnDesign(design);
+
+        // Part checks need no external names, so they run here too. That is
+        // what makes 'manta check' complete on its own, rather than complete
+        // only if 'compile --rules' happened to be run as well.
+        for (const auto& [key, decl] : symbols.all()) {
+            if (decl.item->kind != ItemKind::Part) continue;
+            PartInfo info = buildPartInfo(decl.item, decl.objectIndex, interner, diags);
+            evaluator.runOnPart(info, interner.text(decl.item->name.symbol), interner);
+        }
+
+        if (opts.verbose && !opts.quiet) {
+            writeStderr(std::format("  {} user rule(s) applied\n", rules.rules.checks.size()));
+        }
     }
 
     // Un-annotated instances. This is a toolchain policy rather than one of the

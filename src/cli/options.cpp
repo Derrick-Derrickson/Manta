@@ -82,11 +82,15 @@ std::string_view commandName(Command c) {
 bool applySeverityOption(const std::string& a, Options& out, std::string& error) {
     auto resolve = [&](std::string_view name, Severity s) {
         DiagId id{};
-        if (!lookupDiag(name, id)) {
-            error = std::format("unknown diagnostic '{}'", name);
-            return false;
+        if (lookupDiag(name, id)) {
+            out.severity.set(id, s);
+            return true;
         }
-        out.severity.set(id, s);
+        // Not a built-in. It may name a check in a rules file, which has not
+        // been read yet -- options are parsed first. Hold it, and fail later if
+        // no rule claims it.
+        out.pendingSeverities.emplace_back(std::string(name), s);
+        (void)error;
         return true;
     };
 
@@ -186,6 +190,11 @@ ParseOutcome parseOptions(const std::vector<std::string>& args, Options& out) {
         // ---- per-command options -------------------------------------------
         switch (out.command) {
             case Command::Compile:
+                if (takeValue(c, "--rules", "", value, err)) {
+                    out.ruleFiles.push_back(value);
+                    continue;
+                }
+                if (!err.empty()) break;
                 if (takeValue(c, "--output", "-o", value, err)) { out.output = value; continue; }
                 if (!err.empty()) break;
                 if (takeValue(c, "--include", "-I", value, err)) {
@@ -200,6 +209,11 @@ ParseOutcome parseOptions(const std::vector<std::string>& args, Options& out) {
 
             case Command::Link:
             case Command::Check:
+                if (takeValue(c, "--rules", "", value, err)) {
+                    out.ruleFiles.push_back(value);
+                    continue;
+                }
+                if (!err.empty()) break;
                 if (takeValue(c, "--top", "-t", value, err)) { out.top = value; continue; }
                 if (!err.empty()) break;
                 if (takeValue(c, "--output", "-o", value, err)) { out.output = value; continue; }
@@ -383,6 +397,8 @@ Run 'manta <command> --help' for the options of one command.
                         line. Repeatable.
   --revision <rev>      Language revision to check @VERSION against.
                         Default: the implementation's own.
+  --rules <file>        A .mantaRules file whose 'part' checks to run.
+                        Repeatable.
   --emit-ast            Also write the parse tree as JSON, for tooling.
 )";
             break;
@@ -397,6 +413,7 @@ Run 'manta <command> --help' for the options of one command.
   --no-erc              Skip ERC and emit regardless.
   --no-emit             Run every stage including ERC, emit nothing.
   --map <file>          Write the elaboration map: instance path to designator.
+  --rules <file>        A .mantaRules file of user-defined checks. Repeatable.
 )";
             break;
 

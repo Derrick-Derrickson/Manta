@@ -115,7 +115,6 @@ void renderDiagnostics(const DiagEngine& engine, const RenderOptions& opts, std:
     for (const Diagnostic& d : engine.diagnostics()) {
         LineCol lc = sm.lineCol(d.span);
         std::string_view path = sm.pathOf(d.span.file);
-        const DiagInfo& info = diagInfo(d.id);
 
         if (opts.json) {
             out += R"({"file":")";
@@ -123,7 +122,7 @@ void renderDiagnostics(const DiagEngine& engine, const RenderOptions& opts, std:
             out += std::format(R"(","line":{},"column":{},"severity":")", lc.line, lc.column);
             out += severityName(d.severity);
             out += R"(","code":")";
-            out += info.code;
+            out += d.code();
             out += R"(","message":")";
             appendEscapedJson(out, d.message);
             out += '"';
@@ -151,7 +150,7 @@ void renderDiagnostics(const DiagEngine& engine, const RenderOptions& opts, std:
             out += kReset;
             out += severityColour(d.severity);
         }
-        out += std::format("{}[{}]", severityName(d.severity), info.code);
+        out += std::format("{}[{}]", severityName(d.severity), d.code());
         if (opts.colour) out += kReset;
         out += ": ";
         out += d.message;

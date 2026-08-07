@@ -25,13 +25,21 @@ file(GLOB EXAMPLE_SOURCES "${EXAMPLE_DIR}/*.manta")
 # The checked-in examples are canonical, so the formatter has nothing to do.
 run_manta(fmt --check ${EXAMPLE_SOURCES})
 
+set(RULES "${EXAMPLE_DIR}/blinky.mantaRules")
+
 run_manta(compile -o "${WORK}/build/" ${EXAMPLE_SOURCES})
 
-# -Werror, and no --no-erc and no -Wno-: every rule in section 16 runs, every
-# warning is fatal, and every instance carries a designator.
-run_manta(check --top blinky -L "${WORK}/build" -Werror)
+# A decorated design compiles with no rules file: the '#' fields it carries are
+# ordinary manta, so the rules are pure checking and never a build dependency.
+# Compiling *with* them additionally runs the part-domain checks.
+run_manta(compile -o "${WORK}/build/" --rules "${RULES}" ${EXAMPLE_SOURCES})
 
-run_manta(link --top blinky -L "${WORK}/build" -Werror
+# -Werror, no --no-erc, no -Wno-, and the project's own rules loaded: every
+# rule in section 16 runs, every user rule runs, every warning is fatal, and
+# every instance carries a designator.
+run_manta(check --top blinky -L "${WORK}/build" --rules "${RULES}" -Werror)
+
+run_manta(link --top blinky -L "${WORK}/build" --rules "${RULES}" -Werror
           --bom "${WORK}/bom.csv" -o "${WORK}/blinky.mantaNets")
 
 foreach(format kicad altium orcad allegro)
@@ -39,4 +47,13 @@ foreach(format kicad altium orcad allegro)
               "${WORK}/blinky.mantaNets")
 endforeach()
 
-message(STATUS "example: blinky passes check, link and export with no findings")
+# Rules must not perturb the netlist, and must be deterministic.
+run_manta(link --top blinky -L "${WORK}/build" --rules "${RULES}" -Werror
+          -o "${WORK}/blinky2.mantaNets")
+file(SHA256 "${WORK}/blinky.mantaNets" a)
+file(SHA256 "${WORK}/blinky2.mantaNets" b)
+if(NOT a STREQUAL b)
+    message(FATAL_ERROR "linking with rules is not deterministic")
+endif()
+
+message(STATUS "example: blinky passes check, link, rules and export with no findings")

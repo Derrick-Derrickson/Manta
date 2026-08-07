@@ -7,6 +7,7 @@ jobs.
 |---|---|
 | `skills/writing-manta-designs/` | Writing a board: chains, blocks, harnesses, constraints. |
 | `skills/writing-manta-parts/` | Authoring a part library, which is where most avoidable errors originate. |
+| `skills/writing-manta-rules/` | Project-specific ERC checks: logic levels, budgets, library policy. |
 | `skills/extending-the-compiler/` | Changing this C++ codebase. |
 
 Each skill is a `SKILL.md` that fits in working memory, plus `references/` files

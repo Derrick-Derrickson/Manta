@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "base/flat_map.h"
 #include "diag/diagnostic.h"
 #include "source/source_manager.h"
 
@@ -27,6 +28,23 @@ class SeverityPolicy {
 public:
     void set(DiagId id, Severity s) { overrides_[static_cast<std::size_t>(id)] = s; }
     void setWerror(bool on) noexcept { werror_ = on; }
+
+    // User-rule codes are not known when options are parsed, so a -W name that
+    // matches no built-in is recorded here and resolved once the rules load.
+    void setUser(std::string name, Severity s) { userOverrides_.set(std::move(name), s); }
+
+    [[nodiscard]] Severity resolveUser(std::string_view name, Severity declared) const {
+        Severity s = declared;
+        if (const Severity* override_ = userOverrides_.find(std::string(name))) s = *override_;
+        if (werror_ && s == Severity::Warning) return Severity::Error;
+        return s;
+    }
+
+    [[nodiscard]] bool hasUserOverride(std::string_view name) const {
+        return userOverrides_.find(std::string(name)) != nullptr;
+    }
+
+    [[nodiscard]] auto userOverrides() const { return userOverrides_.entries(); }
 
     [[nodiscard]] Severity resolve(DiagId id) const {
         Severity s = overrides_[static_cast<std::size_t>(id)];
@@ -45,6 +63,7 @@ private:
             a.fill(kUnset);
             return a;
         }()};
+    FlatMap<std::string, Severity> userOverrides_;
     bool werror_ = false;
 };
 
@@ -94,6 +113,23 @@ public:
         return DiagBuilder{&diags_, std::move(d)};
     }
 
+    // Reports a user rule's finding. Its code is the check's own name, so
+    // "error[drive-high]" and "-Wno-drive-high" both work.
+    void reportUser(std::string code, Severity declared, Span span, std::string message) {
+        Severity sev = policy_.resolveUser(code, declared);
+        if (sev == Severity::Ignored) return;
+
+        Diagnostic d;
+        d.id = DiagId::UserRule;
+        d.severity = sev;
+        d.span = span;
+        d.message = std::move(message);
+        d.userCode = std::move(code);
+        if (sev == Severity::Error) ++errors_;
+        else if (sev == Severity::Warning) ++warnings_;
+        diags_.push_back(std::move(d));
+    }
+
     [[nodiscard]] std::size_t errorCount() const noexcept { return errors_; }
     [[nodiscard]] std::size_t warningCount() const noexcept { return warnings_; }
     [[nodiscard]] bool hasErrors() const noexcept { return errors_ > 0; }
@@ -101,6 +137,10 @@ public:
     [[nodiscard]] const std::vector<Diagnostic>& diagnostics() const noexcept { return diags_; }
     [[nodiscard]] const SourceManager& sources() const noexcept { return sources_; }
     [[nodiscard]] const SeverityPolicy& policy() const noexcept { return policy_; }
+
+    // Rules name their checks only after options are parsed, so the policy is
+    // replaceable up until the first user finding is reported.
+    void setPolicy(SeverityPolicy policy) { policy_ = std::move(policy); }
 
     // Merges another engine's diagnostics, preserving the caller's order. Used
     // to fold per-file results from the compile thread pool.

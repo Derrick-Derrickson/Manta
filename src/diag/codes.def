@@ -32,6 +32,10 @@ MANTA_DIAG(Internal, "E-INTERNAL", "internal", Severity::Error, "internal error:
 // single-ended impedance on a differential pair -- but none for the general
 // case of, say, "&CURRENT=50R".
 MANTA_DIAG(Type,     "E-TYPE",     "type",     Severity::Error, "{}")
+// A finding from a user-defined rule. The reported code is the check's own
+// name, carried on the diagnostic rather than taken from this table, so a
+// project's rules read as "error[drive-high]" and answer to "-Wno-drive-high".
+MANTA_DIAG(UserRule, "E-RULE",     "rule",     Severity::Error, "{}")
 // An instance still carrying '?' when the netlist is built. Section 13.1 says an
 // un-annotated design "shall compile, link and check completely", and it is
 // right that it can: 'manta annotate' reads its assignments from a .mantaNets,

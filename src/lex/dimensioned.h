@@ -54,6 +54,33 @@ struct Dimensioned {
 // Comparison across differing exponents, for directive conflict detection.
 [[nodiscard]] int compareMagnitude(const Dimensioned& a, const Dimensioned& b) noexcept;
 
+// Arithmetic, for user rules aggregating quantities over a net.
+//
+// Values stay exact scaled integers throughout, so a sum of currents is exact:
+// adding 100mA to 1uF is a unit error, and adding 100mA to 0.1A is 200mA and
+// not 0.2000000000000001A.
+//
+// Addition and subtraction require the same unit; `ok` reports whether they
+// had it. Scaling by a bare number is always permitted.
+[[nodiscard]] Dimensioned addValues(const Dimensioned& a, const Dimensioned& b, bool& ok) noexcept;
+[[nodiscard]] Dimensioned subtractValues(const Dimensioned& a, const Dimensioned& b,
+                                         bool& ok) noexcept;
+[[nodiscard]] Dimensioned scaleValue(const Dimensioned& a, std::int64_t factor) noexcept;
+
+// True when two values may be added or compared: same unit, and the same
+// differential marking.
+[[nodiscard]] bool unitsCompatible(const Dimensioned& a, const Dimensioned& b) noexcept;
+
+// The zero of a unit, which is what an empty sum comes to.
+[[nodiscard]] Dimensioned zeroOf(Unit unit) noexcept;
+
+// Names a unit for a diagnostic: "current", "voltage", and so on.
+[[nodiscard]] std::string_view unitName(Unit u) noexcept;
+
+// Resolves a quantity name -- "voltage", "current" -- to its unit, for the type
+// assertions in a rules file. Returns false when the name is not one.
+[[nodiscard]] bool unitFromName(std::string_view name, Unit& out) noexcept;
+
 struct WordClass {
     std::uint16_t flags = 0;
     Dimensioned value;  // valid when flags has Dimensioned, Integer or Decimal

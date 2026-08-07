@@ -14,6 +14,8 @@ Seven targets, each proving something different.
 | `unit.test_diagnostics` | **The conformance suite.** Each of the 39 errors and 8 warnings fires on its own fixture. |
 | `pipeline` | The specification's own build sequence end to end through the real binary, plus determinism and the guarantee that formatting does not change a netlist. |
 | `example` | `examples/blinky` under `-Werror` with no suppressions. |
+| `unit.test_pinfields` | `#` fields on pins: line-wide application, call-site override, and the strength ladder. |
+| `unit.test_rules` | The user-rules language: both motivating checks fire on a violating design and stay silent on a correct one. |
 | `schema` | Emitted artifacts validate against the published JSON Schemas. Skips cleanly if `jsonschema` is not installed. |
 
 ## The two halves of conformance
@@ -35,5 +37,8 @@ fix a false negative by strengthening one until `blinky` starts complaining.
 - `diag/` — one fixture per diagnostic code, named for it.
 - `spec/` — the specification's worked examples, with the four corrections
   listed in `docs/assumptions.md` §B and nothing else changed.
+- `rules/` — one rules file, plus a design that violates it and one that does
+  not. Both are needed: a rule that never fires is useless and one that always
+  fires is worse.
 - `pipeline.cmake`, `example.cmake` — driven through `cmake -P` so they run the
   same way on every platform.

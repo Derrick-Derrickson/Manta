@@ -1,0 +1,34 @@
+// A design that violates drive-high and current-budget, so both can be shown
+// to fire. It is deliberately not otherwise clean: the built-in checks are
+// tested elsewhere, and this exists only to provoke the user rules.
+part REG-SMALL {
+    @~footprint = SOT-23-5;
+    1 = VOUT> &TYPE=POWER #SUPPLY=150mA;
+    2 = GND<  &TYPE=POWER &~NET=GND;
+};
+
+// A 3V3 CMOS output: 2V4 high, 0V4 low.
+part DRV-3V3 {
+    @~footprint = SOT-23;
+    1 = Q>   #VOH=2V4 #VOL=0V4;
+    2 = VCC< &TYPE=POWER &~NET=3V3 #DRAW=20mA;
+    3 = GND< &TYPE=POWER &~NET=GND;
+};
+
+// A 5V TTL input: needs 3V5 to read high, 1V5 or less to read low.
+part RX-5V {
+    @~footprint = SOT-23;
+    1 = D<   #VIH=3V5 #VIL=1V5;
+    2 = VCC< &TYPE=POWER &~NET=3V3 #DRAW=200mA;
+    3 = GND< &TYPE=POWER &~NET=GND;
+};
+
+block b {
+    GND &TYPE=GROUND;
+    RAIL = VOUT{U1~REG-SMALL}GND;
+    RAIL == 3V3;
+
+    // 2V4 will not clear a 3V5 threshold.
+    SIG = Q{U2~DRV-3V3}Q;
+    SIG == D{U3~RX-5V}D;
+};
