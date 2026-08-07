@@ -1,0 +1,45 @@
+// Spec section 20.1 -- a resistor part.
+// Every concept in a part definition: linkage, fields at three strengths,
+// pin map, casual pins.
+static part R-10k-1pct-0603 {
+    @~footprint = R-0603;
+    #value      = 10kR;
+    #tolerance  = ±1%;
+    #power      = 100mW;
+    #!type      = resistor;
+    #~mpn       = "RC0603FR-0710KL";
+    #~cost      = 0.002;
+
+    1 = A &CASUAL;
+    2 = B &CASUAL;
+};
+
+// Spec section 20.2 -- a microcontroller part.
+// Pin ranges, harness member lists, pin types, default nets, swap groups,
+// pin delay.
+part cool-mcu {
+    @VERSION       = 1.0+;
+    @~footprint    = QFP-STM32-32;
+    #value         = STM32F0QA5;
+    #!manufacturer = "ST Microelectronics";
+    >#~source      = digikey;
+
+    1       = VCC<        &TYPE=POWER &~NET=3V3;
+    2       = GND<        &TYPE=POWER &~NET=GND;
+    [3:11]  = GPIO[1:9]<> &SWAP=gpio-bank;
+    [12:13] = USB.[+,-]<> &~PINDELAY=8ps;
+    14      = SDA<>       &TYPE=OPENDRAIN;
+    15      = SCL<        &TYPE=OPENDRAIN;
+    16      = NC          &TYPE=NC;
+};
+
+// Spec section 20.3 -- a quad buffer with ganged swap.
+part buffer4 {
+    @~footprint = TSSOP-14;
+    #value      = SN74LVC125A;
+
+    [1:4]  = IN[1:4]<   &SWAP=ch;
+    [5:8]  = OUT[1:4]>  &SWAP=ch;
+    13     = VCC<       &TYPE=POWER &~NET=3V3;
+    14     = GND<       &TYPE=POWER &~NET=GND;
+};

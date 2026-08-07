@@ -1,0 +1,257 @@
+# Specification notes
+
+Revision 1.0 leaves some points underdetermined, and in a few places its worked
+examples contradict its own rules. Every such point is resolved here, in one
+place, so a reader can tell what the implementation decided and why.
+
+The resolutions fall into two kinds. Where the **grammar's wording is narrower
+than the language it describes**, the implementation accepts the wider language
+and the wording should be corrected. Where an **example is simply wrong**, the
+implementation follows the rules and the example is corrected.
+
+---
+
+## A. Grammar wording that is narrower than the language
+
+These are not extensions. The rules elsewhere in the specification, and the
+constructs the examples depend on, both require the wider reading; only the
+production is written too tightly.
+
+### A1. A terminal may carry a range
+
+The grammar gives `terminal = "." | identifier [ "[" index "]" ]`, a single
+index. But a terminal's width is what gives a replicated unit its arity, so a
+multi-output unit cannot be expressed at all without a range there:
+
+```
+[4[ I{U?~splitter}O[0:1] ]8]      // 1-in 2-out unit: 4 copies, 8 out
+```
+
+**Resolution.** A terminal accepts a range. The production should read
+`terminal = "." | identifier [ "[" range "]" ]`.
+
+### A2. A bracketed index may select one wire
+
+The grammar defines `range = index ":" index`, admitting no one-element form.
+But single indices appear throughout: `GPIO[$n$]` as a substitution position,
+`DQ[0]` as a pin-delay override, `{U1}GPIO[1]` as a terminal.
+
+**Resolution.** `[i]` is accepted and means the one wire `i`. It is recorded
+distinctly from `[i:i]` so the formatter reproduces whichever was written. The
+production should read `range = index [ ":" index ]`.
+
+---
+
+## B. Errors in the worked examples
+
+In each of these the rules are unambiguous and the example contradicts them. The
+implementation follows the rules; the example is corrected in `tests/spec`.
+
+### B1. Op-amp supply pins named `V+` and `V-`
+
+The multi-unit package examples bind the supply pins of an LM324 as `V+` and
+`V-`. Neither is producible by the identifier grammar: a name may not end in a
+hyphen, and `+` is not an identifier character at all.
+
+**Resolution.** The rule stands unmodified — a trailing hyphen is an error
+wherever it appears, including on a pin. The part in `tests/spec/lib.manta`
+names the rails `v-pos` and `v-neg`, which the identifier grammar produces
+cleanly and which read better anyway.
+
+### B2. An instantiation written without braces
+
+Every device in the grammar is wrapped in braces. But the complete-board example
+declares an unfitted resistor as a bare statement:
+
+```
+!R?~0R-0603;
+```
+
+**Resolution.** The rule stands: a device is always braced. The example is
+corrected to `{!R?~0R-0603};`, which parses as a device with no terminals — it
+declares the part and connects nothing, which is exactly what was meant.
+
+### B3. Terminals naming pins the part does not declare
+
+The complete-board example instantiates the quad buffer with terminals `I` and
+`O`. The quad buffer, declared earlier in the same document, has pins `IN`,
+`OUT`, `VCC` and `GND`. There is no `I` and no `O`.
+
+**Resolution.** This is reported as **E-31**, which is the correct response to a
+terminal naming a pin the part does not have. No prefix matching is introduced:
+it would silently accept `I` where `IN` was meant on a part that has both. The
+example is corrected to `IN{U?~buffer4}OUT`.
+
+### B4. An unquoted hyphenated field name inside a substitution
+
+The reusable-filter example declares `#~r-value = 10` and then writes
+`.{R?~$r-value$kR-0603}.`. But a hyphen inside `$…$` is *always* subtraction,
+and a field name containing one must be quoted — so as written this is the field
+`r` minus the field `value`, and both are undefined.
+
+**Resolution.** The rule stands, and the example is corrected to `$"r-value"$`.
+The formatter renders an actual subtraction with spaces — `$r - value$` — so the
+two readings are never confusable on sight.
+
+---
+
+## C. Rules whose inputs the specification does not define
+
+### C1. What counts as a capacitor — W-03 and W-04
+
+Two warnings depend on recognising a capacitor:
+
+- **W-03** — a capacitor is in series with two non-ground nets.
+- **W-04** — a `&TYPE=POWER<` pin has no capacitor on its net within two nodes.
+
+Nothing in the language marks a part as capacitive; parts are opaque.
+
+**Resolution.** A part is treated as a capacitor when either holds:
+
+1. it carries a `#type` field whose value is `capacitor` — the convention the
+   specification itself establishes when it writes `#!type = resistor`; or
+2. it is two-terminal and carries a `#value` dimensioned in farads.
+
+Both warnings are individually suppressible (`-Wno-W-03`, `-Wno-cap-in-series`).
+Neither ever fires on a part manta cannot classify, so a design adopting no
+convention loses two warnings rather than gaining false ones.
+
+### C2. What counts as "driven", for E-02
+
+E-02 is "a net has an input and no driver". Taken to mean only that a `>` pin is
+present, it fires on every pull-up, every pull-down, every divider and every
+enable tied to a rail — which is to say on every real board, making it useless.
+
+**Resolution.** A net is treated as driven when any of three things is true:
+
+1. it has a `>` output pin;
+2. it has a `&TYPE=POWER>` supply pin — an enable tied to a rail is tied, not
+   floating; or
+3. it has a `PASSIVE` pin, meaning something is attached that the checker cannot
+   reason about, which is exactly what a pull-up or a filter looks like from
+   here.
+
+What is left is the case the rule exists for: a net consisting of nothing but
+input pins, which is an input somebody forgot to connect. That still catches
+every such net in the specification's own §20.7 excerpt.
+
+### C3. Where `annotate --swaps` reads its input
+
+The specification requires that a router exchanging two members of a swap group
+has that exchange written back to source, but gives `manta annotate` only
+`-n <netlist>`. No file in the pipeline carries swap decisions.
+
+**Resolution.** `.mantaNets` carries an optional top-level `swaps` array, and
+`--swaps` reads it from there. The JSON Schema marks it optional, so a netlist
+produced without it still validates and `--swaps` becomes a no-op.
+
+### C4. Export dialects
+
+`--format` names four targets — `kicad`, `altium`, `orcad`, `allegro` — without
+specifying a dialect for any of them.
+
+| Target | Format written |
+|---|---|
+| `kicad` | KiCad S-expression netlist (`.net`) |
+| `altium` | Protel/Altium netlist: `[` component `]` blocks, `(` net `)` blocks |
+| `orcad` | OrCAD PCB II flat netlist |
+| `allegro` | Allegro Telesis: `$PACKAGES` / `$NETS` |
+
+Directives the target format cannot carry go to the `--constraints` sidecar
+rather than being dropped silently.
+
+### C5. Which pin a netlist entry names
+
+The netlist example shows a physical pin number for one component
+(`{"designator": "U1", "pin": "1"}`) and a logical pin name for another
+(`{"designator": "C1", "pin": "A"}`).
+
+**Resolution.** Both are emitted: `pin` is the physical package pin, which is
+what a layout tool needs, and `logical` is the name the part declares.
+
+---
+
+## D. Smaller points
+
+### D1. `±` is not ASCII
+
+Source outside comments and string literals is said to be ASCII, yet tolerances
+are written `±1%`. `±` (U+00B1) is accepted, as is the `+-` spelling offered
+alongside it. `µ` remains rejected, as stated explicitly, and is diagnosed by
+name rather than as a generic bad character.
+
+### D2. Decimal values
+
+Only integers are defined, but `#~cost = 0.002` appears. Decimal values are
+accepted wherever a value is expected. Arithmetic inside `$…$` remains
+integer-only, and a decimal used as an operand there is E-41.
+
+### D3. Reserved diagnostic codes
+
+E-03, E-16, E-19, E-35 and W-05 appear nowhere in the specification. They are
+reserved in the diagnostic table and never emitted.
+
+### D4. W-06 is off by default
+
+The common options list `-W<name>` as "Enable warning `<name>`", which only means
+something if some warnings begin disabled. **W-06** — a `~`-weak field never
+overridden anywhere in the design — is the one that needs it. A part library
+declares `@~footprint` weakly on purpose, so on the specification's own part
+examples this would fire on every part and drown the findings that matter.
+
+It is enabled with `-WW-06` or `-Wweak-never-overridden`, and answers a real
+question when asked: which suggestions did nobody take? Every other warning is
+on by default.
+
+### D5. Un-annotated designators are an error at link
+
+The specification says an un-annotated design "shall compile, link and check
+completely", and there is a good reason it has to: `manta annotate` reads its
+assignments from a `.mantaNets`, so linking must work *before* annotation is
+possible at all. Nothing in the netlist or in ERC depends on a designator
+existing, and unassigned instances carry identities derived from their block
+instance path.
+
+That is right as a property of the language, but shipping a netlist full of
+path-derived identities is not what anyone wants from a build. So **E-UNANNOTATED**
+is an error by default, and demotable:
+
+```sh
+# Bootstrap: link once with the check demoted, so there is a netlist to
+# annotate from.
+manta link --top board -L build/ -Wno-unannotated -o build/board.mantaNets
+manta annotate -n build/board.mantaNets src/*.manta
+
+# From here on the flag is not needed, and its absence is what proves the
+# design is fully annotated.
+manta compile -o build/ src/*.manta
+manta link --top board -L build/ -o build/board.mantaNets
+```
+
+`--warn=unannotated` demotes it to a warning instead, and `-Wno-unannotated`
+silences it entirely, which is the setting a strictly conforming run wants.
+
+This is a toolchain policy rather than one of the section 16 rules, so it is
+checked in the linker and not in the ERC pass, and it runs even under
+`--no-erc`.
+
+### D6. A bare revision in `@VERSION`
+
+The forms given are `1.2+`, `1.2-` and `0.2-1.2`, but not bare `1.2`. A bare
+revision is accepted and pins exactly that revision, which is the reading that
+makes the three documented forms a complete lattice.
+
+### D7. Two rules share the code E-02
+
+E-02 covers both "a net has an input and no driver" and "an identifier ends in
+`-`". They are unrelated, and the second is lexical while the first is
+whole-design. Both report E-02, with messages that distinguish them.
+
+### D8. A dotted name is not a bare net name
+
+`=` is required to have a device, group or replication on at least one side, and
+two bare net names joined by `=` is E-22. But a pin reference such as `U3.OUT`
+*is* a device terminal — a pin belongs to exactly one net, so the reference names
+that net at that pin — and a harness identifier stands for its members. Both are
+therefore exempt, which is what makes `TP7 = U3.OUT &STUB;`,
+`extern U5.1 = GND;` and `USB = MCU-USB;` all well formed.

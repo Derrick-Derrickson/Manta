@@ -1,0 +1,9 @@
+harness i2c-bus {
+    SDA<> &TYPE=OPENDRAIN;
+    SCL<> &TYPE=OPENDRAIN;
+};
+
+netclass power {
+    &CURRENT=3A;
+    &!VOLTAGE=60V;
+};

@@ -1,0 +1,5 @@
+block b {
+    GND &TYPE=GROUND;
+    #v = 10kR;
+    #x = $v + 1$;
+};

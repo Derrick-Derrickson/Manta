@@ -1,0 +1,4 @@
+block b {
+    GND &TYPE=GROUND;
+    SW = SW-NODE;
+};

@@ -1,0 +1,14 @@
+// Spec section 20.6 -- a reusable block.
+// Ports with mandatory arrows, a chain with a shunt, a parameterised value
+// through substitution.
+block rc-filter {
+    #~r-value = 10;
+    #~c-value = 100;
+
+    >IN;
+    OUT>;
+
+    IN = .{R?~$"r-value"$kR-0603}.
+      == .{C?~$"c-value"$nF-0603: .=GND}
+      == OUT;
+};

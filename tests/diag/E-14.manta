@@ -1,0 +1,7 @@
+harness usb2 { D &HARNESS=diff; };
+block b {
+    GND &TYPE=GROUND;
+    USB &HARNESS=diff;
+    USB.+ == MCU.+ &IMP=90R;
+    USB.- == MCU.- &IMP=90R;
+};

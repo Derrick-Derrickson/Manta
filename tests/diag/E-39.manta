@@ -1,0 +1,5 @@
+block b {
+    GND &TYPE=GROUND;
+    #n = 1;
+    #x = $n / 0$;
+};

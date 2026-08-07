@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manta-lang.org/schema/1.0/mantaNets.schema.json",
+  "title": "mantaNets",
+  "description": "The netlist emitted by 'manta link' (Manta specification revision 1.0, section 15.4).",
+  "type": "object",
+  "required": ["version", "kind", "top", "components", "nets"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "description": "The language revision this netlist targets.",
+      "const": "1.0"
+    },
+    "kind": { "const": "mantaNets" },
+    "top": {
+      "description": "The name of the top-level block the design was elaborated from.",
+      "type": "string"
+    },
+
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["designator", "path", "part", "fitted", "bom", "footprint", "fields"],
+        "additionalProperties": false,
+        "properties": {
+          "designator": {
+            "description": "The assigned designator, or the path-derived identity when the design is not yet annotated (section 13.1).",
+            "type": "string"
+          },
+          "path": {
+            "description": "The instance path from the top-level block. Export flattens it (section 13.4).",
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "part": { "type": "string" },
+          "fitted": {
+            "description": "False for a do-not-populate part. Affects BOM and ERC only; the netlist is unchanged (section 16.3).",
+            "type": "boolean"
+          },
+          "bom": {
+            "description": "Independent of 'fitted' (section 9.5).",
+            "type": "boolean"
+          },
+          "footprint": { "type": "string" },
+          "fields": {
+            "description": "User fields, carried through untouched (section 9.1). Values are rendered per section 14.7.",
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          }
+        }
+      }
+    },
+
+    "nets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "pins", "directives"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "The explicit name where one was written, else the name of the first pin on the net (section 5.2).",
+            "type": "string"
+          },
+          "pins": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["designator", "pin"],
+              "additionalProperties": false,
+              "properties": {
+                "designator": { "type": "string" },
+                "pin": {
+                  "description": "The physical package pin.",
+                  "type": "string"
+                },
+                "logical": {
+                  "description": "The name the part declares for that pin. Section 15.4's example shows a physical number for one component and a logical name for another; both are emitted so a consumer can take whichever it needs.",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "directives": {
+            "description": "Every directive in force on the net, after the strength ladder and any net class have been applied (sections 11.1, 11.9).",
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          }
+        }
+      }
+    },
+
+    "matches": {
+      "description": "Delay-matching groups (section 11.4).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "src", "dest", "tolerance", "offset"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "src": {
+            "description": "The reference designator the group is measured from.",
+            "type": "string"
+          },
+          "dest": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "tolerance": {
+            "description": "A time, never a length (section 11.4, error E-18). A comma-separated list gives each destination its own budget, which is how a flyby chain is expressed.",
+            "type": "string"
+          },
+          "offset": {
+            "description": "Required delay relative to the reference. Positive means later.",
+            "type": "string"
+          },
+          "contains": {
+            "description": "Nested groups. For an outer group, the delay of an inner one is the delay of its reference member.",
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["net"],
+              "additionalProperties": false,
+              "properties": {
+                "net": { "type": "string" },
+                "offset": { "type": "string" },
+                "tolerance": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "swaps": {
+      "description": "Pin swaps performed during layout, for 'manta annotate --swaps' to reconcile (section 13.6). Optional: section 15.5 gives the annotator no other input to read them from, so this is a documented extension. See docs/assumptions.md, B2.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["designator", "group", "order"],
+        "additionalProperties": false,
+        "properties": {
+          "designator": { "type": "string" },
+          "group": {
+            "description": "The permutable index named by '&SWAP' (section 11.7).",
+            "type": "string"
+          },
+          "order": {
+            "description": "The permuted member order.",
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

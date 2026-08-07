@@ -1,0 +1,4 @@
+block b {
+    GND &TYPE=GROUND;
+    #x = $undefined-field-name$;
+};

@@ -1,0 +1,46 @@
+# Examples
+
+## `blinky`
+
+A complete, working board: USB-C in, a 3V3 regulator, an eight-pin
+microcontroller, an I²C bus and two LEDs driven through a replicated block.
+
+It exists to be *correct*. The specification's own worked example is an excerpt
+— several of its nets are genuinely undriven, and it does not pass ERC — so it
+demonstrates syntax but cannot demonstrate a clean build. This one passes
+everything with nothing to report:
+
+```sh
+manta fmt --check examples/blinky/*.manta
+manta compile -o build/ examples/blinky/*.manta
+manta check --top blinky -L build/ -Werror
+manta link  --top blinky -L build/ --bom build/bom.csv -o build/blinky.mantaNets
+manta export --format kicad -o build/blinky.net build/blinky.mantaNets
+```
+
+No `--no-erc`, no `-Wno-`, and `-Werror` throughout. `tests/example.cmake` runs
+exactly that sequence, which makes this the other half of the conformance
+argument: the fixtures in `tests/diag` prove each diagnostic fires on a design
+that earns it, and this proves none of them fires on a design that does not.
+
+It is also written to exercise the language rather than to be minimal, so it
+doubles as a tour:
+
+| Construct | Where |
+|---|---|
+| A reusable block with a weak parameter | `block indicator`, `#~series-r` |
+| Substitution inside a part name | `R-$"series-r"$kR-0603` |
+| Replication driven by bus width | `LED-DRIVE[0:1] = [[ … ]]` |
+| A shunt continued past with `==` | the decoupling capacitors |
+| Default nets from the part | the MCU's `VCC` and `GND`, never bound |
+| A declared ground, and globals | `GND &TYPE=GROUND;`, `3V3>>` |
+| An open-drain bus as a harness | `i2c &HARNESS=i2c-bus;` |
+| A swap group | the connector's `CC1`/`CC2` |
+| A deliberate single reference | `TP1 = U2.MISO &STUB;` |
+| An unconnected pin, deliberately | the regulator's `NC=?` |
+| Net class and per-net directives | `3V3 &CLASS=power`, `&CURRENT=600mA` |
+
+Designators are already assigned, so the un-annotated check passes. The two
+block instances each carry their own `R1` and `D1` — a designator is annotated
+in the scope where it is written, and export flattens the path to `BLK1_R1` and
+`BLK2_R1`.

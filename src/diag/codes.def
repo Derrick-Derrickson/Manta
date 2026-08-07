@@ -1,0 +1,151 @@
+// The single source of truth for every diagnostic manta can emit.
+//
+// Spec 1.3 requires a conforming implementation to "implement all diagnostics in
+// section 16, reporting the code given there". Keeping them in one X-macro table
+// means the enum, the message table, the -W/-Wno- name map, the severity
+// remapping table and the conformance test index are all generated from the same
+// list: a code cannot be added, renamed or given the wrong default severity in
+// one place and not the others.
+//
+// MANTA_DIAG(Enum, "code", "mnemonic", Severity, "message format")
+//
+// The mnemonic is what -W<name>/-Wno-<name> accepts alongside the bare code, so
+// both "-Wno-W-03" and "-Wno-cap-in-series" work.
+//
+// Format arguments use std::format syntax and are supplied at the report site.
+
+#ifndef MANTA_DIAG
+#    error "define MANTA_DIAG before including codes.def"
+#endif
+
+// ---------------------------------------------------------------------------
+// Non-spec diagnostics. Section 15.2 says syntax errors are reported at parse
+// but assigns them no number, so they use a lettered code that cannot collide
+// with the numbered space.
+// ---------------------------------------------------------------------------
+MANTA_DIAG(Syntax,   "E-SYNTAX",   "syntax",   Severity::Error, "{}")
+MANTA_DIAG(Io,       "E-IO",       "io",       Severity::Error, "{}")
+MANTA_DIAG(Usage,    "E-USAGE",    "usage",    Severity::Error, "{}")
+MANTA_DIAG(Internal, "E-INTERNAL", "internal", Severity::Error, "internal error: {}")
+// Value-type mismatches that section 16.1 does not enumerate. It gives targeted
+// codes for two of them -- E-18 for a tolerance written as a length, E-14 for a
+// single-ended impedance on a differential pair -- but none for the general
+// case of, say, "&CURRENT=50R".
+MANTA_DIAG(Type,     "E-TYPE",     "type",     Severity::Error, "{}")
+// An instance still carrying '?' when the netlist is built. Section 13.1 says an
+// un-annotated design "shall compile, link and check completely", and it is
+// right that it can: 'manta annotate' reads its assignments from a .mantaNets,
+// so linking has to work before annotation is possible at all. But shipping a
+// netlist full of path-derived identities is not what anyone wants, so this is
+// an error by default and demotable with '-Wno-unannotated' -- which is exactly
+// what the bootstrap run needs.
+MANTA_DIAG(Unannotated, "E-UNANNOTATED", "unannotated", Severity::Error,
+           "instance '{}' has no designator; run 'manta annotate' to assign one")
+
+// ---------------------------------------------------------------------------
+// Section 16.1 — errors
+// ---------------------------------------------------------------------------
+MANTA_DIAG(E01, "E-01", "multiple-drivers", Severity::Error,
+           "net '{}' is driven by {} output pins with no open-drain or bus declaration")
+// E-02 carries two unrelated rules; section 16.1 gives them one code.
+MANTA_DIAG(E02, "E-02", "no-driver", Severity::Error, "{}")
+MANTA_DIAG(E04, "E-04", "width-mismatch", Severity::Error,
+           "width mismatch: {} on the left, {} on the right; use '=*' or '*=' to change width")
+MANTA_DIAG(E05, "E-05", "replication-divisibility", Severity::Error,
+           "replication width {} is not divisible by the unit arity {}")
+MANTA_DIAG(E06, "E-06", "replication-arity", Severity::Error,
+           "'[{}[ ]{}]' disagrees with the unit arity: {} copies in, {} copies out")
+MANTA_DIAG(E07, "E-07", "undeclared-designator", Severity::Error,
+           "reference to designator '{}', which is never declared")
+MANTA_DIAG(E08, "E-08", "terminal-also-bound", Severity::Error,
+           "pin '{}' appears both as a chain terminal and in the binding list")
+MANTA_DIAG(E09, "E-09", "empty-binding-list", Severity::Error,
+           "empty binding list; write the device bare instead")
+MANTA_DIAG(E10, "E-10", "unknown-system-field", Severity::Error,
+           "unknown system field '@{}'")
+MANTA_DIAG(E11, "E-11", "locked-override", Severity::Error,
+           "cannot override locked field '{}{}', declared with '!' at {}")
+MANTA_DIAG(E12, "E-12", "strength-conflict", Severity::Error,
+           "'{}' declared twice at equal strength with different values ('{}' and '{}')")
+MANTA_DIAG(E13, "E-13", "unknown-directive", Severity::Error, "unknown directive '&{}'")
+MANTA_DIAG(E14, "E-14", "single-ended-diff", Severity::Error,
+           "single-ended '&IMP={}' applied to differential harness '{}'; use the 'D' suffix")
+MANTA_DIAG(E15, "E-15", "substitution-position", Severity::Error,
+           "substitution in a non-value position; '$...$' may not produce {}")
+MANTA_DIAG(E17, "E-17", "imperial-unit", Severity::Error,
+           "imperial unit literal '{}'; manta supports metric units only")
+MANTA_DIAG(E18, "E-18", "tolerance-as-length", Severity::Error,
+           "match tolerance '{}' is a length; a tolerance shall be a time")
+MANTA_DIAG(E20, "E-20", "missing-footprint", Severity::Error,
+           "fitted part '{}' has no '@footprint'")
+MANTA_DIAG(E21, "E-21", "harness-designator-clash", Severity::Error,
+           "harness name '{}' collides with a designator; member access would be ambiguous")
+MANTA_DIAG(E22, "E-22", "bare-net-advance", Severity::Error,
+           "'=' joins two bare net names; use '=='")
+MANTA_DIAG(E23, "E-23", "casual-required", Severity::Error,
+           "'.' terminal selects pin '{}' of '{}', which does not carry '&CASUAL'")
+MANTA_DIAG(E24, "E-24", "no-ground", Severity::Error,
+           "the design declares no '&TYPE=GROUND' net")
+MANTA_DIAG(E25, "E-25", "nc-connected", Severity::Error,
+           "pin '{}' of '{}' is marked '&TYPE=NC' but is connected to net '{}'")
+MANTA_DIAG(E26, "E-26", "single-reference", Severity::Error,
+           "net '{}' is referenced exactly once and does not carry '&STUB'")
+MANTA_DIAG(E27, "E-27", "unpowered-net", Severity::Error,
+           "net '{}' has '&TYPE=POWER' consumers but no '&TYPE=POWER' source")
+MANTA_DIAG(E28, "E-28", "multiple-supplies", Severity::Error,
+           "net '{}' has two '&TYPE=POWER' source pins")
+MANTA_DIAG(E29, "E-29", "undefined-field", Severity::Error,
+           "substitution of undefined field '{}'")
+MANTA_DIAG(E30, "E-30", "duplicate-declaration", Severity::Error,
+           "'{}' is declared in more than one object; first declared at {}")
+MANTA_DIAG(E31, "E-31", "undeclared-name", Severity::Error,
+           "'{}' is referenced but never declared")
+MANTA_DIAG(E32, "E-32", "port-without-arrow", Severity::Error,
+           "block port '{}' carries no direction arrow")
+MANTA_DIAG(E33, "E-33", "stub-multi-pin", Severity::Error,
+           "'&STUB' applied to net '{}', which carries {} pins")
+MANTA_DIAG(E34, "E-34", "value-case", Severity::Error,
+           "'{}' is a system value drawn from a fixed set and shall be upper case; write '{}'")
+MANTA_DIAG(E36, "E-36", "version-constraint", Severity::Error,
+           "'@VERSION = {}' cannot be satisfied by language revision {}")
+MANTA_DIAG(E37, "E-37", "multiplicity-on-replication", Severity::Error,
+           "'{}' applied to a replication")
+MANTA_DIAG(E38, "E-38", "harness-pin-range", Severity::Error, "{}")
+MANTA_DIAG(E39, "E-39", "division-by-zero", Severity::Error, "division by zero in substitution")
+MANTA_DIAG(E40, "E-40", "integer-to-boolean-op", Severity::Error,
+           "integer operand given to boolean operator '{}'")
+MANTA_DIAG(E41, "E-41", "non-arithmetic-operand", Severity::Error,
+           "{} used as an arithmetic operand; only integers and booleans are computed with")
+MANTA_DIAG(E42, "E-42", "negative-exponent", Severity::Error, "negative exponent")
+MANTA_DIAG(E43, "E-43", "part-exports-field", Severity::Error,
+           "a 'part' declaration may not export field '{}'; export is available to blocks only")
+
+// ---------------------------------------------------------------------------
+// Section 16.2 — warnings
+// ---------------------------------------------------------------------------
+MANTA_DIAG(W01, "W-01", "unused-pins", Severity::Warning,
+           "'{}' has {} pins appearing in no chain and no binding")
+MANTA_DIAG(W02, "W-02", "shorted-device", Severity::Warning, "{} is shorted by a '==' run")
+MANTA_DIAG(W03, "W-03", "cap-in-series", Severity::Warning,
+           "{} is in series between two non-ground nets ('{}' and '{}')")
+MANTA_DIAG(W04, "W-04", "undecoupled-supply", Severity::Warning,
+           "'&TYPE=POWER' pin '{}' of '{}' has no capacitor on net '{}' within two nodes")
+// Off by default, and enabled with "-WW-06" or "-Wweak-never-overridden".
+// Spec 15.5 lists "-W<name>: Enable warning <name>", which only means anything
+// if some warnings start disabled -- and this is the one that needs it. A part
+// library declares "@~footprint" weakly on purpose (spec 9.2: "A suggestion.
+// Overridden by any other declaration"), so on the specification's own examples
+// in spec 20.1 and 20.2 this would fire on every part and drown the real
+// findings. Enabled, it answers a genuine question: which suggestions did
+// nobody take?
+MANTA_DIAG(W06, "W-06", "weak-never-overridden", Severity::Ignored,
+           "weak field '{}' declared on '{}' is never overridden anywhere in the design")
+MANTA_DIAG(W07, "W-07", "hyphen-underscore", Severity::Warning,
+           "'{}' and '{}' differ only by '-' versus '_'")
+MANTA_DIAG(W08, "W-08", "frozen-swap-group", Severity::Warning,
+           "swap group '{}' has members carrying incompatible directives; the group is frozen")
+MANTA_DIAG(W09, "W-09", "supply-no-consumers", Severity::Warning,
+           "net '{}' has a '&TYPE=POWER' source but no consumers")
+
+// Codes E-03, E-16, E-19, E-35 and W-05 do not appear in the specification.
+// They are deliberately absent here and are never emitted.

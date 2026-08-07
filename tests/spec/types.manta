@@ -1,0 +1,28 @@
+// Spec section 20.4 -- harness types.
+harness i2c-bus {
+    SDA<> &TYPE=OPENDRAIN;
+    SCL<  &TYPE=OPENDRAIN;
+};
+
+harness usb2 {
+    D &HARNESS=diff;
+    &!IMP     = 90RD;
+    &MAXDELAY = 600ps;
+};
+
+// Spec section 20.5 -- net classes and matching.
+netclass power {
+    &CURRENT  = 3A;
+    &!VOLTAGE = 60V;
+};
+
+match ddr-addr {
+    @src       = U1;
+    @dest      = [U5, U6, U7];
+    @tolerance = (5ps)*3;
+    match ddr-clk-pair {
+        @src       = U1;
+        @dest      = [U5];
+        @tolerance = 2ps;
+    };
+};

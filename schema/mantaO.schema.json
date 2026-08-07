@@ -1,0 +1,412 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manta-lang.org/schema/1.0/mantaO.schema.json",
+  "title": "mantaO",
+  "description": "The object emitted by 'manta compile' (Manta specification revision 1.0, section 15.2). It carries declarations, their interfaces, and their bodies in intermediate form, with external names unresolved and substitutions unevaluated. It is not a netlist fragment: a block cannot be elaborated until instantiated, since '[[ ]]' derives its count from the call site and '#!' overrides change what is emitted.",
+  "type": "object",
+  "required": ["version", "kind", "source", "declarations"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": "1.0" },
+    "kind": { "const": "mantaO" },
+    "source": {
+      "description": "The .manta file this object was compiled from. Spans below index that file, so a link-time diagnostic can report a position in the original source (section 15.6).",
+      "type": "string"
+    },
+    "declarations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/item" }
+    }
+  },
+
+  "$defs": {
+    "span": {
+      "description": "A byte offset and length into the source file. Section 14.6: positions map through a substitution by length alone.",
+      "type": "array",
+      "prefixItems": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "integer", "minimum": 0 }
+      ],
+      "items": false,
+      "minItems": 2
+    },
+
+    "name": {
+      "description": "An identifier, or an interpolated run when it contains '$...$' (section 14.2).",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["interp"],
+          "properties": {
+            "interp": { "$ref": "#/$defs/interp" },
+            "at": { "$ref": "#/$defs/span" }
+          }
+        }
+      ]
+    },
+
+    "interp": {
+      "description": "Literal chunks and expression holes, in source order.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string" },
+          "expr": { "$ref": "#/$defs/expr" },
+          "at": { "$ref": "#/$defs/span" }
+        }
+      }
+    },
+
+    "expr": {
+      "description": "A substitution expression (section 14.3). Integers and booleans only; comparison is the bridge between the two domains.",
+      "type": ["object", "null"],
+      "properties": {
+        "int": { "type": "integer" },
+        "bool": { "type": "boolean" },
+        "field": { "type": "string" },
+        "unary": { "enum": ["-", "!"] },
+        "operand": { "$ref": "#/$defs/expr" },
+        "op": { "enum": ["^", "*", "/", "+", "-", "<", ">", "<=", ">=", "=", "!=", "&", "~", "|"] },
+        "lhs": { "$ref": "#/$defs/expr" },
+        "rhs": { "$ref": "#/$defs/expr" },
+        "at": { "$ref": "#/$defs/span" }
+      }
+    },
+
+    "value": {
+      "type": ["object", "null"],
+      "properties": {
+        "v": {
+          "enum": ["int", "dec", "dim", "pct", "tol", "str", "bool", "id", "list", "repeat",
+                   "interp", "version", "unbind"]
+        },
+        "num": {
+          "description": "The canonical SI-substituted text of a numeric value (section 3.2), exact and never a float.",
+          "type": "string"
+        },
+        "text": {
+          "description": "The lexeme as written. A directive whose value type is a net name reads '3V3' as a rail, not as 3.3 volts (section 11.6), so both readings must survive.",
+          "type": "string"
+        },
+        "bool": { "type": "boolean" },
+        "upper": {
+          "description": "TRUE/FALSE as spelled, which E-34 checks (section 2.6).",
+          "type": "boolean"
+        },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/value" } },
+        "inner": { "$ref": "#/$defs/value" },
+        "count": { "type": "integer" },
+        "interp": { "$ref": "#/$defs/interp" },
+        "range": {
+          "description": "A version constraint as [hasLo, loMajor, loMinor, hasHi, hiMajor, hiMinor] (section 4.3).",
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 6,
+          "maxItems": 6
+        },
+        "at": { "$ref": "#/$defs/span" }
+      }
+    },
+
+    "strength": {
+      "description": "The strength ladder of section 9.2.",
+      "enum": ["weak", "normal", "locked"]
+    },
+
+    "field": {
+      "type": "object",
+      "properties": {
+        "ns": { "enum": ["@", "#"] },
+        "strength": { "$ref": "#/$defs/strength" },
+        "dir": {
+          "description": "Global import or export (section 9.4). A part shall not export: that is E-43.",
+          "enum": ["local", "import", "export"]
+        },
+        "name": { "$ref": "#/$defs/name" },
+        "value": { "$ref": "#/$defs/value" },
+        "at": { "$ref": "#/$defs/span" }
+      }
+    },
+
+    "directive": {
+      "type": "object",
+      "properties": {
+        "strength": { "$ref": "#/$defs/strength" },
+        "name": { "$ref": "#/$defs/name" },
+        "value": { "$ref": "#/$defs/value" },
+        "match": {
+          "description": "'&MATCH={group: @!offset=10ps}' (section 11.4).",
+          "type": "object",
+          "properties": {
+            "group": { "$ref": "#/$defs/name" },
+            "overrides": { "type": "array", "items": { "$ref": "#/$defs/field" } },
+            "at": { "$ref": "#/$defs/span" }
+          }
+        },
+        "at": { "$ref": "#/$defs/span" }
+      }
+    },
+
+    "port": {
+      "type": "object",
+      "properties": {
+        "dir": { "enum": ["none", "in", "out", "bidir"] },
+        "global": {
+          "description": "A doubled arrow: design-wide rather than block-scoped (section 10.3).",
+          "type": "boolean"
+        },
+        "leading": { "type": "boolean" },
+        "at": { "$ref": "#/$defs/span" }
+      }
+    },
+
+    "index": {
+      "type": "object",
+      "properties": {
+        "n": { "type": "integer" },
+        "expr": { "$ref": "#/$defs/expr" },
+        "at": { "$ref": "#/$defs/span" }
+      }
+    },
+
+    "range": {
+      "type": "object",
+      "properties": {
+        "single": {
+          "description": "'[i]' rather than '[lo:hi]'. Recorded so the formatter reproduces what was written.",
+          "type": "boolean"
+        },
+        "lo": { "$ref": "#/$defs/index" },
+        "hi": { "$ref": "#/$defs/index" },
+        "at": { "$ref": "#/$defs/span" }
+      }
+    },
+
+    "net": {
+      "type": ["object", "null"],
+      "properties": {
+        "lead": { "$ref": "#/$defs/port" },
+        "trail": { "$ref": "#/$defs/port" },
+        "perCopy": {
+          "description": "A '%' prefix: the per-copy selector of section 8.5.",
+          "type": "boolean"
+        },
+        "path": {
+          "description": "A dotted name. 'U1.GPIO1' denotes the net at that pin (section 5.2); 'i2c.SDA' a harness member, implied if never declared (section 12.3).",
+          "type": "array",
+          "items": { "type": "object", "properties": { "n": { "$ref": "#/$defs/name" } } }
+        },
+        "members": {
+          "type": "array",
+          "items": { "type": "object", "properties": { "n": { "$ref": "#/$defs/name" } } }
+        },
+        "range": { "$ref": "#/$defs/range" },
+        "perCopyList": { "type": "array", "items": { "$ref": "#/$defs/value" } },
+        "at": { "$ref": "#/$defs/span" }
+      }
+    },
+
+    "terminal": {
+      "type": "object",
+      "properties": {
+        "dot": {
+          "description": "The '.' terminal: the next unassigned pin carrying '&CASUAL' (section 7.3).",
+          "type": "boolean"
+        },
+        "name": { "$ref": "#/$defs/name" },
+        "range": { "$ref": "#/$defs/range" },
+        "at": { "$ref": "#/$defs/span" }
+      }
+    },
+
+    "designator": {
+      "type": "object",
+      "properties": {
+        "prefix": { "$ref": "#/$defs/name" },
+        "kind": {
+          "description": "'?' unassigned, 'n' numbered, '%' a range designator carrying N designators in one token (section 13.3).",
+          "enum": ["?", "n", "%"]
+        },
+        "number": { "type": "integer" },
+        "parts": {
+          "type": "array",
+          "items": { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2 }
+        },
+        "assignAt": {
+          "description": "The exact byte range 'manta annotate' rewrites, and the only thing it may write besides swap reconciliation (section 13.7).",
+          "$ref": "#/$defs/span"
+        },
+        "at": { "$ref": "#/$defs/span" }
+      }
+    },
+
+    "binding": {
+      "type": "object",
+      "properties": {
+        "b": { "enum": ["pin", "field", "directive"] },
+        "dot": { "type": "boolean" },
+        "pin": { "$ref": "#/$defs/name" },
+        "range": { "$ref": "#/$defs/range" },
+        "unbind": {
+          "description": "'GNDB=?': deliberately floating, so no net is created and no '&STUB' is required (section 11.6).",
+          "type": "boolean"
+        },
+        "net": { "$ref": "#/$defs/net" },
+        "directives": { "type": "array", "items": { "$ref": "#/$defs/directive" } },
+        "field": { "$ref": "#/$defs/field" },
+        "directive": { "$ref": "#/$defs/directive" },
+        "at": { "$ref": "#/$defs/span" }
+      }
+    },
+
+    "instance": {
+      "type": "object",
+      "properties": {
+        "dnp": {
+          "description": "The '!' prefix, exact sugar for '@fitted=FALSE' (section 7.5).",
+          "type": "boolean"
+        },
+        "designator": { "$ref": "#/$defs/designator" },
+        "declares": {
+          "description": "'~' present: declares a new instance rather than referencing one (section 7.2).",
+          "type": "boolean"
+        },
+        "part": { "$ref": "#/$defs/name" },
+        "bindings": { "type": "array", "items": { "$ref": "#/$defs/binding" } },
+        "at": { "$ref": "#/$defs/span" }
+      }
+    },
+
+    "device": {
+      "type": "object",
+      "properties": {
+        "braced": {
+          "description": "False for a bare instantiation statement such as '!R?~0R-0603;'. See docs/assumptions.md, A3.",
+          "type": "boolean"
+        },
+        "entry": { "$ref": "#/$defs/terminal" },
+        "instance": { "$ref": "#/$defs/instance" },
+        "exit": { "$ref": "#/$defs/terminal" },
+        "at": { "$ref": "#/$defs/span" }
+      }
+    },
+
+    "element": {
+      "type": "object",
+      "properties": {
+        "e": { "enum": ["net", "device", "group", "rep"] },
+        "net": { "$ref": "#/$defs/net" },
+        "device": { "$ref": "#/$defs/device" },
+        "body": { "$ref": "#/$defs/segment" },
+        "mult": {
+          "description": "Multiplicity on a parenthesised group (section 8.6): '+' series, '|' parallel, '*' node.",
+          "enum": ["none", "+", "|", "*"]
+        },
+        "count": { "type": "integer" },
+        "counted": {
+          "description": "'[N[ ... ]M]' rather than '[[ ... ]]' (section 8.3).",
+          "type": "boolean"
+        },
+        "in": { "type": "integer" },
+        "out": { "type": "integer" },
+        "at": { "$ref": "#/$defs/span" }
+      }
+    },
+
+    "segment": {
+      "type": ["object", "null"],
+      "properties": {
+        "elements": { "type": "array", "items": { "$ref": "#/$defs/element" } },
+        "connectors": {
+          "description": "One fewer than the elements. Section 6: '=' advances the node, '==' puts the run on one net, '=*' gathers, '*=' broadcasts.",
+          "type": "array",
+          "items": { "enum": ["=", "==", "=*", "*="] }
+        },
+        "at": { "$ref": "#/$defs/span" }
+      }
+    },
+
+    "stmt": {
+      "type": "object",
+      "properties": {
+        "s": { "enum": ["chain", "field", "portlist"] },
+        "extern": {
+          "description": "The instance referred to is declared in another object (section 6.6).",
+          "type": "boolean"
+        },
+        "segments": {
+          "description": "Joined by '^', which places elements in one statement without connecting them (section 6.4) while still sharing one directive scope (section 11.2).",
+          "type": "array",
+          "items": { "$ref": "#/$defs/segment" }
+        },
+        "field": { "$ref": "#/$defs/field" },
+        "ports": { "type": "array", "items": { "$ref": "#/$defs/net" } },
+        "arrow": { "$ref": "#/$defs/port" },
+        "directives": { "type": "array", "items": { "$ref": "#/$defs/directive" } },
+        "at": { "$ref": "#/$defs/span" }
+      }
+    },
+
+    "pin": {
+      "description": "One pin map line (section 4.5).",
+      "type": "object",
+      "properties": {
+        "lo": { "type": "integer" },
+        "hi": { "type": "integer" },
+        "physRange": { "type": "boolean" },
+        "logical": { "$ref": "#/$defs/name" },
+        "members": {
+          "type": "array",
+          "items": { "type": "object", "properties": { "n": { "$ref": "#/$defs/name" } } }
+        },
+        "range": { "$ref": "#/$defs/range" },
+        "arrow": { "$ref": "#/$defs/port" },
+        "directives": { "type": "array", "items": { "$ref": "#/$defs/directive" } },
+        "at": { "$ref": "#/$defs/span" }
+      }
+    },
+
+    "member": {
+      "description": "One harness member declaration (section 12.1).",
+      "type": "object",
+      "properties": {
+        "name": { "$ref": "#/$defs/name" },
+        "arrow": { "$ref": "#/$defs/port" },
+        "directives": { "type": "array", "items": { "$ref": "#/$defs/directive" } },
+        "at": { "$ref": "#/$defs/span" }
+      }
+    },
+
+    "item": {
+      "type": "object",
+      "required": ["kind", "name", "static", "body"],
+      "properties": {
+        "kind": { "enum": ["block", "part", "harness", "netclass", "match"] },
+        "name": { "$ref": "#/$defs/name" },
+        "static": {
+          "description": "Internal linkage: visible only within its own object, and exempt from E-30 (section 4.2).",
+          "type": "boolean"
+        },
+        "body": {
+          "description": "In source order, which 'manta fmt' must not disturb (section 17).",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "item": { "$ref": "#/$defs/item" },
+              "stmt": { "$ref": "#/$defs/stmt" },
+              "field": { "$ref": "#/$defs/field" },
+              "pin": { "$ref": "#/$defs/pin" },
+              "member": { "$ref": "#/$defs/member" },
+              "directive": { "$ref": "#/$defs/directive" }
+            }
+          }
+        },
+        "at": { "$ref": "#/$defs/span" }
+      }
+    }
+  }
+}

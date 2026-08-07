@@ -1,0 +1,109 @@
+// A small part library for the blinky example.
+//
+// Every part carries a weak '@~footprint' so a call site may substitute a
+// different package without editing the part (spec 9.2), and a locked '#!type'
+// so the checker can recognise what it is.
+//
+// None of these is 'static': internal linkage would make them invisible to the
+// board that uses them, which is the whole point of a shared library (spec 4.2).
+
+// ---- passives -------------------------------------------------------------
+// Symmetric two-terminal parts mark both pins '&CASUAL', which is what lets a
+// chain reach them with the '.' terminal and what puts them in a swap group
+// (spec 7.3, 11.7).
+part R-1kR-0603 {
+    @~footprint = R-0603;
+    #value      = 1kR;
+    #tolerance  = ±1%;
+    #power      = 100mW;
+    #!type      = resistor;
+    #~mpn       = "RC0603FR-071KL";
+
+    1 = A &CASUAL;
+    2 = B &CASUAL;
+};
+
+part R-10kR-0603 {
+    @~footprint = R-0603;
+    #value      = 10kR;
+    #tolerance  = ±1%;
+    #power      = 100mW;
+    #!type      = resistor;
+    #~mpn       = "RC0603FR-0710KL";
+
+    1 = A &CASUAL;
+    2 = B &CASUAL;
+};
+
+part C-100nF-0603 {
+    @~footprint = C-0603;
+    #value      = 100nF;
+    #voltage    = 16V;
+    #!type      = capacitor;
+
+    1 = A &CASUAL;
+    2 = B &CASUAL;
+};
+
+part C-10uF-0805 {
+    @~footprint = C-0805;
+    #value      = 10uF;
+    #voltage    = 16V;
+    #!type      = capacitor;
+
+    1 = A &CASUAL;
+    2 = B &CASUAL;
+};
+
+// ---- actives --------------------------------------------------------------
+
+// A regulator provides a rail, so VOUT is 'POWER>'. That one annotation is what
+// satisfies the supply check on every net it feeds (spec 11.6).
+part LDO-3V3 {
+    @~footprint = SOT-23-5;
+    #value      = AP2112K-3.3;
+    #!type      = regulator;
+    #~mpn       = "AP2112K-3.3TRG1";
+
+    1 = VIN< &TYPE=POWER;
+    2 = GND< &TYPE=POWER &~NET=GND;
+    3 = EN<;
+    4 = NC &TYPE=NC;
+    5 = VOUT> &TYPE=POWER;
+};
+
+part MCU-8PIN {
+    @~footprint    = SOIC-8;
+    #value         = ATTINY85;
+    #!manufacturer = "Microchip";
+
+    1 = nRESET<;
+    2 = GPIO[0]>;
+    3 = GPIO[1]>;
+    4 = GND< &TYPE=POWER &~NET=GND;
+    5 = SDA<> &TYPE=OPENDRAIN;
+    6 = SCL<> &TYPE=OPENDRAIN;
+    7 = MISO>;
+    8 = VCC< &TYPE=POWER &~NET=3V3;
+};
+
+part LED-0603 {
+    @~footprint = LED-0603;
+    #value      = green;
+    #!type      = led;
+    #~current   = 5mA;
+
+    1 = A;
+    2 = K;
+};
+
+part CONN-USB-C {
+    @~footprint = USB-C-16;
+    #value      = USB-C;
+    #!type      = connector;
+
+    1 = VBUS> &TYPE=POWER;
+    2 = GND< &TYPE=POWER &~NET=GND;
+    3 = CC1<> &SWAP=cc;
+    4 = CC2<> &SWAP=cc;
+};

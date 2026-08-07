@@ -1,0 +1,8 @@
+block b {
+    A = .{U1~p: X=N; }X = B;
+};
+part p {
+    @~footprint = F;
+    1 = X &CASUAL;
+    2 = Y &CASUAL;
+};

@@ -1,0 +1,4 @@
+block b {
+    @VERSION = 9.9+;
+    GND &TYPE=GROUND;
+};

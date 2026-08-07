@@ -1,0 +1,5 @@
+block b {
+    GND &TYPE=GROUND;
+    #n = 2;
+    #x = $n ^ -1$;
+};

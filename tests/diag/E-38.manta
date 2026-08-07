@@ -1,0 +1,4 @@
+part p {
+    @~footprint = F;
+    [1:3] = USB.[+,-]<>;
+};

@@ -1,0 +1,5 @@
+block b {
+    GND &TYPE=GROUND;
+    #s = "a;b";
+    X = .{R?~$s$}. = GND;
+};

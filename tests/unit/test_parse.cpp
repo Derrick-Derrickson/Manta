@@ -1,0 +1,412 @@
+// The parser against the grammar of spec 19 and the worked examples of spec 20.
+//
+// Every example in the specification must parse with no diagnostics: spec 1.3
+// requires a conforming implementation to "accept every construct in this
+// document".
+#include "parse/parser.h"
+
+#include <string>
+
+#include "harness.h"
+#include "lex/lexer.h"
+
+using namespace manta;
+
+namespace {
+
+struct ParseResult {
+    SourceManager sources;
+    Arena arena;
+    StringInterner interner;
+    std::unique_ptr<DiagEngine> diags;
+    SourceUnit unit;
+    std::string report;
+};
+
+// Parses text and collects any diagnostics as a readable string.
+std::shared_ptr<ParseResult> parse(std::string text) {
+    auto r = std::make_shared<ParseResult>();
+    const SourceFile* file = r->sources.addVirtual("<test>", std::move(text));
+    r->diags = std::make_unique<DiagEngine>(r->sources);
+    Lexer lexer(*file, *r->diags);
+    TokenStream toks = lexer.run();
+    Parser parser(toks, *file, r->arena, r->interner, *r->diags);
+    r->unit = parser.run();
+    RenderOptions opts;
+    opts.showSource = false;
+    renderDiagnostics(*r->diags, opts, r->report);
+    return r;
+}
+
+// Reads one of the spec fixture files from tests/spec/.
+std::string readFixture(const char* name) {
+    std::string path = std::string(MANTA_TEST_DIR) + "/spec/" + name;
+    std::FILE* f = std::fopen(path.c_str(), "rb");
+    if (!f) return {};
+    std::string out;
+    char buf[8192];
+    std::size_t n;
+    while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) out.append(buf, n);
+    std::fclose(f);
+    return out;
+}
+
+void expectClean(const std::shared_ptr<ParseResult>& r, const char* what) {
+    if (r->diags->errorCount() != 0) {
+        ::mantatest::fail(__FILE__, __LINE__,
+                          std::string(what) + " produced diagnostics:\n" + r->report);
+    }
+}
+
+}  // namespace
+
+TEST_CASE("spec 20.1-20.3: part declarations parse") {
+    auto r = parse(readFixture("parts.manta"));
+    expectClean(r, "parts.manta");
+    CHECK_EQ(r->unit.items.size(), std::size_t{3});
+    CHECK(r->unit.items[0]->isStatic);          // "static part R-10k-1pct-0603"
+    CHECK(r->unit.items[0]->kind == ItemKind::Part);
+    CHECK_FALSE(r->unit.items[1]->isStatic);
+}
+
+TEST_CASE("spec 20.4-20.5: harnesses, netclasses and match groups parse") {
+    auto r = parse(readFixture("types.manta"));
+    expectClean(r, "types.manta");
+    CHECK_EQ(r->unit.items.size(), std::size_t{4});
+    CHECK(r->unit.items[0]->kind == ItemKind::Harness);
+    CHECK(r->unit.items[2]->kind == ItemKind::Netclass);
+    CHECK(r->unit.items[3]->kind == ItemKind::Match);
+    // Spec 11.4: "A match group may contain another."
+    bool foundNested = false;
+    for (const auto& e : r->unit.items[3]->body) {
+        if (e.kind == BodyKind::Item && e.item->kind == ItemKind::Match) foundNested = true;
+    }
+    CHECK(foundNested);
+}
+
+TEST_CASE("spec 20.6: a block with substitution parses") {
+    auto r = parse(readFixture("rc-filter.manta"));
+    expectClean(r, "rc-filter.manta");
+    CHECK_EQ(r->unit.items.size(), std::size_t{1});
+    CHECK(r->unit.items[0]->kind == ItemKind::Block);
+}
+
+TEST_CASE("spec 20.7: the complete board parses") {
+    auto r = parse(readFixture("board.manta"));
+    expectClean(r, "board.manta");
+    CHECK_EQ(r->unit.items.size(), std::size_t{1});
+    CHECK(r->unit.items[0]->kind == ItemKind::Block);
+}
+
+// ---------------------------------------------------------------------------
+// Targeted grammar checks
+// ---------------------------------------------------------------------------
+
+TEST_CASE("spec 2.4: whitespace is insignificant") {
+    auto multi = parse("block b { SW == SW-NODE\n   = .{L1~MT100UFA}.\n   = 3V3; };");
+    auto single = parse("block b { SW == SW-NODE = .{L1~MT100UFA}. = 3V3; };");
+    expectClean(multi, "multi-line chain");
+    expectClean(single, "single-line chain");
+}
+
+TEST_CASE("spec 2.3: a leading '-' is resolved by grammatical position") {
+    // In a net position "-5V" names a net; in a value position it is a number.
+    auto r = parse("block b { BIAS == -5V; #min-supply = -5V; };");
+    expectClean(r, "leading hyphen");
+
+    const Item* b = r->unit.items[0];
+    const Stmt* chain = b->body[0].stmt;
+    CHECK(chain->kind == StmtKind::Chain);
+    const Element* second = chain->chain->segments[0]->elements[1];
+    CHECK(second->kind == ElementKind::Net);
+
+    const Stmt* field = b->body[1].stmt;
+    CHECK(field->kind == StmtKind::Field);
+    CHECK(field->field->value->kind == ValueKind::Dimensioned);
+    CHECK_EQ(field->field->value->num.mantissa, std::int64_t{-5});
+    CHECK(field->field->value->num.unit == Unit::Volt);
+}
+
+TEST_CASE("spec 16.1: E-02 fires on an identifier ending in '-'") {
+    auto r = parse("block b { VCC- == GND; };");
+    CHECK(r->report.find("E-02") != std::string::npos);
+}
+
+TEST_CASE("spec 4.3: a version constraint ending in '-' is not E-02") {
+    // "1.2-" means revision 1.2 or earlier, and lexes as a hyphen-terminated
+    // word. Only the parser can tell it from a malformed identifier.
+    auto r = parse("block b { @VERSION = 1.2-; };");
+    CHECK(r->report.find("E-02") == std::string::npos);
+    expectClean(r, "upper-bound version constraint");
+
+    auto range = parse("block b { @VERSION = 0.2-1.2; };");
+    expectClean(range, "range version constraint");
+    const Value* v = range->unit.items[0]->body[0].stmt->field->value;
+    CHECK(v->kind == ValueKind::Version);
+    CHECK_EQ(v->version.loMinor, std::uint32_t{2});
+    CHECK_EQ(v->version.hiMinor, std::uint32_t{2});
+    CHECK_EQ(v->version.hiMajor, std::uint32_t{1});
+}
+
+TEST_CASE("spec 8.3: replication forms") {
+    auto inferred = parse("block b { >A[0:3] = [[ I{U?~amp}O ]] = B[0:3]>; };");
+    expectClean(inferred, "inferred replication");
+
+    auto counted = parse("block b { >A[0:3] = [4[ I{U?~splitter}O[0:1] ]8] = B[0:7]>; };");
+    expectClean(counted, "counted replication");
+
+    const Element* e = counted->unit.items[0]->body[0].stmt->chain->segments[0]->elements[1];
+    CHECK(e->kind == ElementKind::Replication);
+    CHECK(e->replication->counted);
+    CHECK_EQ(e->replication->inWidth, std::int64_t{4});
+    CHECK_EQ(e->replication->outWidth, std::int64_t{8});
+}
+
+TEST_CASE("spec 8.3: E-37 rejects multiplicity on a replication") {
+    auto direct = parse("block b { A = [[.{R?~r}.]]+2 = B; };");
+    CHECK(direct->report.find("E-37") != std::string::npos);
+
+    // "a group whose sole content is a replication" does not launder it.
+    auto grouped = parse("block b { A = ([[.{R?~r}.]])+2 = B; };");
+    CHECK(grouped->report.find("E-37") != std::string::npos);
+}
+
+TEST_CASE("spec 8.6: each multiplicity operator parses") {
+    auto r = parse(
+        "block b {"
+        "  A = (.{L?~ind}.)+2 = B;"
+        "  C = (A{D?~dio}K)|2 = D;"
+        "  E == ({C?~cap: .=GND}.)*4;"
+        "};");
+    expectClean(r, "multiplicity");
+    const Item* b = r->unit.items[0];
+    CHECK(b->body[0].stmt->chain->segments[0]->elements[1]->group->mult == MultKind::Series);
+    CHECK(b->body[1].stmt->chain->segments[0]->elements[1]->group->mult == MultKind::Parallel);
+    CHECK(b->body[2].stmt->chain->segments[0]->elements[1]->group->mult == MultKind::Node);
+}
+
+TEST_CASE("spec 6: every connection operator parses") {
+    auto r = parse(
+        "block b {"
+        "  A == B;"
+        "  C = .{R?~r}. = D;"
+        "  E[0:3] = [[.{R?~r}.]] =* F;"
+        "  G *= H[0:7];"
+        "  I = 1{J?~c} ^ {J?~c}1 = K;"
+        "};");
+    expectClean(r, "connectors");
+    const Item* b = r->unit.items[0];
+    CHECK(b->body[0].stmt->chain->segments[0]->connectors[0] == Connector::Same);
+    CHECK(b->body[1].stmt->chain->segments[0]->connectors[0] == Connector::Advance);
+    CHECK(b->body[2].stmt->chain->segments[0]->connectors[1] == Connector::Gather);
+    CHECK(b->body[3].stmt->chain->segments[0]->connectors[0] == Connector::Broadcast);
+    // '^' partitions the statement into independent segments (spec 6.4).
+    CHECK_EQ(b->body[4].stmt->chain->segments.size(), std::size_t{2});
+}
+
+TEST_CASE("spec 7.4: E-09 rejects an empty binding list") {
+    auto colon = parse("block b { A = .{L1~ind:}. = B; };");
+    CHECK(colon->report.find("E-09") != std::string::npos);
+    auto semi = parse("block b { A = .{L1~ind;}. = B; };");
+    CHECK(semi->report.find("E-09") != std::string::npos);
+    // The bare form is correct and must stay clean.
+    auto bare = parse("block b { A = .{L1~ind}. = B; };");
+    expectClean(bare, "bare device");
+}
+
+TEST_CASE("spec 7.2: '~' distinguishes declaring from referencing") {
+    auto r = parse("block b { A = I{U?~AMP012}O = B; C = I{U3}O = D; };");
+    expectClean(r, "declare vs reference");
+    const Item* b = r->unit.items[0];
+    const Device* decl = b->body[0].stmt->chain->segments[0]->elements[1]->device;
+    const Device* ref = b->body[1].stmt->chain->segments[0]->elements[1]->device;
+    CHECK(decl->instance->declares);
+    CHECK_FALSE(ref->instance->declares);
+    CHECK(decl->instance->designator.kind == DesignatorKind::Unassigned);
+    CHECK(ref->instance->designator.kind == DesignatorKind::Numbered);
+    CHECK_EQ(ref->instance->designator.number, std::int64_t{3});
+}
+
+TEST_CASE("spec 13.3: range designators parse, contiguous and not") {
+    auto r = parse("block b { A = (.{BLK%[1:4]~blk}.)*4 = B; C = .{BLK%[1:4,9:10]~blk}. = D; };");
+    expectClean(r, "range designators");
+    const Item* b = r->unit.items[0];
+    const Designator& d1 =
+        b->body[0].stmt->chain->segments[0]->elements[1]->group->body->elements[0]->device->instance->designator;
+    CHECK(d1.kind == DesignatorKind::Range);
+    CHECK_EQ(d1.parts.size(), std::size_t{1});
+    CHECK_EQ(d1.parts[0].lo, std::int64_t{1});
+    CHECK_EQ(d1.parts[0].hi, std::int64_t{4});
+
+    const Designator& d2 =
+        b->body[1].stmt->chain->segments[0]->elements[1]->device->instance->designator;
+    CHECK_EQ(d2.parts.size(), std::size_t{2});
+    CHECK_EQ(d2.parts[1].lo, std::int64_t{9});
+}
+
+TEST_CASE("spec 12.4: '+' and '-' are harness member names") {
+    auto r = parse("block b { USB.+ = MCU-USB.+; USB.- = MCU-USB.-; X = Y.[+,-]; };");
+    expectClean(r, "diff members");
+}
+
+TEST_CASE("spec 14: substitution parses in every value position") {
+    auto r = parse(
+        "block b {"
+        "  A = .{R?~$val$-0603}. = B;"
+        "  @fitted=$fit-amp$;"
+        "  C = D.GPIO[$n$];"
+        "  E == F &CURRENT=$amps$A;"
+        "  #w = $100 * 2$R;"
+        "};");
+    expectClean(r, "substitution positions");
+}
+
+TEST_CASE("spec 14.3: substitution operator precedence") {
+    // "$ (a + b) * 2 $" and "$ n ^ 2 $" and "$ mode = 3 | override $".
+    auto r = parse("block b { #x = $ (a + b) * 2 $; #y = $ n ^ 2 $; #z = $ mode = 3 | override $; };");
+    expectClean(r, "expression precedence");
+
+    const Item* b = r->unit.items[0];
+    // (a + b) * 2 -- the multiplication is the root, its lhs the addition.
+    const Expr* e = b->body[0].stmt->field->value->interp->chunks[0].expr;
+    CHECK(e->kind == ExprKind::Binary);
+    CHECK(e->binOp == BinOp::Mul);
+    CHECK(e->lhs->binOp == BinOp::Add);
+
+    // "mode = 3 | override": '|' is looser than '=', so or is the root.
+    const Expr* z = b->body[2].stmt->field->value->interp->chunks[0].expr;
+    CHECK(z->binOp == BinOp::Or);
+    CHECK(z->lhs->binOp == BinOp::Eq);
+}
+
+TEST_CASE("spec 14.5: '-' inside a substitution is always subtraction") {
+    auto r = parse("block b { #x = $min - supply$; #y = $\"min-supply\" + 1$; };");
+    expectClean(r, "hyphen inside substitution");
+    const Item* b = r->unit.items[0];
+    const Expr* sub = b->body[0].stmt->field->value->interp->chunks[0].expr;
+    CHECK(sub->binOp == BinOp::Sub);
+    CHECK(sub->lhs->kind == ExprKind::FieldRef);
+
+    // A quoted name is the hyphenated field itself, not a subtraction.
+    const Expr* quoted = b->body[1].stmt->field->value->interp->chunks[0].expr;
+    CHECK(quoted->binOp == BinOp::Add);
+    CHECK(quoted->lhs->kind == ExprKind::FieldRef);
+}
+
+TEST_CASE("spec 9.4: import and export sigil orders both parse") {
+    auto r = parse("block b { >#author = TJM; >#~source = digikey; #!>board-rev = C; };");
+    expectClean(r, "field direction");
+    const Item* b = r->unit.items[0];
+    CHECK(b->body[0].stmt->field->direction == FieldDirection::Import);
+    CHECK(b->body[1].stmt->field->direction == FieldDirection::Import);
+    CHECK(b->body[1].stmt->field->strength == Strength::Weak);
+    CHECK(b->body[2].stmt->field->direction == FieldDirection::Export);
+    CHECK(b->body[2].stmt->field->strength == Strength::Locked);
+}
+
+TEST_CASE("spec 10: every port arrow form parses") {
+    auto r = parse("block b { >SIG; SIG2<; <SIG3; SIG4>; <>SIG5; SIG6<>; >>VIN; V3V3>>; };");
+    expectClean(r, "port arrows");
+    const Item* b = r->unit.items[0];
+    auto dirOf = [&](std::size_t i, bool leading) {
+        const NetExpr* n = b->body[i].stmt->chain->segments[0]->elements[0]->net;
+        return leading ? n->leading.dir : n->trailing.dir;
+    };
+    CHECK(dirOf(0, true) == PortDir::In);    // >SIG
+    CHECK(dirOf(1, false) == PortDir::In);   // SIG2<
+    CHECK(dirOf(2, true) == PortDir::Out);   // <SIG3
+    CHECK(dirOf(3, false) == PortDir::Out);  // SIG4>
+    CHECK(dirOf(4, true) == PortDir::Bidir);
+    CHECK(dirOf(5, false) == PortDir::Bidir);
+    const NetExpr* vin = b->body[6].stmt->chain->segments[0]->elements[0]->net;
+    CHECK(vin->leading.global);
+    CHECK(vin->leading.dir == PortDir::In);
+}
+
+TEST_CASE("spec 10.3: the list form of a global port parses") {
+    auto r = parse("block b { [V3V3, GND]>>; };");
+    expectClean(r, "port list");
+    const Stmt* s = r->unit.items[0]->body[0].stmt;
+    CHECK(s->kind == StmtKind::PortList);
+    CHECK_EQ(s->ports.size(), std::size_t{2});
+    CHECK(s->listArrow.global);
+}
+
+TEST_CASE("spec 11.5: a pin may carry a directive without a net") {
+    auto r = parse("block b { A = .{U5~ddr-chip: DQ[0] &PINDELAY=18ps; }. = B; };");
+    expectClean(r, "pin-scoped directive");
+    const Instance* inst =
+        r->unit.items[0]->body[0].stmt->chain->segments[0]->elements[1]->device->instance;
+    CHECK_EQ(inst->bindings.size(), std::size_t{1});
+    CHECK(inst->bindings[0]->kind == BindingKind::PinNet);
+    CHECK_EQ(inst->bindings[0]->pinDirectives.size(), std::size_t{1});
+    CHECK(inst->bindings[0]->net == nullptr);
+}
+
+TEST_CASE("spec 11.6: '&NET=?' and 'pin = ?' unbind") {
+    auto r = parse("block b { A = .{U5~iso: GNDB=?; }. = B; };");
+    expectClean(r, "unbind");
+    const Instance* inst =
+        r->unit.items[0]->body[0].stmt->chain->segments[0]->elements[1]->device->instance;
+    CHECK(inst->bindings[0]->unbind);
+}
+
+TEST_CASE("spec 7.5: the DNP prefix parses on parts and blocks") {
+    auto r = parse("block b { {!R?~0R-0603}; A = .{!BLK?~audio-stage}. = B; };");
+    expectClean(r, "DNP");
+    const Item* b = r->unit.items[0];
+    CHECK(b->body[0].stmt->chain->segments[0]->elements[0]->device->instance->dnp);
+    CHECK(b->body[1].stmt->chain->segments[0]->elements[1]->device->instance->dnp);
+}
+
+TEST_CASE("a pin name follows the identifier rules like any other") {
+    // A trailing '-' is E-02 wherever it appears, including on a pin. A part
+    // that needs a negative supply rail names it something the identifier
+    // grammar can produce.
+    auto bad = parse("block b { X = INA{U1~op: V-=GND; }OUTA = Y; };");
+    CHECK(bad->report.find("E-02") != std::string::npos);
+
+    auto good = parse("block b { X = INA{U1~op: v-neg=GND; }OUTA = Y; };");
+    expectClean(good, "hyphenated pin name");
+}
+
+TEST_CASE("a device is always braced") {
+    // An instance written bare is not a device and does not parse.
+    auto bare = parse("block b { R?~0R-0603; };");
+    CHECK(bare->diags->errorCount() > 0);
+}
+
+TEST_CASE("spec 6.6: 'extern' prefixes a statement") {
+    auto r = parse("block b { extern U5.1 = GND; };");
+    expectClean(r, "extern");
+    CHECK(r->unit.items[0]->body[0].stmt->isExtern);
+}
+
+TEST_CASE("spec 2.5: comments may appear wherever whitespace may") {
+    auto r = parse(
+        "block b { // the switching node\n"
+        "  SW == SW-NODE   // trailing\n"
+        "     = .{L1~MT100UFA /* 10uH */}.\n"
+        "     = 3V3;\n"
+        "};");
+    expectClean(r, "comments");
+}
+
+TEST_CASE("spec 2.5: block comments do not nest") {
+    // "the first '*/' closes the comment", so the '/*' inside is not special
+    // and the text after '*/' is live code again.
+    auto r = parse("block b { /* outer /* inner */ A == B; };");
+    expectClean(r, "non-nesting block comment");
+}
+
+TEST_CASE("spec 2.2: identifiers are case sensitive") {
+    auto r = parse("block b { X = .{U1~p: SDA=A; sda=B; Sda=C; }. = Y; };");
+    expectClean(r, "case sensitivity");
+    const Instance* inst =
+        r->unit.items[0]->body[0].stmt->chain->segments[0]->elements[1]->device->instance;
+    CHECK_EQ(inst->bindings.size(), std::size_t{3});
+    CHECK(inst->bindings[0]->pin.symbol != inst->bindings[1]->pin.symbol);
+    CHECK(inst->bindings[1]->pin.symbol != inst->bindings[2]->pin.symbol);
+}
+
+TEST_MAIN()

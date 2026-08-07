@@ -1,0 +1,2 @@
+part dup { @~footprint = G; 1 = A &CASUAL; 2 = B &CASUAL; };
+block b { GND &TYPE=GROUND; X = .{R1~dup}. = GND; };

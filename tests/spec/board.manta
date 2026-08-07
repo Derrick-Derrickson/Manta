@@ -1,0 +1,89 @@
+// Spec section 20.7 -- a complete board.
+// Every remaining concept: globals, ground declaration, all five connection
+// operators, multiplicity of each kind, replication with per-copy values,
+// width change, DNP, a cross-object reference, multi-unit references,
+// directives at three strengths, and a stub.
+block power-and-signal {
+    @VERSION     = 1.0+;
+    #description = "3V3 buck with switched amplifier rail";
+    >#author     = TJM;
+    #!>board-rev = C;
+
+    // ---- rails and grounds ------------------------------------------
+    GND  &TYPE=GROUND;
+    AGND &TYPE=GROUND;
+    AGND = .{FB1~BLM18PG}. = GND;
+
+    >>VIN;
+    3V3>>;
+    GND>>;
+
+    3V3 &CLASS=power;
+
+    // ---- buck output stage ------------------------------------------
+    >nPWR-EN;
+
+    SW == SW-NODE
+        = (.{L?~MT100UFA}.)+2
+        = (A{D?~DI3643}K)|2
+       == ({C?~100nF-0603: .=GND}.)*4
+       == ({C?~10uF-0805: .=%[GND,AGND,GND]}.)*3
+       == 3V3
+        = S{Q?~FFET123: G=nPWR-EN; }D
+        = PWR-SWITCHED
+        &CURRENT=3A &!VOLTAGE=6V &~LAYER=inner1;
+
+    // ---- microcontroller --------------------------------------------
+    i2c &HARNESS=i2c-bus;
+    USB &HARNESS=usb2;
+
+    {U1~cool-mcu:
+        GPIO[1:9] = IO[1:9];
+        SDA       = i2c.SDA;
+        SCL       = i2c.SCL;
+        USB       = MCU-USB;
+        NC        = ?;
+    };
+
+    i2c<>;
+    <>USB.+ = .{R?~50R-0603}. = MCU-USB.+;
+    <>USB.- = .{R?~50R-0603}. = MCU-USB.-;
+
+    // ---- enable RC ---------------------------------------------------
+    {U1}GPIO[1] = .{R?~50R-0603}.
+               == .{C?~100nF-0603: .=GND}
+               == nPWR-EN;
+
+    // ---- single amplifier --------------------------------------------
+    >SIG-IN = I{U?~AMP012: PWR=PWR-SWITCHED; }O = AMPED-SIG> &IMP=50R;
+
+    // ---- replicated amplifiers with per-copy enables ------------------
+    >SIG2-IN[0:3]
+        = [[ I{U?~AMP012: EN=%AMP-EN[0:3]; PWR=PWR-SWITCHED; }O ]]
+        = IN{U?~buffer4: VCC=PWR-SWITCHED; }OUT
+        = AMPED-SIG2[0:3]> &MATCH=ddr-addr;
+
+    // ---- passive summing network, gathered ---------------------------
+    >SIG3-IN[0:3] = [[.{R?~100kR-0603}.]] =* COMBINED-OUT>;
+
+    // ---- broadcast a reference to a bus ------------------------------
+    VREF *= BIAS[0:7];
+
+    // ---- a mated connector pair, not internally connected ------------
+    PANEL-OUT = 1{J?~conn-4}  ^  {J?~conn-4}1 = PANEL-RETURN;
+
+    // ---- unpopulated in this build -----------------------------------
+    {!R?~0R-0603};
+
+    // ---- test point ---------------------------------------------------
+    TP1 = U1.GPIO9 &STUB;
+
+    // ---- a part instantiated in another object -----------------------
+    extern U9.1 = GND;
+
+    // ---- multi-unit package ------------------------------------------
+    SIG-A-IN = INA{U20~LM324: v-pos=3V3; v-neg=GND; }OUTA = SIG-A-OUT;
+    SIG-B-IN = INB{U20}OUTB = SIG-B-OUT;
+    SIG-C-IN = INC{U20}OUTC = SIG-C-OUT;
+    SIG-D-IN = IND{U20}OUTD = SIG-D-OUT;
+};

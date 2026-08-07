@@ -1,0 +1,3 @@
+block b {
+    VCC- == GND &TYPE=GROUND;
+};

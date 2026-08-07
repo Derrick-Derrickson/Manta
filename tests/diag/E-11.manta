@@ -1,0 +1,5 @@
+part p { @~footprint = F; #!mpn = "X"; 1 = A &CASUAL; 2 = B &CASUAL; };
+block b {
+    GND &TYPE=GROUND;
+    A = .{R1~p: #mpn = "Y"; }. = C;
+};

@@ -1,0 +1,4 @@
+block b {
+    GND &TYPE=GROUND;
+    X = .{R1~does-not-exist}. = Y;
+};

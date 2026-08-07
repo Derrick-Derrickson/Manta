@@ -1,0 +1,86 @@
+// blinky -- a complete, ERC-clean board.
+//
+// USB-C in, a 3V3 regulator, an eight-pin microcontroller, and two LEDs driven
+// through a replication. Unlike the excerpt in specification section 20.7, this
+// design passes 'manta check' with no findings, so it doubles as a regression
+// test that the checks do not fire on correct work.
+
+// ---------------------------------------------------------------------------
+// A reusable indicator: a resistor in series with an LED to ground.
+// ---------------------------------------------------------------------------
+block indicator {
+    // Declared weakly, so a call site may pick a different value without
+    // editing the block (spec 9.2). The substitution is evaluated at link
+    // against whichever value is in force there (spec 14.1).
+    #~series-r = 1;
+    >DRIVE;
+
+    // A designator is annotated in the scope where it is written, so these are
+    // assigned once however many times the block is instantiated. The flat
+    // names at export are BLK1.R1, BLK2.R1 and so on (spec 13.4).
+    DRIVE = .{R1~R-$"series-r"$kR-0603}. = LED-ANODE;
+    LED-ANODE = A{D1~LED-0603}K = GND;
+};
+
+block blinky {
+    @VERSION = 1.0+;
+    #description = "USB-C powered two-LED indicator board";
+    #!>board-rev = A;
+
+    // ---- rails ------------------------------------------------------------
+    // Ground is declared, not inferred, and a design that declares none is
+    // E-24 (spec 5.3).
+    GND &TYPE=GROUND;
+    GND>>;
+    3V3>>;
+    3V3 &CLASS=power;
+    VBUS &CLASS=power;
+
+    // ---- power in ---------------------------------------------------------
+    // The connector's VBUS pin is 'POWER>', so it is the source that satisfies
+    // the supply check for the whole VBUS net.
+    {J1~CONN-USB-C: VBUS = VBUS; CC1  = CC1; CC2  = CC2;};
+
+    // CC pull-downs advertise a device to the host. Written as one statement
+    // each so that neither net is single-referenced.
+    CC1 = .{R1~R-10kR-0603}. = GND;
+    CC2 = .{R2~R-10kR-0603}. = GND;
+
+    // ---- regulation -------------------------------------------------------
+    // The bulk cap sits on VBUS and the bypass on 3V3, which is what keeps
+    // W-04 quiet on both supply pins.
+    VBUS == .{C1~C-10uF-0805: . = GND;};
+    VBUS = VIN{U1~LDO-3V3: EN = VBUS; NC = ?;}VOUT = 3V3 &CURRENT=600mA &!VOLTAGE=6V;
+    3V3 == .{C2~C-10uF-0805: . = GND;};
+
+    // ---- microcontroller --------------------------------------------------
+    // VCC and GND take their default nets from the part's '&~NET', so neither
+    // needs binding here (spec 11.6).
+    {U2~MCU-8PIN: nRESET  = nRESET; GPIO[0] = LED-DRIVE[0]; GPIO[1] = LED-DRIVE[1]; SDA     = i2c.SDA; SCL     = i2c.SCL; MISO    = TP-MISO;};
+
+    // Two decoupling caps on the supply pin, one bulk and one high frequency.
+    3V3 == .{C3~C-100nF-0603: . = GND;};
+
+    // The reset pull-up. '==' continues the chain past the shunt, since a shunt
+    // has no exit terminal and the node is the same either side of it (spec 6.3).
+    3V3 = .{R3~R-10kR-0603}. == nRESET;
+    nRESET == .{C4~C-100nF-0603: . = GND;};
+
+    // ---- i2c --------------------------------------------------------------
+    // An open-drain bus is held high by its pull-ups rather than driven, so it
+    // needs no source (spec 11.6).
+    i2c &HARNESS=i2c-bus;
+    <>i2c;
+    3V3 = .{R4~R-10kR-0603}. == i2c.SDA;
+    3V3 = .{R5~R-10kR-0603}. == i2c.SCL;
+
+    // ---- indicators -------------------------------------------------------
+    // One copy of the block per element of the bus flowing through it. The
+    // block's arity is its declared port count, so two wires give two copies
+    // (spec 8.3).
+    LED-DRIVE[0:1] = [[{BLK%[1:2]~indicator: #series-r = 1;}DRIVE]];
+
+    // ---- test point -------------------------------------------------------
+    // Deliberately referenced once, which is what '&STUB' declares (spec 11.8).
+    TP1 = U2.MISO &STUB;
+};

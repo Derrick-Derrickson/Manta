@@ -1,0 +1,3 @@
+block b {
+    @footprnt = QFP-32;
+};

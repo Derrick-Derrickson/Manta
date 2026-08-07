@@ -1,0 +1,437 @@
+#include "sema/local_check.h"
+
+#include <format>
+#include <string>
+#include <vector>
+
+#include "sema/registry.h"
+
+namespace manta {
+
+std::string_view LocalChecker::text(const Name& n) const {
+    if (n.isInterpolated() || !valid(n.symbol)) return {};
+    return interner_.text(n.symbol);
+}
+
+std::int64_t LocalChecker::rangeWidth(const Range& r) const {
+    if (!r.present) return 1;
+    if (r.lo.isExpr || r.hi.isExpr) return -1;  // width known only after substitution
+    std::int64_t lo = r.lo.literal;
+    std::int64_t hi = r.hi.literal;
+    return (lo <= hi ? hi - lo : lo - hi) + 1;
+}
+
+// ---------------------------------------------------------------------------
+// Directives
+// ---------------------------------------------------------------------------
+
+void LocalChecker::checkValueType(const Directive* d, ValueType expected) {
+    const Value* v = d->value;
+    if (!v) return;
+    // A substituted value is not known until link.
+    if (v->kind == ValueKind::Interp) return;
+
+    std::string_view name = text(d->name);
+
+    switch (expected) {
+        case ValueType::Resistance:
+        case ValueType::Current:
+        case ValueType::Voltage:
+        case ValueType::Time: {
+            Unit want = expectedUnit(expected);
+            if (v->kind != ValueKind::Dimensioned) {
+                diags_.report(DiagId::Type, v->span,
+                              std::format("'&{}' takes a value in '{}'", name, unitSuffix(want)));
+                return;
+            }
+            if (v->num.unit != want) {
+                // Spec 11.4 singles this one out: "Tolerance shall be a time,
+                // never a length ... A tolerance given as a length is error
+                // E-18." The same mistake on &MAXDELAY gets the general code.
+                if (expected == ValueType::Time && isLengthUnit(v->num.unit)) {
+                    diags_.report(DiagId::E18, v->span, v->num.canonical());
+                } else {
+                    diags_.report(DiagId::Type, v->span,
+                                  std::format("'&{}' takes a value in '{}', not '{}'", name,
+                                              unitSuffix(want), unitSuffix(v->num.unit)));
+                }
+            }
+            return;
+        }
+
+        case ValueType::PinType: {
+            if (v->kind != ValueKind::Identifier) {
+                diags_.report(DiagId::Type, v->span,
+                              std::format("'&{}' takes a type name", name));
+                return;
+            }
+            PinType t{};
+            bool caseError = false;
+            std::string_view spelled = interner_.text(v->text);
+            if (!lookupPinType(spelled, t, caseError)) {
+                diags_.report(DiagId::Type, v->span,
+                              std::format("'{}' is not a pin type", spelled));
+                return;
+            }
+            if (caseError) {
+                // Spec 2.6: "&TYPE=power" is E-34; "#status = power" is fine,
+                // because a user field value is unconstrained.
+                diags_.report(DiagId::E34, v->span, spelled, pinTypeName(t));
+            }
+            return;
+        }
+
+        case ValueType::None:
+            if (v) {
+                diags_.report(DiagId::Type, v->span,
+                              std::format("'&{}' takes no value", name));
+            }
+            return;
+
+        default:
+            return;  // identifiers, net names and match groups accept any word
+    }
+}
+
+void LocalChecker::checkDirective(const Directive* d, std::uint8_t context) {
+    std::string_view name = text(d->name);
+    if (name.empty()) return;  // interpolated; resolved at link
+
+    const DirectiveInfo* info = lookupDirective(name);
+    if (!info) {
+        std::string_view suggestion = nearestDirective(name);
+        auto builder = diags_.report(DiagId::E13, d->name.span, name);
+        if (!suggestion.empty()) {
+            builder.note(d->name.span, std::format("did you mean '&{}'?", suggestion));
+        }
+        return;
+    }
+
+    if ((info->contexts & context) == 0) {
+        diags_.report(DiagId::E13, d->name.span, name)
+            .note(d->name.span,
+                  std::format("'&{}' is not permitted in this position", name));
+        return;
+    }
+
+    if (info->valueRequired && !d->value && !d->matchRef) {
+        // Spec 11.1: "&CASUAL and &STUB take no value; every other directive
+        // requires one."
+        diags_.report(DiagId::Type, d->span,
+                      std::format("'&{}' requires a value", name));
+        return;
+    }
+
+    if (!info->valueRequired && d->value) {
+        diags_.report(DiagId::Type, d->value->span,
+                      std::format("'&{}' takes no value", name));
+        return;
+    }
+
+    checkValueType(d, info->type);
+}
+
+// ---------------------------------------------------------------------------
+// Fields
+// ---------------------------------------------------------------------------
+
+void LocalChecker::checkFieldDecl(const FieldDecl* f, bool inPart, bool inMatch) {
+    // Spec 9.4: "A part shall not export a field. Export is available to blocks
+    // only, and '#!>' inside a part definition is error E-43."
+    if (inPart && f->direction == FieldDirection::Export) {
+        std::string_view n = text(f->name);
+        diags_.report(DiagId::E43, f->span, n.empty() ? std::string_view("<substituted>") : n);
+    }
+
+    // Spec 9.4: "Export requires locked strength, so that a global's value
+    // cannot be changed by whichever object happens to link last."
+    if (f->direction == FieldDirection::Export && f->strength != Strength::Locked) {
+        diags_.report(DiagId::Type, f->span,
+                      std::format("exporting '{}' requires locked strength; write '{}!>{}'",
+                                  text(f->name), f->ns == FieldNamespace::System ? "@" : "#",
+                                  text(f->name)));
+    }
+
+    if (f->ns != FieldNamespace::System) return;  // '#' is an open namespace
+
+    std::string_view name = text(f->name);
+    if (name.empty()) return;
+
+    const SystemFieldInfo* info = lookupSystemField(name);
+    if (!info) {
+        std::string_view suggestion = nearestSystemField(name);
+        auto builder = diags_.report(DiagId::E10, f->name.span, name);
+        if (!suggestion.empty()) {
+            builder.note(f->name.span, std::format("did you mean '@{}'?", suggestion));
+        }
+        return;
+    }
+
+    if (info->matchOnly && !inMatch) {
+        diags_.report(DiagId::E10, f->name.span, name)
+            .note(f->name.span,
+                  std::format("'@{}' is a match-group field (spec 11.4)", name));
+        return;
+    }
+
+    if (!f->value) return;
+
+    if (info->type == ValueType::Boolean) {
+        if (f->value->kind != ValueKind::Boolean) {
+            if (f->value->kind != ValueKind::Interp) {
+                diags_.report(DiagId::Type, f->value->span,
+                              std::format("'@{}' takes TRUE or FALSE", name));
+            }
+            return;
+        }
+        // Spec 3.6: "TRUE and FALSE in system fields."
+        if (!f->value->upperCaseSpelling) {
+            std::string_view spelled = interner_.text(f->value->text);
+            diags_.report(DiagId::E34, f->value->span, spelled,
+                          f->value->boolean ? "TRUE" : "FALSE");
+        }
+        return;
+    }
+
+    if (info->type == ValueType::Time && f->value->kind == ValueKind::Dimensioned &&
+        isLengthUnit(f->value->num.unit)) {
+        // "@tolerance = 5mm" inside a match group.
+        diags_.report(DiagId::E18, f->value->span, f->value->num.canonical());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Chains
+// ---------------------------------------------------------------------------
+
+void LocalChecker::checkDevice(const Device* dev) {
+    const Instance* inst = dev->instance;
+    if (!inst) return;
+
+    // Spec 7.3: "A pin used as a terminal shall not also appear in the binding
+    // list. That is error E-08."
+    std::vector<std::pair<std::string_view, Span>> terminals;
+    if (dev->hasEntry && !dev->entry.dot) {
+        std::string_view n = text(dev->entry.name);
+        if (!n.empty()) terminals.emplace_back(n, dev->entry.span);
+    }
+    if (dev->hasExit && !dev->exit.dot) {
+        std::string_view n = text(dev->exit.name);
+        if (!n.empty()) terminals.emplace_back(n, dev->exit.span);
+    }
+
+    for (const Binding* b : inst->bindings) {
+        if (b->kind == BindingKind::Field) {
+            checkFieldDecl(b->field, false, false);
+            continue;
+        }
+        if (b->kind == BindingKind::Directive) {
+            checkDirective(b->directive, DirCtx::Pin);
+            continue;
+        }
+        for (const Directive* d : b->pinDirectives) checkDirective(d, DirCtx::Pin);
+
+        if (b->pinIsDot) continue;
+        std::string_view pin = text(b->pin);
+        if (pin.empty()) continue;
+        for (const auto& [name, span] : terminals) {
+            if (name == pin) {
+                diags_.report(DiagId::E08, b->span, pin)
+                    .note(span, "used as a chain terminal here");
+            }
+        }
+    }
+}
+
+void LocalChecker::checkElement(const Element* el) {
+    switch (el->kind) {
+        case ElementKind::Device:
+            checkDevice(el->device);
+            return;
+        case ElementKind::Group:
+            if (el->group->body) checkSegment(el->group->body);
+            return;
+        case ElementKind::Replication:
+            if (el->replication->body) checkSegment(el->replication->body);
+            return;
+        case ElementKind::Net:
+            return;
+    }
+}
+
+void LocalChecker::checkSegment(const Segment* seg) {
+    for (const Element* el : seg->elements) checkElement(el);
+
+    // Spec 6.2: "'=' shall have a device, group or replication on at least one
+    // side. Two bare net names joined by '=' is error E-22."
+    //
+    // A *dotted* reference is not a bare net name. Spec 5.2: "A pin belongs to
+    // exactly one net, so 'U1.GPIO1' denotes that net whether read as the pin
+    // or as the net at the pin" -- writing it names a device terminal, which is
+    // exactly the thing '=' needs on one side. That is why the specification's
+    // own examples "TP7 = U3.OUT &STUB;" (11.8) and "extern U5.1 = GND;" (6.6)
+    // are well formed. Harness member access is spelled the same way and is
+    // exempt on the same grounds; distinguishing the two needs the symbol
+    // table, and E-21 exists precisely because they must not collide.
+    auto isBareNet = [](const Element* e) {
+        return e->kind == ElementKind::Net && e->net->path.size() == 1 &&
+               !e->net->hasMemberList && !e->net->perCopy;
+    };
+
+    for (std::size_t i = 0; i < seg->connectors.size(); ++i) {
+        if (seg->connectors[i] != Connector::Advance) continue;
+        const Element* lhs = seg->elements[i];
+        const Element* rhs = seg->elements[i + 1];
+        if (isBareNet(lhs) && isBareNet(rhs)) {
+            diags_.report(DiagId::E22, lhs->span.merge(rhs->span));
+        }
+    }
+}
+
+void LocalChecker::checkChain(const Chain* chain) {
+    for (const Segment* seg : chain->segments) checkSegment(seg);
+}
+
+void LocalChecker::checkStatement(const Stmt* stmt) {
+    for (const Directive* d : stmt->directives) checkDirective(d, DirCtx::Net);
+
+    switch (stmt->kind) {
+        case StmtKind::Field:
+            checkFieldDecl(stmt->field, false, false);
+            return;
+
+        case StmtKind::PortList:
+            return;
+
+        case StmtKind::Chain: {
+            checkChain(stmt->chain);
+
+            // Spec 4.4: "A block's interface is the set of nets in its body
+            // carrying a direction arrow. The arrow is mandatory on a block
+            // port ... A port with no arrow is error E-32."
+            //
+            // A statement that is one bare net name, with no connection and no
+            // directive, declares nothing electrically -- spec 5.1 is explicit
+            // that "a net exists because it is named" -- so it can only have
+            // been meant as a port declaration (spec 10.2).
+            const Chain* c = stmt->chain;
+            if (c->segments.size() != 1) return;
+            const Segment* seg = c->segments[0];
+            if (seg->elements.size() != 1) return;
+            const Element* el = seg->elements[0];
+            if (el->kind != ElementKind::Net) return;
+            if (!stmt->directives.empty()) return;
+
+            const NetExpr* net = el->net;
+            if (net->leading.present() || net->trailing.present()) return;
+            if (net->perCopy || net->hasMemberList) return;
+
+            std::string_view n = net->path.empty() ? std::string_view{} : text(net->path[0]);
+            diags_.report(DiagId::E32, net->span,
+                          n.empty() ? std::string_view("<substituted>") : n);
+            return;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Pin maps
+// ---------------------------------------------------------------------------
+
+void LocalChecker::checkPinMap(const PinMap* pin) {
+    for (const Directive* d : pin->directives) checkDirective(d, DirCtx::Pin);
+
+    std::int64_t physWidth =
+        (pin->physLo <= pin->physHi ? pin->physHi - pin->physLo : pin->physLo - pin->physHi) + 1;
+
+    if (pin->hasMemberList) {
+        // Spec 12.2: "'NAME.[member, ...]' selects members in the order
+        // written. Its length shall equal the width of the pin range."
+        auto members = static_cast<std::int64_t>(pin->memberList.size());
+        if (members != physWidth) {
+            diags_.report(DiagId::E38, pin->span,
+                          std::format("member list has {} member{} but the pin range is {} wide",
+                                      members, members == 1 ? "" : "s", physWidth));
+        }
+        return;
+    }
+
+    // Spec 8.2: "Within a part, a contiguous run of physical pins maps to an
+    // array. Widths shall match."
+    std::int64_t logicalWidth = rangeWidth(pin->logicalRange);
+    if (logicalWidth < 0) return;  // depends on a substitution
+    if (logicalWidth != physWidth) {
+        diags_.report(DiagId::E04, pin->span, physWidth, logicalWidth);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Bodies
+// ---------------------------------------------------------------------------
+
+void LocalChecker::checkBlockBody(const Item* block) {
+    for (const BodyEntry& e : block->body) {
+        switch (e.kind) {
+            case BodyKind::Item: checkItem(e.item); break;
+            case BodyKind::Stmt: checkStatement(e.stmt); break;
+            default: break;
+        }
+    }
+}
+
+void LocalChecker::checkPartBody(const Item* part) {
+    for (const BodyEntry& e : part->body) {
+        switch (e.kind) {
+            case BodyKind::Field: checkFieldDecl(e.field, /*inPart=*/true, false); break;
+            case BodyKind::PinMap: checkPinMap(e.pin); break;
+            default: break;
+        }
+    }
+}
+
+void LocalChecker::checkHarnessBody(const Item* harness) {
+    for (const BodyEntry& e : harness->body) {
+        switch (e.kind) {
+            case BodyKind::Directive: checkDirective(e.directive, DirCtx::Harness); break;
+            case BodyKind::Member:
+                for (const Directive* d : e.member->directives) {
+                    checkDirective(d, DirCtx::Harness | DirCtx::Pin);
+                }
+                break;
+            default: break;
+        }
+    }
+}
+
+void LocalChecker::checkNetclassBody(const Item* netclass) {
+    for (const BodyEntry& e : netclass->body) {
+        if (e.kind == BodyKind::Directive) checkDirective(e.directive, DirCtx::Netclass);
+    }
+}
+
+void LocalChecker::checkMatchBody(const Item* group) {
+    for (const BodyEntry& e : group->body) {
+        switch (e.kind) {
+            case BodyKind::Field: checkFieldDecl(e.field, false, /*inMatch=*/true); break;
+            case BodyKind::Item: checkItem(e.item); break;
+            default: break;
+        }
+    }
+}
+
+void LocalChecker::checkItem(const Item* item) {
+    if (!item) return;
+    switch (item->kind) {
+        case ItemKind::Block: checkBlockBody(item); break;
+        case ItemKind::Part: checkPartBody(item); break;
+        case ItemKind::Harness: checkHarnessBody(item); break;
+        case ItemKind::Netclass: checkNetclassBody(item); break;
+        case ItemKind::Match: checkMatchBody(item); break;
+    }
+}
+
+void LocalChecker::run(const SourceUnit& unit) {
+    for (const Item* item : unit.items) checkItem(item);
+}
+
+}  // namespace manta
