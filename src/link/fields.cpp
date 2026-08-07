@@ -98,7 +98,8 @@ void FieldEnv::set(FieldKey key, const Value* value, Strength strength, Span at)
     slots_.set(key, slot);
 }
 
-void FieldEnv::declare(const FieldDecl* decl, StringInterner& interner, DiagEngine& diags) {
+void FieldEnv::declare(const FieldDecl* decl, StringInterner& interner, DiagEngine& diags,
+                       bool isOverride) {
     if (!decl || !valid(decl->name.symbol)) return;
     FieldKey key{decl->name.symbol, decl->ns};
 
@@ -149,8 +150,16 @@ void FieldEnv::declare(const FieldDecl* decl, StringInterner& interner, DiagEngi
         return;
     }
 
-    // Equal strength. Spec 9.2: "Two declarations of equal strength with
-    // different values are error E-12."
+    // Equal strength. An override wins; two declarations conflict.
+    if (isOverride) {
+        existing->overridden = true;
+        existing->value = decl->value;
+        existing->declaredAt = decl->span;
+        return;
+    }
+
+    // Spec 9.2: "Two declarations of equal strength with different values are
+    // error E-12."
     if (!valuesEqual(existing->value, decl->value, interner)) {
         diags.report(DiagId::E12, decl->span, std::format("{}{}", sigil, name),
                      renderValue(existing->value, interner), renderValue(decl->value, interner))

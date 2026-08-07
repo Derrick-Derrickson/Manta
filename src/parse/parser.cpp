@@ -903,11 +903,22 @@ Binding* Parser::parseBinding() {
         }
     }
 
-    // A pin may carry directives instead of, or as well as, a net: spec 11.5
-    // writes "{U5~ddr-chip: DQ[0] &PINDELAY=18ps; }".
+    // A pin may carry directives or fields instead of, or as well as, a net:
+    // spec 11.5 writes "{U5~ddr-chip: DQ[0] &PINDELAY=18ps; }", and a field
+    // overrides what the part declared for that pin.
     std::vector<Directive*> dirs;
-    while (at(TokenKind::Amp)) dirs.push_back(parseDirective());
+    std::vector<FieldDecl*> fields;
+    for (;;) {
+        if (at(TokenKind::Amp)) {
+            dirs.push_back(parseDirective());
+        } else if (looksLikeFieldDecl()) {
+            fields.push_back(parseFieldDecl());
+        } else {
+            break;
+        }
+    }
     b->pinDirectives = commit(dirs);
+    b->pinFields = commit(fields);
 
     b->span = b->span.merge(toks_.at(pos_ - 1).span(file_.id()));
     return b;
@@ -1255,9 +1266,21 @@ PinMap* Parser::parsePinMap() {
 
     p->arrow = parseTrailingArrow();
 
+    // Directives and fields may be interleaved. Both apply to every pin the
+    // line produces.
     std::vector<Directive*> dirs;
-    while (at(TokenKind::Amp)) dirs.push_back(parseDirective());
+    std::vector<FieldDecl*> fields;
+    for (;;) {
+        if (at(TokenKind::Amp)) {
+            dirs.push_back(parseDirective());
+        } else if (looksLikeFieldDecl()) {
+            fields.push_back(parseFieldDecl());
+        } else {
+            break;
+        }
+    }
     p->directives = commit(dirs);
+    p->fields = commit(fields);
 
     expect(TokenKind::Semi, "terminating a pin map");
     p->span = p->span.merge(toks_.at(pos_ - 1).span(file_.id()));

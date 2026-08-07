@@ -70,4 +70,12 @@ struct PartInfo {
 PartInfo buildPartInfo(const Item* part, std::uint32_t objectIndex, StringInterner& interner,
                        DiagEngine& diags);
 
+// Applies one '#' field to a pin, honouring the strength ladder of spec 9.2:
+// the strongest declaration wins, an equal-strength disagreement is E-12, and
+// overriding a locked one is E-11.
+// `isOverride` marks a field written at a call site rather than in the part, in
+// which case it wins at equal strength (spec 9.2).
+void applyPinField(ComponentPin& pin, const FieldDecl* decl, StringInterner& interner,
+                   DiagEngine& diags, bool isOverride = false);
+
 }  // namespace manta

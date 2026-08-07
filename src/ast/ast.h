@@ -266,6 +266,9 @@ struct Binding {
     // pin-scoped &NET, so "GND=AGND" and "GND &NET=AGND" are one mechanism
     // (spec 11.6) and both land here.
     std::span<Directive*> pinDirectives;
+    // '#' fields written against the pin, which override what the part declared
+    // for it: "{U1~mcu: IO[3] #VOH=3V0; }".
+    std::span<FieldDecl*> pinFields;
     // Field / Directive
     FieldDecl* field = nullptr;
     Directive* directive = nullptr;
@@ -384,6 +387,11 @@ struct PinMap {
 
     PortSpec arrow;
     std::span<Directive*> directives;
+    // '#' fields written on the pin map line. They apply to every pin the line
+    // produces, exactly as its directives do, so a 48-pin bus declares a value
+    // once rather than 48 times. The '&' namespace stays closed; '#' is already
+    // the open one, which is what a user-defined ERC attribute wants.
+    std::span<FieldDecl*> fields;
     Span span;
 };
 

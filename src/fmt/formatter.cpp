@@ -294,6 +294,20 @@ private:
         return out;
     }
 
+    // '#' fields on a pin. Emitted after the directives and, like them, without
+    // spaces around the '=' -- they sit inline on a pin map line rather than
+    // standing alone as a statement, so "#VOH=2V4" reads beside "&TYPE=POWER".
+    std::string pinFields(std::span<FieldDecl* const> fs) const {
+        std::string out;
+        for (const FieldDecl* f : fs) {
+            out += ' ';
+            out += fieldHead(f);
+            out += '=';
+            out += value(f->value);
+        }
+        return out;
+    }
+
     // ---- ports and nets ---------------------------------------------------
     // Spec 10.1: "Canonical form, which the formatter emits: leading '>' at the
     // start of a statement, trailing '>' at the end, and 'pin=NET>' in a
@@ -387,6 +401,7 @@ private:
             out += net(b->net);
         }
         out += directives(b->pinDirectives);
+        out += pinFields(b->pinFields);
         return out;
     }
 
@@ -685,6 +700,7 @@ private:
                 emit("= ");
                 emit(pinLogical(e.pin));
                 emit(directives(e.pin->directives));
+                emit(pinFields(e.pin->fields));
                 emit(";");
                 endLine();
             }

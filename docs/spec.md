@@ -456,7 +456,7 @@ A part maps a package's physical pins to named pins and declares the part's fiel
 
 ```ebnf
 part_def = [ linkage ] "part" identifier "{" { field_decl | pin_map } "}" ";" ;
-pin_map  = pin_spec "=" identifier [ arrow ] { directive } ";" ;
+pin_map  = pin_spec "=" identifier [ arrow ] { directive | field_decl } ";" ;
 pin_spec = integer | "[" integer ":" integer "]" ;
 ```
 
@@ -479,6 +479,32 @@ part cool-mcu {
     16      = NC          &TYPE=NC;
 };
 ```
+
+A pin map line may also carry `#` fields, which describe the pin rather than constrain
+it. They apply to every pin the line produces, exactly as its directives do, so a wide
+bus states a figure once:
+
+```
+part MCU-48 {
+    [1:48] = IO[1:48]<> #VOH=2V4 #VOL=0V4 #VIH=2V0 #VIL=0V8;
+    49     = SDA<>      &TYPE=OPENDRAIN #VOL=0V6;
+};
+```
+
+The `&` namespace stays closed, because the compiler interprets it. `#` is the open one
+(§9.1), and a pin field is exactly what it describes: a name the compiler carries without
+interpreting. What reads them is a user-defined rule (see the companion rules
+specification), so a design decorated this way compiles and links whether or not any rule
+file is present.
+
+Pin fields take the strength ladder of §9.2, and a call site overrides one the same way
+it overrides any other field:
+
+```
+{U1~MCU-48: IO[3] #VOH=3V0; };
+```
+
+They stay on the pin. They are not BOM columns, which are per component.
 
 A part exports all of its pins. There is no separate export declaration: every logical
 name is addressable at a call site as a binding target, and as a net reference (§5.2).
@@ -965,6 +991,12 @@ are error **E-12**.
 
 Declaration and override are distinguished by position: inside a `part` or `block`
 definition you are declaring; inside an instantiation you are overriding.
+
+The distinction is what E-12 turns on. Two *declarations* of equal strength that disagree
+are a conflict, because nothing says which was meant. An *override* of equal strength is
+not: it is a later, more specific statement about one instance, and it wins. That is what
+makes a normal field "overridable, but unusual to do so" rather than impossible to
+override at all.
 
 ```
 part cool-mcu {
@@ -2149,7 +2181,7 @@ netclass_def    = "netclass" identifier "{" { directive } "}" ";" ;
 match_def       = "match" identifier "{" { field_decl | match_def } "}" ";" ;
 linkage         = "static" ;
 
-pin_map         = pin_spec "=" pin_name [ arrow ] { directive } ";" ;
+pin_map         = pin_spec "=" pin_name [ arrow ] { directive | field_decl } ";" ;
 pin_spec        = integer | "[" integer ":" integer "]" ;
 pin_name        = identifier [ "[" range "]" ]
                 | identifier "." "[" identifier { "," identifier } "]" ;

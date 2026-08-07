@@ -1,5 +1,6 @@
 #include "sema/local_check.h"
 
+#include <algorithm>
 #include <format>
 #include <string>
 #include <vector>
@@ -210,15 +211,39 @@ void LocalChecker::checkDevice(const Device* dev) {
 
     // Spec 7.3: "A pin used as a terminal shall not also appear in the binding
     // list. That is error E-08."
-    std::vector<std::pair<std::string_view, Span>> terminals;
+    //
+    // "The same pin" means the same pin, not merely the same array. "IO[1]" as
+    // a terminal and "IO[3]" in the binding list are two different pins and are
+    // perfectly well formed; comparing base names alone would reject them.
+    struct PinRefSpan {
+        std::string_view base;
+        Range range;
+        Span at;
+    };
+
+    std::vector<PinRefSpan> terminals;
     if (dev->hasEntry && !dev->entry.dot) {
         std::string_view n = text(dev->entry.name);
-        if (!n.empty()) terminals.emplace_back(n, dev->entry.span);
+        if (!n.empty()) terminals.push_back(PinRefSpan{n, dev->entry.range, dev->entry.span});
     }
     if (dev->hasExit && !dev->exit.dot) {
         std::string_view n = text(dev->exit.name);
-        if (!n.empty()) terminals.emplace_back(n, dev->exit.span);
+        if (!n.empty()) terminals.push_back(PinRefSpan{n, dev->exit.range, dev->exit.span});
     }
+
+    // Two references to one array overlap unless both name index ranges that do
+    // not intersect. A bare name means the whole array, so it overlaps anything.
+    auto overlaps = [](const Range& a, const Range& b) {
+        if (!a.present || !b.present) return true;
+        if (a.lo.isExpr || a.hi.isExpr || b.lo.isExpr || b.hi.isExpr) {
+            return true;  // an index that needs substitution is settled at link
+        }
+        std::int64_t aLo = std::min(a.lo.literal, a.hi.literal);
+        std::int64_t aHi = std::max(a.lo.literal, a.hi.literal);
+        std::int64_t bLo = std::min(b.lo.literal, b.hi.literal);
+        std::int64_t bHi = std::max(b.lo.literal, b.hi.literal);
+        return aLo <= bHi && bLo <= aHi;
+    };
 
     for (const Binding* b : inst->bindings) {
         if (b->kind == BindingKind::Field) {
@@ -230,14 +255,22 @@ void LocalChecker::checkDevice(const Device* dev) {
             continue;
         }
         for (const Directive* d : b->pinDirectives) checkDirective(d, DirCtx::Pin);
+        for (const FieldDecl* f : b->pinFields) checkFieldDecl(f, false, false);
 
         if (b->pinIsDot) continue;
         std::string_view pin = text(b->pin);
         if (pin.empty()) continue;
-        for (const auto& [name, span] : terminals) {
-            if (name == pin) {
+
+        // A binding that only carries directives or fields annotates the pin
+        // rather than connecting it, so it is not a second connection to a pin
+        // the chain already passes through.
+        bool connects = b->net != nullptr || b->unbind;
+        if (!connects) continue;
+
+        for (const PinRefSpan& t : terminals) {
+            if (t.base == pin && overlaps(t.range, b->pinRange)) {
                 diags_.report(DiagId::E08, b->span, pin)
-                    .note(span, "used as a chain terminal here");
+                    .note(t.at, "used as a chain terminal here");
             }
         }
     }

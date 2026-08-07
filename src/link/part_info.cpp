@@ -2,9 +2,68 @@
 
 #include <format>
 
+#include "link/fields.h"
 #include "sema/registry.h"
 
 namespace manta {
+
+void applyPinField(ComponentPin& pin, const FieldDecl* decl, StringInterner& interner,
+                   DiagEngine& diags, bool isOverride) {
+    if (!decl || !valid(decl->name.symbol) || decl->ns != FieldNamespace::User) return;
+
+    std::string name(interner.text(decl->name.symbol));
+    std::string rendered = renderValue(decl->value, interner);
+
+    PinAttribute incoming;
+    incoming.name = name;
+    incoming.value = rendered;
+    incoming.strength = decl->strength;
+    incoming.declaredAt = decl->span;
+    if (decl->value) {
+        switch (decl->value->kind) {
+            case ValueKind::Dimensioned:
+            case ValueKind::Integer:
+            case ValueKind::Decimal:
+            case ValueKind::Percentage:
+                incoming.number = decl->value->num;
+                incoming.numeric = true;
+                break;
+            default:
+                break;
+        }
+    }
+
+    for (PinAttribute& existing : pin.attributes) {
+        if (existing.name != name) continue;
+
+        // Spec 9.2, unchanged for pins: strongest wins, locked cannot be
+        // overridden, and an equal-strength disagreement is a conflict.
+        if (existing.strength == Strength::Locked) {
+            if (existing.value != rendered) {
+                diags.report(DiagId::E11, decl->span, "#", name, "this pin")
+                    .note(existing.declaredAt, "locked here");
+            }
+            return;
+        }
+        if (decl->strength > existing.strength) {
+            existing = incoming;
+            return;
+        }
+        if (decl->strength < existing.strength) return;
+        // An override at a call site wins at equal strength; two declarations
+        // in the same position conflict (spec 9.2).
+        if (isOverride) {
+            existing = incoming;
+            return;
+        }
+        if (existing.value != rendered) {
+            diags.report(DiagId::E12, decl->span, "#" + name, existing.value, rendered)
+                .note(existing.declaredAt, "first declared here");
+        }
+        return;
+    }
+    pin.attributes.push_back(std::move(incoming));
+}
 
 const ComponentPin* PartInfo::find(SymbolId base, std::int64_t index, bool hasIndex) const {
     if (const std::uint32_t* i = byKey.find(PinKey{base, hasIndex ? index : 0, SymbolId::kInvalid})) {
@@ -182,6 +241,14 @@ PartInfo buildPartInfo(const Item* part, std::uint32_t objectIndex, StringIntern
 
         applyDirectives(std::span<ComponentPin>(info.pins).subspan(firstPin), line, lineIndex,
                         interner, diags);
+
+        // A '#' field on a pin map line applies to every pin the line produced,
+        // exactly as its directives do -- so a 48-pin bus states a value once.
+        for (std::size_t i = firstPin; i < info.pins.size(); ++i) {
+            for (const FieldDecl* f : line->fields) {
+                applyPinField(info.pins[i], f, interner, diags);
+            }
+        }
     }
 
     // Index after the fact, so the spans handed to applyDirectives stay valid

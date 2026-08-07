@@ -11,6 +11,18 @@
 
 namespace manta {
 
+// A user field carried by one pin. These are what user-defined ERC rules read:
+// '#' is the open namespace, so a design can be decorated with anything a rule
+// needs without the compiler having to know the name in advance.
+struct PinAttribute {
+    std::string name;
+    std::string value;   // rendered, canonical for a dimensioned value
+    Dimensioned number;  // parsed, when the value is numeric
+    bool numeric = false;
+    Strength strength = Strength::Normal;
+    Span declaredAt;
+};
+
 // A pin as it exists on one instantiated component.
 struct ComponentPin {
     std::string physical;  // the package pin: "1", "14"
@@ -29,6 +41,17 @@ struct ComponentPin {
 
     bool hasPinDelay = false;
     Dimensioned pinDelay;
+
+    // Empty for almost every pin, so no allocation in the common case; a linear
+    // scan over a handful of entries beats a map at this size.
+    std::vector<PinAttribute> attributes;
+
+    [[nodiscard]] const PinAttribute* attribute(std::string_view name) const {
+        for (const PinAttribute& a : attributes) {
+            if (a.name == name) return &a;
+        }
+        return nullptr;
+    }
 
     std::uint32_t node = 0;      // union-find handle
     std::int32_t net = -1;       // index into Design::nets, filled after merging

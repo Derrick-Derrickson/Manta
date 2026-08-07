@@ -289,6 +289,14 @@ private:
         w_.endArray();
     }
 
+    void writeFields(std::string_view key, std::span<FieldDecl* const> fs) {
+        if (fs.empty()) return;
+        w_.key(key);
+        w_.beginArray();
+        for (const FieldDecl* f : fs) writeField(f);
+        w_.endArray();
+    }
+
     void writeField(const FieldDecl* f) {
         w_.beginObject();
         w_.field("ns", f->ns == FieldNamespace::System ? "@" : "#");
@@ -362,6 +370,7 @@ private:
                             writeNet(b->net);
                         }
                         writeDirectives("directives", b->pinDirectives);
+                        writeFields("fields", b->pinFields);
                         break;
                     case BindingKind::Field:
                         w_.key("field");
@@ -478,6 +487,7 @@ private:
         writeRange("range", p->logicalRange);
         writePort("arrow", p->arrow);
         writeDirectives("directives", p->directives);
+        writeFields("fields", p->fields);
         span(p->span);
         w_.endObject();
     }
@@ -973,6 +983,14 @@ private:
         return commit(ds);
     }
 
+    std::span<FieldDecl*> readFields(const JsonValue* a) {
+        std::vector<FieldDecl*> fs;
+        if (a) {
+            for (const JsonPtr& f : a->array) fs.push_back(readField(f.get()));
+        }
+        return commit(fs);
+    }
+
     Terminal readTerminal(const JsonValue* o) {
         Terminal t;
         if (!o) return t;
@@ -1035,6 +1053,7 @@ private:
                         binding->unbind = b->boolean_("unbind");
                         binding->net = readNet(b->find("net"));
                         binding->pinDirectives = readDirectives(b->arr("directives"));
+                        binding->pinFields = readFields(b->arr("fields"));
                         break;
                     case BindingKind::Field:
                         binding->field = readField(b->find("field"));
@@ -1183,6 +1202,7 @@ private:
         p->logicalRange = readRange(o->find("range"));
         p->arrow = readPort(o->find("arrow"));
         p->directives = readDirectives(o->arr("directives"));
+        p->fields = readFields(o->arr("fields"));
         p->span = readSpan(*o);
         return p;
     }
