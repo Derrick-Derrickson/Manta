@@ -24,6 +24,10 @@ Whitespace is insignificant and a statement may span any number of lines.
 
 Comments are `//` to end of line and `/* */`, which do not nest.
 
+A line of exactly `---`, outside any declaration, ends the manta content of the
+file. Everything after it is documentation — a datasheet, usually — and is never
+tokenised. Every tool reproduces it byte for byte.
+
 ## Values
 
 | Quantity | Suffix | Examples |

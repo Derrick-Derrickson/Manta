@@ -31,6 +31,15 @@ struct TokenStream {
     std::vector<Comment> comments;
     FileId file = kNoFile;
 
+    // Byte offset of the end-of-content marker line, or kNoContentEnd when the
+    // file has none. Everything from here on is not manta and was never
+    // tokenised, but the offset has to survive: 'manta fmt' rewrites whole
+    // files from the AST, so without it a reformat would delete the text.
+    static constexpr std::uint32_t kNoContentEnd = 0xFFFFFFFFu;
+    std::uint32_t contentEnd = kNoContentEnd;
+
+    [[nodiscard]] bool hasEndMarker() const noexcept { return contentEnd != kNoContentEnd; }
+
     [[nodiscard]] const Token& at(std::size_t i) const {
         return i < tokens.size() ? tokens[i] : tokens.back();  // back() is always Eof
     }
@@ -73,6 +82,12 @@ private:
     bool exprMode_ = false;      // inside $...$
     bool lineHadToken_ = false;  // for Comment::ownLine
     std::uint32_t blankRun_ = 0;
+    // Brace depth, so the end-of-content marker is recognised only outside any
+    // declaration. A stray '---' inside one stays the syntax error it is.
+    int braceDepth_ = 0;
+
+    // True when positioned at a line consisting of exactly '---'.
+    [[nodiscard]] bool atEndMarker() const;
 };
 
 }  // namespace manta

@@ -70,7 +70,7 @@ std::vector<std::string> pipeline(const std::vector<std::string>& paths, std::st
 
     SymbolTable symbols(interner, diags);
     for (const LinkedObject& o : objects) symbols.addObject(o);
-    symbols.checkVersions(Revision{1, 0});
+    symbols.checkVersions(Revision::toolchain());
 
     Elaborator elaborator(symbols, interner, diags, objects, ElaborateOptions{});
     Design design = elaborator.run(interner.intern("b"), Span{});

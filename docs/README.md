@@ -1,10 +1,14 @@
 # Documentation
 
-**`spec.md`** — the Manta Schematic Definition Language, revision 1.0. This is
+**`spec.md`** — the Manta Schematic Definition Language, revision 1.1. This is
 the authority: when the implementation and this document disagree, the document
 is right and the implementation has a bug.
 
-It carries six editorial corrections against the revision as published, listed
+Revision 1.1 adds one construct, the end-of-content marker of §2.8: a line of
+exactly `---` ends the manta content of a file, so a part can carry its datasheet
+below its declaration. A 1.0 source is a valid 1.1 source.
+
+It also carries six editorial corrections against 1.0 as published, listed
 in the note at its head. Two grammar productions were written more narrowly than
 the language they describe; four worked examples contradicted rules stated
 elsewhere in the same document. No rule changed meaning.

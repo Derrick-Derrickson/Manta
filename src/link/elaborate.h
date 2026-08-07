@@ -73,7 +73,7 @@ struct NodeInfo {
 };
 
 struct ElaborateOptions {
-    Revision toolchain{1, 0};
+    Revision toolchain = Revision::toolchain();
     bool runErc = true;
 };
 

@@ -1,0 +1,34 @@
+// Spec section 2.8 -- a file carrying its own datasheet.
+//
+// The declaration is manta; everything after the marker is not, and every tool
+// reproduces it byte for byte.
+part STM32F0QA5 {
+    @VERSION       = 1.1+;
+    @~footprint    = QFP-32;
+    #value         = STM32F0QA5;
+    #!manufacturer = "ST Microelectronics";
+
+    1 = VCC< &TYPE=POWER &~NET=3V3;
+    2 = GND< &TYPE=POWER &~NET=GND;
+};
+
+---
+
+# STM32F0QA5
+
+## Absolute maximum ratings
+
+| Parameter | Min  | Max  | Unit |
+|-----------|------|------|------|
+| VDD       | -0.3 |  4.0 | V    |
+| Tstg      |  -65 |  150 | °C   |
+
+## Notes
+
+Deliberate trailing whitespace on the next line, which must survive:   
+A line with a tab	between words.
+
+    An indented block that is not manta and must not be reindented:
+        block b { this is not parsed };
+        ---
+        nor is a second marker special down here.

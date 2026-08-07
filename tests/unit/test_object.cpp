@@ -8,6 +8,7 @@
 #include "harness.h"
 #include "json/json.h"
 #include "lex/lexer.h"
+#include "link/symbols.h"
 #include "obj/mantao.h"
 #include "parse/parser.h"
 
@@ -130,15 +131,16 @@ TEST_CASE("spec 15.4: the object declares its kind and language revision") {
     CHECK(root != nullptr);
     if (!root) return;
     CHECK_EQ(root->str("kind"), std::string_view("mantaO"));
-    CHECK_EQ(root->str("version"), std::string_view("1.0"));
+    CHECK_EQ(root->str("version"), kLanguageVersion);
 }
 
-TEST_CASE("an object targeting another revision is rejected") {
+TEST_CASE("an object from a newer revision is rejected") {
     std::string obj = compileToObject("block b { A == B; };");
     // Rewrite the version field to a revision this toolchain does not implement.
-    std::size_t at = obj.find("\"1.0\"");
+    std::string current = "\"" + std::string(kLanguageVersion) + "\"";
+    std::size_t at = obj.find(current);
     CHECK(at != std::string::npos);
-    obj.replace(at, 5, "\"9.9\"");
+    obj.replace(at, current.size(), "\"9.9\"");
 
     JsonParseError err;
     JsonPtr root = jsonParse(obj, err);
@@ -201,6 +203,49 @@ TEST_CASE("json objects preserve insertion order, never hash order") {
     CHECK_EQ(v->object.size(), std::size_t{3});
     CHECK_EQ(v->object[0].first, std::string("zebra"));
     CHECK_EQ(v->object[2].first, std::string("middle"));
+}
+
+TEST_CASE("the toolchain revision is parsed from kLanguageVersion, not assumed") {
+    Revision r;
+    CHECK(Revision::parse("1.1", r));
+    CHECK_EQ(r.major, std::uint32_t{1});
+    CHECK_EQ(r.minor, std::uint32_t{1});
+    CHECK(Revision::parse("10.20", r));
+    CHECK_EQ(r.major, std::uint32_t{10});
+    CHECK_EQ(r.minor, std::uint32_t{20});
+    CHECK_FALSE(Revision::parse("1", r));
+    CHECK_FALSE(Revision::parse("1.x", r));
+    CHECK_FALSE(Revision::parse(".1", r));
+
+    CHECK_EQ(Revision::toolchain().text(), std::string(kLanguageVersion));
+}
+
+TEST_CASE("an object from an older revision is still readable") {
+    // 1.1 only added a lexical marker, so a 1.0 object contains nothing this
+    // toolchain cannot read. Rejecting it would break every existing build.
+    CHECK(revisionAtMost("1.0", "1.1"));
+    CHECK(revisionAtMost("1.1", "1.1"));
+    CHECK_FALSE(revisionAtMost("1.2", "1.1"));
+    CHECK_FALSE(revisionAtMost("2.0", "1.1"));
+    CHECK_FALSE(revisionAtMost("nonsense", "1.1"));
+
+    std::string obj = compileToObject("block b { A == B; };");
+    std::string current = "\"" + std::string(kLanguageVersion) + "\"";
+    obj.replace(obj.find(current), current.size(), "\"1.0\"");
+
+    JsonParseError err;
+    JsonPtr root = jsonParse(obj, err);
+    CHECK(root != nullptr);
+    if (!root) return;
+
+    SourceManager sources;
+    Arena arena;
+    StringInterner interner;
+    DiagEngine diags(sources);
+    const SourceFile* f = sources.addVirtual("x", "");
+    ObjectFile out;
+    CHECK(readObject(*root, arena, interner, f->id(), diags, Span{f->id(), 0, 0}, out));
+    CHECK_EQ(diags.errorCount(), std::size_t{0});
 }
 
 TEST_MAIN()

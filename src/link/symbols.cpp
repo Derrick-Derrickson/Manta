@@ -2,7 +2,34 @@
 
 #include <format>
 
+#include "obj/mantao.h"
+
 namespace manta {
+
+bool Revision::parse(std::string_view text, Revision& out) {
+    std::size_t dot = text.find('.');
+    if (dot == std::string_view::npos || dot == 0 || dot + 1 == text.size()) return false;
+
+    // Zeroed explicitly: the default Revision is 1.0, and accumulating digits
+    // onto a 1 would read "1.1" as 11.1.
+    Revision parsed{0, 0};
+    for (char c : text.substr(0, dot)) {
+        if (c < '0' || c > '9') return false;
+        parsed.major = parsed.major * 10 + static_cast<std::uint32_t>(c - '0');
+    }
+    for (char c : text.substr(dot + 1)) {
+        if (c < '0' || c > '9') return false;
+        parsed.minor = parsed.minor * 10 + static_cast<std::uint32_t>(c - '0');
+    }
+    out = parsed;
+    return true;
+}
+
+Revision Revision::toolchain() {
+    Revision r;
+    (void)parse(kLanguageVersion, r);
+    return r;
+}
 
 bool versionSatisfied(const VersionConstraint& c, Revision toolchain) {
     if (c.hasLo) {

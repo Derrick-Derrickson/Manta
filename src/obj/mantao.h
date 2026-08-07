@@ -25,8 +25,13 @@
 
 namespace manta {
 
-// The language revision this implementation targets.
-inline constexpr std::string_view kLanguageVersion = "1.0";
+// The language revision this implementation targets. 1.1 adds the
+// end-of-content marker of spec 2.8, which changes what a .manta file is.
+inline constexpr std::string_view kLanguageVersion = "1.1";
+
+// True when an object's revision is no newer than the toolchain's, so the
+// toolchain knows every construct it might contain.
+[[nodiscard]] bool revisionAtMost(std::string_view object, std::string_view toolchain);
 
 // Serialises a parsed source file. Output is deterministic: fixed key order, no
 // floating point, no timestamps (spec 15.8).

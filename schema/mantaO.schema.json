@@ -7,7 +7,10 @@
   "required": ["version", "kind", "source", "declarations"],
   "additionalProperties": false,
   "properties": {
-    "version": { "const": "1.0" },
+    "version": {
+      "description": "The language revision this object targets. A toolchain reads any revision no newer than its own.",
+      "enum": ["1.0", "1.1"]
+    },
     "kind": { "const": "mantaO" },
     "source": {
       "description": "The .manta file this object was compiled from. Spans below index that file, so a link-time diagnostic can report a position in the original source (section 15.6).",

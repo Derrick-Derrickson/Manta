@@ -128,13 +128,11 @@ int runLink(const Options& opts) {
     SymbolTable symbols(interner, diags);
     for (const LinkedObject& object : objects) symbols.addObject(object);
 
-    Revision toolchain{1, 0};
-    if (!opts.revision.empty()) {
-        std::size_t dot = opts.revision.find('.');
-        if (dot != std::string::npos) {
-            toolchain.major = static_cast<std::uint32_t>(std::stoul(opts.revision.substr(0, dot)));
-            toolchain.minor = static_cast<std::uint32_t>(std::stoul(opts.revision.substr(dot + 1)));
-        }
+    Revision toolchain = Revision::toolchain();
+    if (!opts.revision.empty() && !Revision::parse(opts.revision, toolchain)) {
+        diags.report(DiagId::Usage, Span{},
+                     std::format("--revision: '{}' is not a revision", opts.revision));
+        return finish(diags, opts, kExitUsage);
     }
     symbols.checkVersions(toolchain);
 

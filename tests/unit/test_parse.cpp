@@ -409,4 +409,60 @@ TEST_CASE("spec 2.2: identifiers are case sensitive") {
     CHECK(inst->bindings[1]->pin.symbol != inst->bindings[2]->pin.symbol);
 }
 
+// ---------------------------------------------------------------------------
+// Spec 2.8 -- the end-of-content marker
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Lexes text and reports where the content ended.
+std::uint32_t contentEndOf(const std::string& text, std::size_t* errors = nullptr) {
+    static SourceManager sources;
+    DiagEngine diags(sources);
+    const SourceFile* file = sources.addVirtual("<eoc>", text);
+    Lexer lexer(*file, diags);
+    TokenStream toks = lexer.run();
+    if (errors) *errors = diags.errorCount();
+    return toks.contentEnd;
+}
+
+}  // namespace
+
+TEST_CASE("spec 2.8: a '---' line ends the manta content") {
+    auto r = parse("part p { 1 = A &CASUAL; };\n---\nnot manta at all: } ; ~ $\n");
+    expectClean(r, "file with a datasheet");
+    CHECK_EQ(r->unit.items.size(), std::size_t{1});
+}
+
+TEST_CASE("spec 2.8: the marker must be a line of its own") {
+    // Only whitespace may follow it...
+    CHECK(contentEndOf("part p { 1 = A &CASUAL; };\n---   \ntail\n") != TokenStream::kNoContentEnd);
+    CHECK(contentEndOf("part p { 1 = A &CASUAL; };\n---\t\ntail\n") != TokenStream::kNoContentEnd);
+    // ...and it may be the last line, with or without a newline.
+    CHECK(contentEndOf("part p { 1 = A &CASUAL; };\n---") != TokenStream::kNoContentEnd);
+
+    // Anything else on the line means it is not a marker.
+    CHECK_EQ(contentEndOf("part p { 1 = A &CASUAL; };\n--- tail\n"), TokenStream::kNoContentEnd);
+    CHECK_EQ(contentEndOf("part p { 1 = A &CASUAL; };\n----\n"), TokenStream::kNoContentEnd);
+    // Nor is it one when it does not begin a line.
+    CHECK_EQ(contentEndOf("part p { 1 = A &CASUAL; };  ---\n"), TokenStream::kNoContentEnd);
+}
+
+TEST_CASE("spec 2.8: '---' inside a declaration is a syntax error, not a truncation") {
+    // Silently discarding the rest of the file would be far worse than an error,
+    // so the marker is recognised only where a declaration could begin.
+    CHECK_EQ(contentEndOf("block b {\n    A == B;\n---\n    C == D;\n};\n"),
+             TokenStream::kNoContentEnd);
+
+    // The lexer tokenises it as hyphens; the parser is what rejects them.
+    auto r = parse("block b {\n    A == B;\n---\n    C == D;\n};\n");
+    CHECK(r->diags->errorCount() > 0);
+}
+
+TEST_CASE("spec 2.8: a file that is nothing but a marker") {
+    auto r = parse("---\neverything here is documentation\n");
+    expectClean(r, "marker-only file");
+    CHECK_EQ(r->unit.items.size(), std::size_t{0});
+}
+
 TEST_MAIN()

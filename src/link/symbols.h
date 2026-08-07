@@ -62,6 +62,14 @@ struct Revision {
         return std::to_string(major) + "." + std::to_string(minor);
     }
     friend auto operator<=>(const Revision&, const Revision&) = default;
+
+    // Parses "major.minor". Returns false and leaves the value alone on
+    // anything else.
+    [[nodiscard]] static bool parse(std::string_view text, Revision& out);
+
+    // The revision this toolchain implements, derived from kLanguageVersion so
+    // that a bump cannot leave a stale copy behind.
+    [[nodiscard]] static Revision toolchain();
 };
 
 class SymbolTable {

@@ -26,6 +26,15 @@ public:
             out_.pop_back();
         }
         if (out_.empty() || out_.back() != '\n') out_ += '\n';
+
+        // Everything from the end-of-content marker on is reproduced byte for
+        // byte, marker included. It is not manta -- it could be Markdown, a
+        // table with deliberate trailing spaces, or a base64 blob -- so it is
+        // not normalised, not reindented, and above all not dropped.
+        if (tokens_.hasEndMarker()) {
+            out_ += '\n';
+            out_ += file_.text().substr(tokens_.contentEnd);
+        }
         return std::move(out_);
     }
 

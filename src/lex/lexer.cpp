@@ -69,8 +69,24 @@ std::string_view tokenKindName(TokenKind k) noexcept {
 
 void Lexer::push(TokenStream& out, TokenKind k, std::uint32_t start, std::uint32_t len,
                  std::uint16_t flags) {
+    if (k == TokenKind::LBrace) ++braceDepth_;
+    if (k == TokenKind::RBrace && braceDepth_ > 0) --braceDepth_;
     out.tokens.push_back(Token{k, flags, start, len});
     lineHadToken_ = true;
+}
+
+// A line consisting of exactly "---", modulo trailing whitespace. The caller
+// checks brace depth; this checks only the shape of the line.
+bool Lexer::atEndMarker() const {
+    // Must start a line.
+    if (pos_ != 0 && text_[pos_ - 1] != '\n') return false;
+    if (text_.compare(pos_, 3, "---") != 0) return false;
+
+    for (std::size_t i = pos_ + 3; i < text_.size(); ++i) {
+        if (text_[i] == '\n') return true;
+        if (text_[i] != ' ' && text_[i] != '\t' && text_[i] != '\r') return false;
+    }
+    return true;  // the marker is the last line of the file
 }
 
 // Returns true if any trivia was consumed.
@@ -404,6 +420,15 @@ TokenStream Lexer::run() {
     for (;;) {
         skipTrivia(out);
         if (atEnd()) break;
+
+        // Spec 2.8: a line consisting of exactly '---', outside any
+        // declaration, ends the manta content of the file. Everything after it
+        // is documentation and is never tokenised.
+        if (braceDepth_ == 0 && atEndMarker()) {
+            out.contentEnd = static_cast<std::uint32_t>(pos_);
+            break;
+        }
+
         std::size_t before = pos_;
         scanToken(out);
         // Every path above advances; this guards against a future edit that

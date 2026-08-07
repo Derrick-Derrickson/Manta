@@ -5,6 +5,30 @@
 
 namespace manta {
 
+// Compares two "major.minor" revision strings. A malformed string is treated as
+// newer than anything, so it is rejected rather than silently accepted.
+bool revisionAtMost(std::string_view object, std::string_view toolchain) {
+    auto split = [](std::string_view s, std::uint32_t& major, std::uint32_t& minor) {
+        std::size_t dot = s.find('.');
+        if (dot == std::string_view::npos) return false;
+        major = minor = 0;
+        for (char c : s.substr(0, dot)) {
+            if (c < '0' || c > '9') return false;
+            major = major * 10 + static_cast<std::uint32_t>(c - '0');
+        }
+        for (char c : s.substr(dot + 1)) {
+            if (c < '0' || c > '9') return false;
+            minor = minor * 10 + static_cast<std::uint32_t>(c - '0');
+        }
+        return true;
+    };
+
+    std::uint32_t oMajor = 0, oMinor = 0, tMajor = 0, tMinor = 0;
+    if (!split(object, oMajor, oMinor)) return false;
+    if (!split(toolchain, tMajor, tMinor)) return false;
+    return oMajor != tMajor ? oMajor < tMajor : oMinor <= tMinor;
+}
+
 // ===========================================================================
 // Writing
 // ===========================================================================
@@ -1242,7 +1266,11 @@ bool readObject(const JsonValue& root, Arena& arena, StringInterner& interner, F
         return false;
     }
     out.version = std::string(root.str("version"));
-    if (out.version != kLanguageVersion) {
+    // An object may target an *older* revision than the toolchain: 1.1 only
+    // added a lexical marker, so a 1.0 object is perfectly good input. What
+    // cannot be read is an object from a newer revision, whose constructs this
+    // toolchain does not know.
+    if (!revisionAtMost(out.version, kLanguageVersion)) {
         diags.report(DiagId::Io, errorSpan,
                      std::format("object targets language revision {}, this toolchain is {}",
                                  out.version, kLanguageVersion));

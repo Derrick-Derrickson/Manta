@@ -110,4 +110,27 @@ foreach(format kicad altium orcad allegro)
     endif()
 endforeach()
 
+# --- the end-of-content marker (spec 2.8) ----------------------------------
+# 'manta fmt' rewrites whole files from the AST, so without deliberate care it
+# would delete everything after the marker. This is the check that it does not.
+set(DATASHEET "${WORK}/src/datasheet.manta")
+file(READ "${DATASHEET}" datasheet_before)
+execute_process(COMMAND "${MANTA}" fmt --stdout "${DATASHEET}"
+                OUTPUT_FILE "${WORK}/datasheet.fmt" RESULT_VARIABLE code)
+if(NOT code EQUAL 0)
+    message(FATAL_ERROR "fmt failed on a file with an end-of-content marker")
+endif()
+file(READ "${WORK}/datasheet.fmt" datasheet_after)
+
+string(FIND "${datasheet_before}" "\n---\n" before_at)
+string(FIND "${datasheet_after}" "\n---\n" after_at)
+if(before_at EQUAL -1 OR after_at EQUAL -1)
+    message(FATAL_ERROR "the end-of-content marker did not survive formatting")
+endif()
+string(SUBSTRING "${datasheet_before}" ${before_at} -1 tail_before)
+string(SUBSTRING "${datasheet_after}" ${after_at} -1 tail_after)
+if(NOT tail_before STREQUAL tail_after)
+    message(FATAL_ERROR "formatting altered the text after the end-of-content marker")
+endif()
+
 message(STATUS "pipeline: compile, link, fmt, annotate and export all verified")

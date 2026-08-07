@@ -2,7 +2,14 @@
 
 **Specification, revision 1.0**
 
-> **Editorial revision, corrected against a reference implementation.**
+> **Revision 1.1, corrected against a reference implementation.**
+>
+> **1.1 adds one construct**: the end-of-content marker of §2.8, which lets a
+> file carry documentation after its declarations. A 1.0 source is a valid 1.1
+> source, and a toolchain reads any object whose revision is no newer than its
+> own.
+>
+> The remaining changes are editorial.
 >
 > Two grammar productions in §19 were written more narrowly than the language
 > they describe, and are widened here: a terminal may carry a range (§7.3), and
@@ -52,6 +59,9 @@ A conforming implementation shall:
 
 Source files use the extension `.manta`. Files are UTF-8; a byte-order mark is permitted
 and ignored. Line endings may be LF or CRLF, and the formatter normalises them to LF.
+
+A file may carry documentation after its declarations, separated by the end-of-content
+marker of §2.8. Text after the marker is not manta and is not normalised.
 
 ---
 
@@ -177,6 +187,44 @@ block amp { ... };
 The terminator delimits a statement, and a statement is the scope unit for directives
 (§11.2). Splitting one statement into two is a change of meaning; reflowing a statement
 across lines is not.
+
+### 2.8 End of content
+
+A line consisting of exactly `---`, outside any declaration, ends the manta content of
+the file. Everything after it is documentation: it is never tokenised, and the language
+places no constraints on it at all.
+
+```
+part STM32F0QA5 {
+    @~footprint    = QFP-32;
+    #value         = STM32F0QA5;
+    #!manufacturer = "ST Microelectronics";
+
+    1 = VCC< &TYPE=POWER &~NET=3V3;
+    2 = GND< &TYPE=POWER &~NET=GND;
+};
+
+---
+
+# STM32F0QA5
+
+## Absolute maximum ratings
+
+| Parameter | Min  | Max |
+|-----------|------|-----|
+| VDD       | -0.3 | 4.0 |
+```
+
+This is what lets one file hold a part and its datasheet.
+
+The marker shall begin a line and be followed by nothing but whitespace. It is
+recognised only where a declaration could begin, so a `---` inside a `block` or a `part`
+is the syntax error it would otherwise be, rather than silently discarding the rest of
+the file.
+
+Text after the marker is reproduced byte for byte by every tool. `manta fmt` does not
+reflow it, reindent it, or normalise its line endings, because it is not manta and may be
+anything at all.
 
 ---
 
