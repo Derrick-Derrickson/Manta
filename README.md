@@ -111,6 +111,11 @@ be enabled, silenced or re-graded by code or by mnemonic: `-Wno-W-03` and
 | `src/erc` | The §16 rules |
 | `src/fmt`, `src/annotate`, `src/export` | The three source- and output-side tools |
 
+Longer notes live beside the code: `src/README.md` for the architecture,
+`AGENTS.md` and `src/AGENTS.md` for the rules a change has to respect, and
+`agents/` for skills covering how to write manta designs, author part libraries,
+and extend this compiler.
+
 Four decisions shape the implementation, and are documented where they live:
 
 - **The lexer never resolves ambiguity.** `-5V` is a net name in one position
