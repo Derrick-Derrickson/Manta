@@ -428,6 +428,9 @@ Equivalent to 'manta link --no-emit'. Accepts the same options.
                         Repeatable.
   --start <prefix>=<n>  Begin assignment for a prefix at n. Repeatable.
   --swaps               Apply swap reconciliation as well as designators.
+                        Reads the optional 'swaps' section of the netlist; no
+                        tool in this package writes one yet, so today this is
+                        a no-op unless a layout tool supplies it.
   --dry-run             Report the changes without writing.
 )";
             break;

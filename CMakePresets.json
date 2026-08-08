@@ -43,29 +43,63 @@
         "MANTA_LTO": "OFF",
         "MANTA_BUILD_TESTS": "OFF"
       }
+    },
+    {
+      "name": "linux-arm64-release",
+      "displayName": "Linux ARM64 (aarch64-linux-gnu cross)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-arm64-release",
+      "toolchainFile": "${sourceDir}/cmake/toolchain-linux-aarch64.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "MANTA_LTO": "OFF",
+        "MANTA_BUILD_TESTS": "OFF"
+      }
     }
   ],
   "buildPresets": [
-    { "name": "linux-release", "configurePreset": "linux-release" },
-    { "name": "linux-debug", "configurePreset": "linux-debug" },
-    { "name": "linux-asan", "configurePreset": "linux-asan" },
-    { "name": "windows-release", "configurePreset": "windows-release" }
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release"
+    },
+    {
+      "name": "linux-debug",
+      "configurePreset": "linux-debug"
+    },
+    {
+      "name": "linux-asan",
+      "configurePreset": "linux-asan"
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release"
+    },
+    {
+      "name": "linux-arm64-release",
+      "configurePreset": "linux-arm64-release"
+    }
   ],
   "testPresets": [
     {
       "name": "linux-release",
       "configurePreset": "linux-release",
-      "output": { "outputOnFailure": true }
+      "output": {
+        "outputOnFailure": true
+      }
     },
     {
       "name": "linux-debug",
       "configurePreset": "linux-debug",
-      "output": { "outputOnFailure": true }
+      "output": {
+        "outputOnFailure": true
+      }
     },
     {
       "name": "linux-asan",
       "configurePreset": "linux-asan",
-      "output": { "outputOnFailure": true }
+      "output": {
+        "outputOnFailure": true
+      }
     }
   ]
 }

@@ -1,8 +1,8 @@
 # The Manta Schematic Definition Language
 
-**Specification, revision 1.0**
+**Specification, revision 1.1**
 
-> **Revision 1.1, corrected against a reference implementation.**
+> **Corrected against a reference implementation.**
 >
 > **1.1 adds one construct**: the end-of-content marker of §2.8, which lets a
 > file carry documentation after its declarations. A 1.0 source is a valid 1.1

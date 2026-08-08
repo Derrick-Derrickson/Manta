@@ -19,7 +19,6 @@
 namespace manta {
 
 struct LoadedRuleFiles {
-    RuleFile parsed;
     LoadedRules rules;
     std::vector<RuleFile> files;
     bool ok = true;

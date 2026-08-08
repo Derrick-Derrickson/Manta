@@ -45,7 +45,6 @@ struct RuleValue {
     std::string text;
     PinRef pin;
     std::uint32_t index = 0;  // net or component index
-    const PartInfo* part = nullptr;
     std::vector<RuleValue> elements;
 
     [[nodiscard]] bool present() const noexcept { return kind != RuleValueKind::Absent; }

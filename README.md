@@ -1,6 +1,6 @@
 # manta
 
-A compiler for the Manta Schematic Definition Language, specification revision 1.0.
+A compiler for the Manta Schematic Definition Language, specification revision 1.1.
 
 Manta is a plain-text language for describing electronic schematics: the
 components on one printed circuit board, their interconnections, and the
@@ -39,7 +39,17 @@ cmake --preset windows-release
 cmake --build --preset windows-release -j
 ```
 
+Cross-compiling for 64-bit ARM Linux needs `g++-aarch64-linux-gnu`:
+
+```sh
+cmake --preset linux-arm64-release
+cmake --build --preset linux-arm64-release -j
+```
+
 Other presets: `linux-debug`, `linux-asan` (AddressSanitizer + UBSan).
+
+`tools/make-pdf.py` renders a specification to PDF for a release, using
+python-markdown and headless Chromium.
 
 ## Using it
 

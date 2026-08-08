@@ -47,14 +47,6 @@ struct Run {
     [[nodiscard]] bool fired(std::string_view code) const {
         return report.find(std::string("[") + std::string(code) + "]") != std::string::npos;
     }
-    [[nodiscard]] std::size_t count(std::string_view needle) const {
-        std::size_t n = 0;
-        for (std::size_t i = report.find(needle); i != std::string::npos;
-             i = report.find(needle, i + 1)) {
-            ++n;
-        }
-        return n;
-    }
 };
 
 std::shared_ptr<Run> check(const std::string& designText, const std::string& rulesText,

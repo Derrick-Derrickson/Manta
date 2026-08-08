@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(manta VERSION 1.0.0 LANGUAGES CXX)
+project(manta VERSION 1.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -58,7 +58,9 @@ if(MANTA_IPO_OK AND MANTA_LTO AND CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT MA
     set_property(TARGET manta PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
 
-# A cross-compiled .exe must not need a sidecar of MinGW DLLs.
+# A released binary is one file. On Windows that means no sidecar of MinGW
+# DLLs; when cross-compiling for Linux it means not depending on the host's
+# libstdc++ being new enough on whatever machine runs it.
 if(MANTA_STATIC OR MINGW)
     target_link_options(manta PRIVATE -static -static-libgcc -static-libstdc++)
 endif()
