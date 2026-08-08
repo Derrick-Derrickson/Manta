@@ -716,8 +716,7 @@ void RuleEvaluator::runOnDesign(const Design& design) {
     }
 }
 
-void RuleEvaluator::runOnPart(const PartInfo& part, std::string_view partName,
-                              const StringInterner& partInterner) {
+void RuleEvaluator::runOnPart(const PartInfo& part, std::string_view partName) {
     bool wanted = false;
     for (const RuleCheck* check : rules_.checks) {
         if (check->domain == RuleDomain::Part) wanted = true;
@@ -738,25 +737,23 @@ void RuleEvaluator::runOnPart(const PartInfo& part, std::string_view partName,
     // The part's own fields, resolved through the strength ladder exactly as
     // instantiation would. Without this a part rule could not see the very
     // things a part declares -- its footprint, its value, its type.
-    // Read through the interner that issued these symbols, not the rules one.
     FieldEnv env;
-    DiagEngine quiet(diags_.sources());  // a field conflict is reported at link
-    auto& mutablePartInterner = const_cast<StringInterner&>(partInterner);
-    for (const FieldDecl* f : part.fields) env.declare(f, mutablePartInterner, quiet);
+    DiagEngine quiet(diags_.sources());  // a field conflict is already reported elsewhere
+    for (const FieldDecl* f : part.fields) env.declare(f, interner_, quiet);
 
     FlatMap<FieldKey, FieldSlot> visible;
     env.collectVisible(visible);
     for (const auto& [key, slot] : visible) {
         if (!slot.value) continue;
-        std::string rendered = renderValue(slot.value, partInterner);
+        std::string rendered = renderValue(slot.value, interner_);
         if (key.ns == FieldNamespace::System) {
-            std::string_view name = partInterner.text(key.name);
+            std::string_view name = interner_.text(key.name);
             if (name == "footprint") component.footprint = rendered;
             else if (name == "fitted") component.fitted = rendered != "FALSE";
             else if (name == "bom") component.bom = rendered != "FALSE";
             continue;
         }
-        component.fields.emplace_back(std::string(partInterner.text(key.name)),
+        component.fields.emplace_back(std::string(interner_.text(key.name)),
                                       std::move(rendered));
     }
 

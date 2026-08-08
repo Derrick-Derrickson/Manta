@@ -17,7 +17,6 @@
 
 #include "cli/console.h"
 #include "cli/driver.h"
-#include "cli/rules_loader.h"
 #include "lex/lexer.h"
 #include "obj/mantao.h"
 #include "parse/parser.h"
@@ -163,27 +162,6 @@ int runCompile(const Options& opts) {
 
     // Merge in command-line order, not completion order.
     for (auto& u : units) top.absorb(std::move(*u->diags));
-
-    // User rules whose domain is 'part' need no external names, so they are
-    // decidable here, one file at a time.
-    if (!opts.ruleFiles.empty()) {
-        Arena rulesArena;
-        StringInterner rulesInterner;
-        SeverityPolicy policy = opts.severity;
-        LoadedRuleFiles rules =
-            loadRuleFiles(opts, sources, rulesArena, rulesInterner, top, policy);
-        if (!rules.ok) return finish(top, opts, kExitUsage);
-        top.setPolicy(std::move(policy));
-
-        for (auto& u : units) {
-            RuleEvaluator evaluator(rules.rules, rulesInterner, top);
-            for (const Item* item : u->ast.items) {
-                if (item->kind != ItemKind::Part) continue;
-                PartInfo info = buildPartInfo(item, 0, u->interner, top);
-                evaluator.runOnPart(info, u->interner.text(item->name.symbol), u->interner);
-            }
-        }
-    }
 
     if (top.hasErrors()) return finish(top, opts);
 

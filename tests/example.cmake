@@ -29,10 +29,8 @@ set(RULES "${EXAMPLE_DIR}/blinky.mantaRules")
 
 run_manta(compile -o "${WORK}/build/" ${EXAMPLE_SOURCES})
 
-# A decorated design compiles with no rules file: the '#' fields it carries are
-# ordinary manta, so the rules are pure checking and never a build dependency.
-# Compiling *with* them additionally runs the part-domain checks.
-run_manta(compile -o "${WORK}/build/" --rules "${RULES}" ${EXAMPLE_SOURCES})
+# The design compiles with no rules file at all: the '#' fields it carries are
+# ordinary manta, so rules are pure checking and never a build dependency.
 
 # -Werror, no --no-erc, no -Wno-, and the project's own rules loaded: every
 # rule in section 16 runs, every user rule runs, every warning is fatal, and

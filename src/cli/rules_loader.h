@@ -1,8 +1,8 @@
 // Loading .mantaRules files for the commands that accept --rules.
 //
-// Shared by 'compile' and 'link' because both need the same three steps: parse
-// the files, collect the checks, and resolve the -W names that could not be
-// validated when options were parsed.
+// Rules run at link, where the whole design is in hand and there is one
+// interner. Three steps: parse the files, collect the checks, and resolve the
+// -W names that could not be validated when options were parsed.
 #pragma once
 
 #include <memory>

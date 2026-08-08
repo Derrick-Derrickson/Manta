@@ -57,16 +57,13 @@ public:
     FieldEnv() = default;
     explicit FieldEnv(const FieldEnv* parent) : parent_(parent) {}
 
-    // Declares or overrides. Applies the strength ladder and reports E-11/E-12.
+    // Declares a field. Applies the strength ladder of spec 9.2 and reports
+    // E-11 and E-12.
     //
-    // Spec 9.2: "Declaration and override are distinguished by position: inside
-    // a part or block definition you are declaring; inside an instantiation you
-    // are overriding." E-12 is about two *declarations* disagreeing, so an
-    // override wins at equal strength rather than conflicting -- which is what
-    // makes a normal field "overridable, but unusual to do so" rather than
-    // impossible to override at all.
-    void declare(const FieldDecl* decl, StringInterner& interner, DiagEngine& diags,
-                 bool isOverride = false);
+    // Overriding is the ladder, not a separate mechanism: to override a normal
+    // field at a call site, write a locked one. Two declarations of equal
+    // strength that disagree remain E-12 wherever they appear.
+    void declare(const FieldDecl* decl, StringInterner& interner, DiagEngine& diags);
 
     // Direct insertion, for values manta itself supplies (the '!' DNP prefix is
     // "exact sugar for @fitted=FALSE", spec 7.5).

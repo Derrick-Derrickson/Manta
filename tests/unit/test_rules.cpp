@@ -93,7 +93,7 @@ std::shared_ptr<Run> check(const std::string& designText, const std::string& rul
     for (const auto& [key, decl] : symbols.all()) {
         if (decl.item->kind != ItemKind::Part) continue;
         PartInfo info = buildPartInfo(decl.item, decl.objectIndex, r->interner, *r->diags);
-        evaluator.runOnPart(info, r->interner.text(decl.item->name.symbol), r->interner);
+        evaluator.runOnPart(info, r->interner.text(decl.item->name.symbol));
     }
 
     RenderOptions opts;

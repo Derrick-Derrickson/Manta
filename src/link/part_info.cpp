@@ -8,7 +8,7 @@
 namespace manta {
 
 void applyPinField(ComponentPin& pin, const FieldDecl* decl, StringInterner& interner,
-                   DiagEngine& diags, bool isOverride) {
+                   DiagEngine& diags) {
     if (!decl || !valid(decl->name.symbol) || decl->ns != FieldNamespace::User) return;
 
     std::string name(interner.text(decl->name.symbol));
@@ -50,12 +50,6 @@ void applyPinField(ComponentPin& pin, const FieldDecl* decl, StringInterner& int
             return;
         }
         if (decl->strength < existing.strength) return;
-        // An override at a call site wins at equal strength; two declarations
-        // in the same position conflict (spec 9.2).
-        if (isOverride) {
-            existing = incoming;
-            return;
-        }
         if (existing.value != rendered) {
             diags.report(DiagId::E12, decl->span, "#" + name, existing.value, rendered)
                 .note(existing.declaredAt, "first declared here");

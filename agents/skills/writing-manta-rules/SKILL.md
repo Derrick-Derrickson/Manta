@@ -81,9 +81,12 @@ So write two designs for every rule: one that violates it and one that does not.
 Run both.
 
 ```sh
-manta compile --rules project.mantaRules -o build/ src/*.manta
+manta compile -o build/ src/*.manta
 manta check --top board -L build/ --rules project.mantaRules -Werror
 ```
+
+Rules run at link, so `compile` takes no `--rules`. The `#` fields a design
+carries are ordinary manta and compile on their own.
 
 `tests/rules/` follows exactly this pattern — `violations.manta` and
 `clean.manta` against one rules file — and `examples/blinky` carries a real
@@ -96,10 +99,9 @@ manta check --top board -L build/ --rules project.mantaRules -Werror
 | `net` | each net | budgets, anything aggregated over a net |
 | `net.a -> net.b` | pin pairs on a net | anything relating one pin to another |
 | `component` | each component | per-part policy on an instantiated design |
-| `part` | each part declaration | library policy, checked at compile |
+| `part` | each part declaration | library policy |
 
-A `part` check runs at compile *and* at link, so a library can be checked before
-it ever reaches a board.
+Every domain runs at link, `part` included.
 
 ## Aggregates
 

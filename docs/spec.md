@@ -498,10 +498,10 @@ specification), so a design decorated this way compiles and links whether or not
 file is present.
 
 Pin fields take the strength ladder of §9.2, and a call site overrides one the same way
-it overrides any other field:
+it overrides any other field — by declaring a stronger one:
 
 ```
-{U1~MCU-48: IO[3] #VOH=3V0; };
+{U1~MCU-48: IO[3] #!VOH=3V0; };
 ```
 
 They stay on the pin. They are not BOM columns, which are per component.
@@ -992,11 +992,19 @@ are error **E-12**.
 Declaration and override are distinguished by position: inside a `part` or `block`
 definition you are declaring; inside an instantiation you are overriding.
 
-The distinction is what E-12 turns on. Two *declarations* of equal strength that disagree
-are a conflict, because nothing says which was meant. An *override* of equal strength is
-not: it is a later, more specific statement about one instance, and it wins. That is what
-makes a normal field "overridable, but unusual to do so" rather than impossible to
-override at all.
+Overriding is the strength ladder, not a separate mechanism. To override a normal field at
+a call site, declare a locked one:
+
+```
+part cool-mcu {
+    #mpn = "RC0603FR-0710KL";
+};
+
+.{R1~cool-mcu: #!mpn = "ERJ-3EKF1002V"; }.
+```
+
+Two declarations of equal strength that disagree are **E-12** wherever they appear, which
+is what makes a field's value unambiguous.
 
 ```
 part cool-mcu {

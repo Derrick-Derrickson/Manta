@@ -120,17 +120,16 @@ block b {
     CHECK_EQ(attr(pin(u1, "SDA"), "VOH"), std::string("<absent>"));
 }
 
-TEST_CASE("a call site overrides a pin field of the part") {
-    // Spec 9.2: "Declaration and override are distinguished by position: inside
-    // a part or block definition you are declaring; inside an instantiation you
-    // are overriding." So this is an override and wins, rather than being a
-    // same-strength conflict.
+TEST_CASE("a call site overrides a pin field by declaring a stronger one") {
+    // Overriding is the strength ladder, not a separate mechanism: '#!' beats
+    // '#'. Two declarations of equal strength that disagree stay E-12 wherever
+    // they appear, which is what keeps a field's value unambiguous.
     auto e = elaborate(std::string(kParts) + R"(
 block b {
     GND &TYPE=GROUND;
     RAIL = VOUT{REG1~REG};
     RAIL == 3V3;
-    A = IO[1]{U1~MCU: IO[3] #VOH=3V0; }IO[2] = B;
+    A = IO[1]{U1~MCU: IO[3] #!VOH=3V0; }IO[2] = B;
     A == GND; B == GND;
 };
 )");
@@ -142,6 +141,21 @@ block b {
     // The others keep what the part declared.
     CHECK_EQ(attr(pin(u1, "IO[1]"), "VOH"), std::string("2V4"));
     CHECK_EQ(attr(pin(u1, "IO[4]"), "VOH"), std::string("2V4"));
+}
+
+TEST_CASE("an equal-strength override is a conflict, not an override") {
+    // The part declares VOH at normal strength and the call site does too.
+    // Nothing says which was meant, so it is E-12 -- write '#!' to override.
+    auto e = elaborate(std::string(kParts) + R"(
+block b {
+    GND &TYPE=GROUND;
+    RAIL = VOUT{REG1~REG};
+    RAIL == 3V3;
+    A = IO[1]{U1~MCU: IO[3] #VOH=3V0; }IO[2] = B;
+    A == GND; B == GND;
+};
+)");
+    CHECK(e->report.find("E-12") != std::string::npos);
 }
 
 TEST_CASE("a locked pin field cannot be overridden") {
@@ -199,14 +213,14 @@ block b {
 }
 
 TEST_CASE("a pin field that only annotates is not a second connection") {
-    // "IO[1] #VOH=3V0" annotates the pin the chain already passes through. It
+    // "IO[1] #!VOH=3V0" annotates the pin the chain already passes through. It
     // connects nothing, so it is not the double-connection E-08 describes.
     auto e = elaborate(std::string(kParts) + R"(
 block b {
     GND &TYPE=GROUND;
     RAIL = VOUT{REG1~REG};
     RAIL == 3V3;
-    A = IO[1]{U1~MCU: IO[1] #VOH=3V0; }IO[2] = B;
+    A = IO[1]{U1~MCU: IO[1] #!VOH=3V0; }IO[2] = B;
     A == GND; B == GND;
 };
 )");

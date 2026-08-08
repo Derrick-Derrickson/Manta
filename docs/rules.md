@@ -57,10 +57,12 @@ part LDO-3V3 {
 };
 ```
 
-A call site overrides one the way it overrides any other field:
+A call site overrides one the way it overrides any other field — by declaring a
+stronger one, since overriding is the strength ladder and not a separate
+mechanism:
 
 ```
-{U1~MCU-48: IO[3] #VOH=3V0; };
+{U1~MCU-48: IO[3] #!VOH=3V0; };
 ```
 
 ## 3. A rules file
@@ -113,15 +115,16 @@ being false. A field a rule uses shall be declared.
 
 ### 3.3 Domains
 
-| `for` | Runs at | Iterates | Bindings |
-|---|---|---|---|
-| `part` | compile **and** link | each `part` declaration | `part`, `pins` |
-| `net` | link | each net | `net`, `pins` |
-| `component` | link | each component | `component`, `pins` |
-| `net.a -> net.b` | link | ordered pin pairs on one net | `net`, `a`, `b`, `pins` |
+| `for` | Iterates | Bindings |
+|---|---|---|
+| `part` | each `part` declaration | `part`, `pins` |
+| `net` | each net | `net`, `pins` |
+| `component` | each component | `component`, `pins` |
+| `net.a -> net.b` | ordered pin pairs on one net | `net`, `a`, `b`, `pins` |
 
-Part checks run at both stages, so `manta check` alone is complete rather than
-complete only if `manta compile --rules` also happened to be run.
+**Every rule runs at link**, including a `part` rule. A check has the whole
+design in hand, there is one place to look for one, and `manta check` alone is
+complete. `manta compile` does not take `--rules`.
 
 A pin is never paired with itself, so a bidirectional pin is not asked to clear
 its own threshold.
@@ -189,10 +192,13 @@ leaving the check switched on.
 ## 5. Using it
 
 ```sh
-manta compile --rules project.mantaRules -o build/ src/*.manta
+manta compile -o build/ src/*.manta
 manta check  --top board -L build/ --rules project.mantaRules -Werror
 manta link   --top board -L build/ --rules project.mantaRules -o build/board.mantaNets
 ```
+
+Note that `compile` takes no `--rules`: the design's `#` fields are ordinary
+manta and compile fine on their own.
 
 `--rules` is repeatable. Findings are deterministic: domains are enumerated in
 netlist order, so the same design and the same rules give the same output every

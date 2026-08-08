@@ -83,19 +83,13 @@ public:
     // Runs every net, component and pin-pair check over an elaborated design.
     void runOnDesign(const Design& design);
 
-    // Runs every part check over one part declaration, which needs no external
-    // names and so is available at compile as well as at link.
+    // Runs every part check over one part declaration.
     //
     // A part is presented as a one-component design, so member access, pin
-    // collections and aggregates all work exactly as they do at link. Building
-    // the shim costs one small allocation and saves a second code path.
-    //
-    // `partInterner` owns the symbols in the part's own AST, which at compile
-    // is a per-file interner and not the one the rules were parsed with. A
-    // SymbolId means nothing outside the interner that issued it, so the two
-    // are kept apart deliberately rather than assumed to be the same.
-    void runOnPart(const PartInfo& part, std::string_view partName,
-                   const StringInterner& partInterner);
+    // collections and aggregates all work exactly as they do for a net or a
+    // component. Building the shim costs one small allocation and saves a
+    // second code path that could drift from the first.
+    void runOnPart(const PartInfo& part, std::string_view partName);
 
 private:
     void runNetCheck(const RuleCheck& check, const Design& design);

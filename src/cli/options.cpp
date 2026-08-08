@@ -190,11 +190,6 @@ ParseOutcome parseOptions(const std::vector<std::string>& args, Options& out) {
         // ---- per-command options -------------------------------------------
         switch (out.command) {
             case Command::Compile:
-                if (takeValue(c, "--rules", "", value, err)) {
-                    out.ruleFiles.push_back(value);
-                    continue;
-                }
-                if (!err.empty()) break;
                 if (takeValue(c, "--output", "-o", value, err)) { out.output = value; continue; }
                 if (!err.empty()) break;
                 if (takeValue(c, "--include", "-I", value, err)) {
@@ -397,8 +392,6 @@ Run 'manta <command> --help' for the options of one command.
                         line. Repeatable.
   --revision <rev>      Language revision to check @VERSION against.
                         Default: the implementation's own.
-  --rules <file>        A .mantaRules file whose 'part' checks to run.
-                        Repeatable.
   --emit-ast            Also write the parse tree as JSON, for tooling.
 )";
             break;
@@ -414,6 +407,9 @@ Run 'manta <command> --help' for the options of one command.
   --no-emit             Run every stage including ERC, emit nothing.
   --map <file>          Write the elaboration map: instance path to designator.
   --rules <file>        A .mantaRules file of user-defined checks. Repeatable.
+                        Every rule runs here, including 'part' rules: a check
+                        has the whole design to look at, and there is exactly
+                        one place to look for one.
 )";
             break;
 

@@ -165,13 +165,13 @@ int runLink(const Options& opts) {
         RuleEvaluator evaluator(rules.rules, interner, diags);
         evaluator.runOnDesign(design);
 
-        // Part checks need no external names, so they run here too. That is
-        // what makes 'manta check' complete on its own, rather than complete
-        // only if 'compile --rules' happened to be run as well.
+        // Part checks run here too, not at compile. Everything a rule can look
+        // at lives in one place, there is one interner, and 'manta check' is
+        // complete on its own.
         for (const auto& [key, decl] : symbols.all()) {
             if (decl.item->kind != ItemKind::Part) continue;
             PartInfo info = buildPartInfo(decl.item, decl.objectIndex, interner, diags);
-            evaluator.runOnPart(info, interner.text(decl.item->name.symbol), interner);
+            evaluator.runOnPart(info, interner.text(decl.item->name.symbol));
         }
 
         if (opts.verbose && !opts.quiet) {

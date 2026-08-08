@@ -498,8 +498,7 @@ std::uint32_t Elaborator::instantiatePart(const Instance* inst, const PartInfo& 
     }
     for (const Binding* b : inst->bindings) {
         if (b->kind == BindingKind::Field) {
-            // Written at an instantiation, so this is an override (spec 9.2).
-            env.declare(b->field, interner_, diags_, /*isOverride=*/true);
+            env.declare(b->field, interner_, diags_);
             if (valid(b->field->name.symbol)) {
                 overriddenFields_.insert(FieldKey{b->field->name.symbol, b->field->ns});
             }
@@ -674,7 +673,7 @@ void Elaborator::applyBindings(const Instance* inst, Component& component, Scope
         // part declared for it: "{U1~mcu: IO[3] #VOH=3V0; }".
         for (const FieldDecl* f : b->pinFields) {
             for (std::uint32_t i : targets) {
-                applyPinField(component.pins[i], f, interner_, diags_, /*isOverride=*/true);
+                applyPinField(component.pins[i], f, interner_, diags_);
             }
         }
 
@@ -1375,9 +1374,7 @@ std::unique_ptr<Elaborator::Scope> Elaborator::instantiateBlock(const Instance* 
     // environment before the body is walked, so every substitution inside sees
     // them.
     for (const Binding* b : inst->bindings) {
-        if (b->kind == BindingKind::Field) {
-            child->fields->declare(b->field, interner_, diags_, /*isOverride=*/true);
-        }
+        if (b->kind == BindingKind::Field) child->fields->declare(b->field, interner_, diags_);
     }
     if (inst->dnp) {
         // Spec 7.5: "!BLK?~audio-stage cascades recursively to every part within."

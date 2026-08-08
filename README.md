@@ -54,7 +54,7 @@ The two-stage model of specification §15.1:
 | `manta export` | one `.mantaNets` | a layout tool's netlist |
 | `manta fmt` | sources | rewritten sources |
 
-`compile`, `link` and `check` also take `--rules <file>`: a `.mantaRules` file of
+`link` and `check` also take `--rules <file>`: a `.mantaRules` file of
 project-specific checks — logic-level compatibility, current budgets, library
 policy — over `#` fields the design carries. Because `#` is already the open
 namespace, a decorated design compiles with no rules file, so rules are pure
