@@ -35,6 +35,24 @@ present — the same lookup Pcbnew performs.
 
 Recorded in `docs/assumptions.md` as C6, C7 and C8.
 
+### An un-annotated designator now fails the build
+
+- **A block instance written `BLK?` is E-UNANNOTATED.** The check only ever
+  looked at `Component::designator`, and a block instance is not a component —
+  so it slipped through and reached the netlist, the BOM and the layout tool as
+  `BLK?7_R1`. It is an error at link, alongside the unassigned devices, and
+  `-Wno-unannotated` still allows the one link that bootstraps a design, as
+  §13.1 requires.
+- **A range designator on a block resolves.** `instantiateBlock` handled only
+  the `Numbered` form, so `BLK%[1:2]` — which §13.3 defines as the *annotated*
+  form, one token carrying N designators — was treated as unassigned and became
+  `BLK?2`, `BLK?3`. It now hands its members out one per copy, exactly as a
+  device does, so `examples/blinky` exports `BLK1_R1` and `BLK2_R1` as
+  `board.manta` has always said it should.
+
+`tests/spec` declares a block and never instantiates one, which is how both
+survived; `tests/pipeline.cmake` now instantiates one both ways.
+
 ## 1.1.0 — 2026-08-08
 
 First release.

@@ -182,6 +182,13 @@ int runLink(const Options& opts) {
     // Un-annotated instances. This is a toolchain policy rather than one of the
     // section 16 rules, so it lives here and not in the ERC pass, and it runs
     // even under --no-erc.
+    // A block instance is reported too. Its label is not a designator, but it
+    // names a level of the hierarchy and so lands in the path of every component
+    // beneath it -- and from there in the netlist, the BOM and whatever a layout
+    // tool calls the part. 'BLK?7_R1' is no more shippable than a bare '?'.
+    for (const UnannotatedBlock& b : design.unannotatedBlocks) {
+        diags.report(DiagId::Unannotated, b.span, b.identity);
+    }
     for (const Component& c : design.components) {
         if (c.designator.empty()) diags.report(DiagId::Unannotated, c.span, c.identity);
     }

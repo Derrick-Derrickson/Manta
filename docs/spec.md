@@ -2099,6 +2099,12 @@ instance carries a designator. `--warn=unannotated` demotes it to a warning
 instead. It is checked by the linker rather than by ERC, and so is unaffected by
 `--no-erc`.
 
+A **block** instance is covered as well as a device. It has no designator of its
+own to appear in a BOM, but its label names a level of the hierarchy and so
+appears in the instance path of every component beneath it — and from there in
+the netlist, in the BOM and in whatever a layout tool calls the part. A
+component exported as `BLK?7_R1` is no more shippable than a bare `?`.
+
 ### 16.2 Warnings
 
 | Code | Rule |

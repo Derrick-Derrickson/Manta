@@ -1364,9 +1364,48 @@ std::unique_ptr<Elaborator::Scope> Elaborator::instantiateBlock(const Instance* 
     std::string prefix = valid(inst->designator.prefix.symbol)
                              ? std::string(interner_.text(inst->designator.prefix.symbol))
                              : std::string{};
-    std::string label = inst->designator.kind == DesignatorKind::Numbered
-                            ? prefix + std::to_string(inst->designator.number)
-                            : prefix + "?" + std::to_string(child->id);
+
+    // A block instance names a level of the hierarchy, so this label ends up in
+    // the path of every component beneath it and, through those, in the netlist
+    // and the BOM. It has to follow the same rules as a device designator.
+    std::string label;
+    switch (inst->designator.kind) {
+        case DesignatorKind::Numbered:
+            label = prefix + std::to_string(inst->designator.number);
+            break;
+        case DesignatorKind::Range: {
+            // Spec 13.3: one token carrying N designators, taken in order by the
+            // copies. This is the *annotated* form -- 'BLK%[1:2]' is what the
+            // annotator writes for 'BLK?' under a x2 replication -- so reading
+            // it as unassigned would report an annotated design as un-annotated.
+            std::vector<std::int64_t> numbers;
+            for (const DesigPart& range : inst->designator.parts) {
+                for (std::int64_t n = range.lo; n <= range.hi; ++n) numbers.push_back(n);
+            }
+            auto which = static_cast<std::size_t>(copyIndex_ < 0 ? 0 : copyIndex_);
+            if (which < numbers.size()) {
+                label = prefix + std::to_string(numbers[which]);
+            } else {
+                diags_.report(DiagId::Type, inst->designator.span,
+                              std::format("designator range carries {} designator{} but this "
+                                          "statement instantiates at least {}",
+                                          numbers.size(), numbers.size() == 1 ? "" : "s",
+                                          which + 1));
+                label = prefix + "?" + std::to_string(child->id);
+            }
+            break;
+        }
+        case DesignatorKind::Unassigned:
+            // Spec 13.1: an un-annotated design still elaborates, carrying an
+            // internal identity, so that 'manta annotate' has a netlist to read.
+            // Recorded and reported as E-UNANNOTATED once the netlist is built,
+            // alongside the unassigned devices.
+            label = prefix + "?" + std::to_string(child->id);
+            unannotatedBlocks_.push_back(UnannotatedBlock{
+                (parent.path.empty() ? "" : flattenPath(parent.path) + ".") + label,
+                inst->designator.span});
+            break;
+    }
     child->path.push_back(label);
 
     // Spec 14.1: "A block instantiated twice with different parameters produces
@@ -1636,6 +1675,7 @@ void Elaborator::buildNets(Design& design) {
 
     design.components = std::move(components_);
     design.shorted = shorted_;
+    design.unannotatedBlocks = std::move(unannotatedBlocks_);
 }
 
 Design Elaborator::run(SymbolId topName, Span at) {

@@ -92,6 +92,74 @@ run_manta(compile -o "${WORK}/annbuild/" ${SOURCES})
 # hands its members out one per copy (spec 13.3), so those resolve too.
 run_manta(link --top power-and-signal -L "${WORK}/annbuild" --no-erc
           -o "${WORK}/ann.mantaNets")
+# Nothing may still be carrying a '?'. An unassigned name reaches the netlist,
+# the BOM and the layout tool, so "it linked" is not the same as "it annotated".
+file(STRINGS "${WORK}/ann.mantaNets" leftover REGEX "\"designator\": \"[^\"]*[?]")
+if(leftover)
+    message(FATAL_ERROR "an unassigned designator survived annotation: ${leftover}")
+endif()
+
+# --- block instances -------------------------------------------------------
+# A block instance is not a component and has no Component::designator, but its
+# label names a level of the hierarchy and lands in the path of everything
+# beneath it. tests/spec declares a block and never instantiates one, which is
+# how an un-annotated block once reached the netlist unreported.
+set(BLOCKSRC "${WORK}/blocks.manta")
+file(WRITE "${BLOCKSRC}" "\
+part BR-1k { @~footprint = R-0603; #value = 1kR; 1 = A &CASUAL; 2 = B &CASUAL; };
+
+block leg {
+    >IN;
+    IN = .{R1~BR-1k}. = BGND;
+};
+
+block blocktop {
+    BGND &TYPE=GROUND &STUB;
+    BPWR>>;
+    BDRIVE[0:1] = [[{BLK%[1:2]~leg}IN]];
+    BDRIVE[0] == BPWR;
+    BDRIVE[1] == BPWR;
+};
+")
+run_manta(compile -o "${WORK}/blockbuild/" "${BLOCKSRC}")
+
+# A range designator is the *annotated* form (spec 13.3): one token carrying N
+# designators, handed out one per copy. Reading it as unassigned would report an
+# annotated design as un-annotated and put a '?' in the netlist.
+run_manta(link --top blocktop -L "${WORK}/blockbuild" --no-erc
+          -o "${WORK}/blocks.mantaNets")
+foreach(want "\"BLK1\"" "\"BLK2\"")
+    file(STRINGS "${WORK}/blocks.mantaNets" hit REGEX "${want}")
+    if(NOT hit)
+        message(FATAL_ERROR "a range designator on a block did not resolve to ${want}")
+    endif()
+endforeach()
+file(STRINGS "${WORK}/blocks.mantaNets" bad REGEX "BLK[?]")
+if(bad)
+    message(FATAL_ERROR "a range-designated block was treated as unassigned: ${bad}")
+endif()
+
+# The same design left un-annotated must fail the link.
+file(READ "${BLOCKSRC}" blocks_text)
+string(REPLACE "BLK%[1:2]" "BLK?" blocks_text "${blocks_text}")
+file(WRITE "${WORK}/blocks-unassigned.manta" "${blocks_text}")
+run_manta(compile -o "${WORK}/blockbuild2/" "${WORK}/blocks-unassigned.manta")
+
+execute_process(COMMAND "${MANTA}" link --top blocktop -L "${WORK}/blockbuild2" --no-erc
+                        -o "${WORK}/blocks2.mantaNets"
+                ERROR_VARIABLE blk_err RESULT_VARIABLE blk_code)
+if(blk_code EQUAL 0)
+    message(FATAL_ERROR "an un-annotated block instance linked without complaint")
+endif()
+if(NOT blk_err MATCHES "E-UNANNOTATED")
+    message(FATAL_ERROR "expected E-UNANNOTATED for a block, got: ${blk_err}")
+endif()
+
+# ...and the bootstrap still works, because 'manta annotate' reads a netlist and
+# there has to be a way to produce the first one (spec 13.1).
+run_manta(link --top blocktop -L "${WORK}/blockbuild2" --no-erc -Wno-unannotated
+          -o "${WORK}/blocks2.mantaNets")
+
 # Annotating again must change nothing (spec 13.6: designators are stable).
 file(READ "${WORK}/src/board.manta" before)
 run_manta(annotate -n "${WORK}/ann.mantaNets" ${SOURCES})

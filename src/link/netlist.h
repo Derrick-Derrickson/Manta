@@ -135,6 +135,14 @@ struct SwapRecord {
     std::vector<std::string> order;  // permuted member order
 };
 
+// A block instance left un-annotated. Spec 13.1 lets an un-annotated design
+// elaborate so that 'manta annotate' has a netlist to read; this is what makes
+// the leftovers reportable afterwards.
+struct UnannotatedBlock {
+    std::string identity;  // the label standing in for a designator
+    Span span;
+};
+
 struct Design {
     std::string top;
     std::vector<Component> components;
@@ -146,6 +154,7 @@ struct Design {
     std::vector<std::uint32_t> shorted;
     // Instance path to designator, for "manta link --map".
     std::vector<std::pair<std::string, std::string>> elaborationMap;
+    std::vector<UnannotatedBlock> unannotatedBlocks;
 };
 
 // Writes .mantaNets in the shape of spec 15.4. Deterministic (spec 15.8).
