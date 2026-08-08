@@ -45,6 +45,13 @@ MANTA_DIAG(UserRule, "E-RULE",     "rule",     Severity::Error, "{}")
 // what the bootstrap run needs.
 MANTA_DIAG(Unannotated, "E-UNANNOTATED", "unannotated", Severity::Error,
            "instance '{}' has no designator; run 'manta annotate' to assign one")
+// A footprint exported to KiCad with no library nickname. KiCad resolves a
+// footprint as 'Library:Footprint' against its library table, so a bare name
+// either fails to place or places with a warning on every subsequent update.
+// A warning rather than an error because the netlist is still worth having:
+// '--footprint-map' or '--footprint-lib' is how you silence it, and
+// '-Werror=footprint' is how you refuse to ship one that would not place.
+MANTA_DIAG(Footprint, "W-FOOTPRINT", "footprint", Severity::Warning, "{}")
 
 // ---------------------------------------------------------------------------
 // Section 16.1 — errors

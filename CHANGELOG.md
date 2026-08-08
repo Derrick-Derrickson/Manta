@@ -1,5 +1,40 @@
 # Changelog
 
+## Unreleased
+
+### A KiCad netlist a board can be laid out from
+
+`manta export --format kicad` produced a valid S-expression netlist that KiCad
+could not actually use. Four things were in the way.
+
+- **Footprints now name a library.** KiCad resolves a footprint as
+  `Library:Footprint`; manta wrote bare package names, so components either
+  failed to place or warned on every update. `--footprint-map <file>` maps
+  package names to the target's, `--footprint-lib <nickname>` supplies a
+  default, a name that already names a library passes through, and anything
+  still unqualified is `W-FOOTPRINT`. The translation lives beside the design
+  rather than in the part, so one part library still serves all four targets.
+- **Nets carry pin function and type.** `(pinfunction …)` and `(pintype …)` are
+  emitted per node, which KiCad puts on the pad and its design-rule check reads.
+  This needed `type` and `direction` on each pin in `.mantaNets`, both optional,
+  since the part declaration is not part of the interchange.
+- **Components have a stable identity.** Each carries an RFC 4122 version 5
+  UUID and a sheet path derived from its instance path, so re-annotating a
+  design no longer orphans a placed footprint. Nothing random or clock-derived:
+  export stays byte-identical, verified across x86-64 and ARM64.
+- **Hierarchical components keep their connections.** A designator is unique
+  only within its block, so two instances of one block both held an `R1` and a
+  reader could not tell them apart — every pin of the second copy was silently
+  lost. `.mantaNets` and the BOM now name a component by its flattened instance
+  path, which §13.4 already required of "the single unique string a BOM and a
+  layout tool require".
+
+`examples/blinky` ships `blinky.fpmap`, and `tests/example.cmake` resolves every
+footprint and every pin against KiCad's installed libraries when they are
+present — the same lookup Pcbnew performs.
+
+Recorded in `docs/assumptions.md` as C6, C7 and C8.
+
 ## 1.1.0 — 2026-08-08
 
 First release.

@@ -78,6 +78,16 @@
                 "logical": {
                   "description": "The name the part declares for that pin. Section 15.4's example shows a physical number for one component and a logical name for another; both are emitted so a consumer can take whichever it needs.",
                   "type": "string"
+                },
+                "type": {
+                  "description": "The pin type in force after the strength ladder (section 11.6). Optional: a netlist written before it was emitted simply has no such key, and the reader's default is PASSIVE.",
+                  "type": "string",
+                  "enum": ["PASSIVE", "SIGNAL", "POWER", "OPENDRAIN", "NC", "GROUND"]
+                },
+                "direction": {
+                  "description": "The direction the part's arrow declares (section 10). Optional, defaulting to 'none'.",
+                  "type": "string",
+                  "enum": ["none", "in", "out", "bidir"]
                 }
               }
             }

@@ -69,6 +69,12 @@ enum class PinType : std::uint8_t { Passive, Signal, Power, OpenDrain, NC, Groun
 
 [[nodiscard]] std::string_view pinTypeName(PinType t) noexcept;
 
+// The name a port direction is written under wherever one is emitted or read
+// back: the rules language (docs/rules.md, "direction == out") and the netlist's
+// per-pin 'direction'. One spelling, so a rule and a netlist cannot disagree.
+[[nodiscard]] std::string_view portDirName(PortDir d) noexcept;
+[[nodiscard]] bool lookupPortDir(std::string_view name, PortDir& out) noexcept;
+
 // The unit a value type demands, for reporting a mismatch.
 [[nodiscard]] Unit expectedUnit(ValueType t) noexcept;
 

@@ -76,7 +76,7 @@ A complete build:
 manta compile -o build/ src/*.manta
 manta link --top power-and-signal -L build/ --bom build/bom.csv -o build/board.mantaNets
 manta annotate -n build/board.mantaNets --swaps src/*.manta
-manta export --format kicad -o build/board.net build/board.mantaNets
+manta export --format kicad --footprint-map board.fpmap -o build/board.net build/board.mantaNets
 ```
 
 And in continuous integration:

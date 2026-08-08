@@ -108,7 +108,68 @@ foreach(format kicad altium orcad allegro)
     if(size LESS 100)
         message(FATAL_ERROR "export ${format} produced almost nothing")
     endif()
+
+    # Spec 15.8, the same rule every other stage is held to. A UUID or a map
+    # leaking iteration order into the output would show up here and nowhere
+    # else, because export is the one stage whose input is already a file.
+    run_manta(export --format ${format} -o "${WORK}/board2.${format}"
+              "${WORK}/board.mantaNets")
+    file(SHA256 "${WORK}/board.${format}" a)
+    file(SHA256 "${WORK}/board2.${format}" b)
+    if(NOT a STREQUAL b)
+        message(FATAL_ERROR "export ${format} is not deterministic")
+    endif()
 endforeach()
+
+# Every component reaches the netlist with its pins attached. A designator is
+# unique only within its block, so two instances of one block both hold an 'R1';
+# if the netlist names them both 'R1' a reader cannot tell them apart and the
+# second copy silently arrives with no connections at all.
+file(READ "${WORK}/board.kicad" kicad_net)
+file(STRINGS "${WORK}/board.kicad" comp_refs REGEX "\\(comp \\(ref ")
+foreach(line ${comp_refs})
+    string(REGEX REPLACE ".*\\(comp \\(ref \"([^\"]*)\".*" "\\1" ref "${line}")
+    # A literal search, not MATCHES: an un-annotated designator contains '?',
+    # which a regex would read as an operator and match the wrong thing.
+    string(FIND "${kicad_net}" "(node (ref \"${ref}\")" at)
+    if(at EQUAL -1)
+        message(FATAL_ERROR "component '${ref}' is in the netlist with no connections")
+    endif()
+endforeach()
+
+# A footprint with no library nickname will not place in KiCad, so exporting one
+# is a warning; '-Werror' is how a project refuses to ship a netlist that cannot
+# be laid out. tests/spec uses bare package names, so this must fire.
+execute_process(COMMAND "${MANTA}" export --format kicad -Werror
+                        -o "${WORK}/board.werror.net" "${WORK}/board.mantaNets"
+                ERROR_VARIABLE fp_err RESULT_VARIABLE fp_code)
+if(fp_code EQUAL 0)
+    message(FATAL_ERROR "an unqualified footprint did not warn")
+endif()
+if(NOT fp_err MATCHES "W-FOOTPRINT")
+    message(FATAL_ERROR "expected W-FOOTPRINT, got: ${fp_err}")
+endif()
+
+# ...and giving it a library silences it.
+file(WRITE "${WORK}/fp.map" "# every package tests/spec uses\n")
+foreach(fp QFP-STM32-32 TSSOP-14 SOD-323 HDR-1x4 BGA-96 TP-1MM R-0603 C-0603)
+    file(APPEND "${WORK}/fp.map" "${fp}  Test_Library:${fp}\n")
+endforeach()
+run_manta(export --format kicad --footprint-map "${WORK}/fp.map" --footprint-lib Fallback
+          -Werror -o "${WORK}/board.mapped.net" "${WORK}/board.mantaNets")
+file(STRINGS "${WORK}/board.mapped.net" bare REGEX "\\(footprint \"[^:\"]*\"\\)")
+if(bare)
+    message(FATAL_ERROR "a footprint reached KiCad with no library: ${bare}")
+endif()
+
+# A map file that names no library defeats its own purpose, so it is refused.
+file(WRITE "${WORK}/bad.map" "R-0603  R_0603_1608Metric\n")
+execute_process(COMMAND "${MANTA}" export --format kicad --footprint-map "${WORK}/bad.map"
+                        -o "${WORK}/board.bad.net" "${WORK}/board.mantaNets"
+                ERROR_VARIABLE map_err RESULT_VARIABLE map_code)
+if(map_code EQUAL 0)
+    message(FATAL_ERROR "a map entry with no library was accepted")
+endif()
 
 # --- the end-of-content marker (spec 2.8) ----------------------------------
 # 'manta fmt' rewrites whole files from the AST, so without deliberate care it

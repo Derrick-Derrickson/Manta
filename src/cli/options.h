@@ -67,6 +67,8 @@ struct Options {
     std::string format;
     std::string constraintsPath;
     std::string flatFormat;
+    std::string footprintMapPath;
+    std::string footprintLib;
 };
 
 struct ParseOutcome {

@@ -15,8 +15,16 @@ manta fmt --check examples/blinky/*.manta
 manta compile -o build/ examples/blinky/*.manta
 manta check --top blinky -L build/ -Werror
 manta link  --top blinky -L build/ --bom build/bom.csv -o build/blinky.mantaNets
-manta export --format kicad -o build/blinky.net build/blinky.mantaNets
+manta export --format kicad --footprint-map examples/blinky/blinky.fpmap \
+             -Werror -o build/blinky.net build/blinky.mantaNets
 ```
+
+`blinky.fpmap` is what turns a package name into one KiCad can resolve:
+`@~footprint = R-0603` says what the part is, and the map says that KiCad calls
+it `Resistor_SMD:R_0603_1608Metric`. Keeping the two apart is what lets the same
+part library export to Altium, OrCAD and Allegro as well. Under `-Werror` an
+unmapped footprint fails the export rather than producing a netlist Pcbnew will
+refuse to place.
 
 No `--no-erc`, no `-Wno-`, and `-Werror` throughout. `tests/example.cmake` runs
 exactly that sequence, which makes this the other half of the conformance

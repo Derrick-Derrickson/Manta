@@ -134,15 +134,9 @@ void RuleEvaluator::typeError(Span at, std::string message) {
 
 namespace {
 
-std::string_view directionName(PortDir d) {
-    switch (d) {
-        case PortDir::None: return "none";
-        case PortDir::In: return "in";
-        case PortDir::Out: return "out";
-        case PortDir::Bidir: return "bidir";
-    }
-    return "none";
-}
+// One spelling, shared with the netlist's per-pin 'direction' (spec 15.4), so a
+// rule and an exported netlist can never disagree about what "out" means.
+std::string_view directionName(PortDir d) { return portDirName(d); }
 
 std::string_view pinTypeText(PinType t) {
     switch (t) {

@@ -1849,8 +1849,16 @@ unpowered-net are whole-design properties and cannot be evaluated one object at 
 carry a `version` field naming the language revision they target.
 
 Each entry in a net's `pins` array carries both `pin`, the physical package pin
-a layout tool routes to, and `logical`, the name the part declares for it. A
-netlist may also carry a top-level `swaps` array recording the exchanges a
+a layout tool routes to, and `logical`, the name the part declares for it. It
+also carries `type` and `direction`, the pin's electrical character after the
+strength ladder (§11.6) and the direction its arrow declares (§10). Those two
+cannot be recovered from a netlist any other way, because the part declaration
+is not part of the interchange, and a layout tool needs them: KiCad puts them on
+the pad and its design-rule check reads them. Both are optional, so a netlist
+written before they were emitted remains valid; a reader that finds neither
+shall assume `PASSIVE` and `none`.
+
+A netlist may also carry a top-level `swaps` array recording the exchanges a
 router made within a swap group, which is what `manta annotate --swaps` reconciles
 back to source (§13.6); it is optional, and its absence makes `--swaps` a no-op.
 
@@ -1874,8 +1882,8 @@ back to source (§13.6); it is optional, and its absence makes `--swaps` a no-op
     {
       "name": "3V3",
       "pins": [
-        {"designator": "U1", "pin": "1",  "logical": "VCC"},
-        {"designator": "C1", "pin": "1",  "logical": "A"}
+        {"designator": "U1", "pin": "1",  "logical": "VCC", "type": "POWER",   "direction": "in"},
+        {"designator": "C1", "pin": "1",  "logical": "A",   "type": "PASSIVE", "direction": "none"}
       ],
       "directives": { "CURRENT": "3A", "CLASS": "power" }
     }
@@ -1979,6 +1987,8 @@ manta export [options] --format <target> <netlist.mantaNets>
 | `-o`, `--output <file>` | Output path. Default: derived from the input name. |
 | `--constraints <file>` | Write directives to a separate constraint file where the target cannot carry them. |
 | `--flat-format <template>` | Override `@FLATFORMAT` for hierarchical designators. |
+| `--footprint-map <file>` | Map footprint names to the target's, one `name  Library:Footprint` pair per line. |
+| `--footprint-lib <nickname>` | Library nickname for any footprint the map does not cover and that names no library itself. KiCad only. |
 
 ### 15.6 Diagnostics
 

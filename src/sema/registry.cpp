@@ -158,6 +158,24 @@ std::string_view pinTypeName(PinType t) noexcept {
     return "PASSIVE";
 }
 
+std::string_view portDirName(PortDir d) noexcept {
+    switch (d) {
+        case PortDir::None: return "none";
+        case PortDir::In: return "in";
+        case PortDir::Out: return "out";
+        case PortDir::Bidir: return "bidir";
+    }
+    return "none";
+}
+
+bool lookupPortDir(std::string_view name, PortDir& out) noexcept {
+    if (name == "none") { out = PortDir::None; return true; }
+    if (name == "in") { out = PortDir::In; return true; }
+    if (name == "out") { out = PortDir::Out; return true; }
+    if (name == "bidir") { out = PortDir::Bidir; return true; }
+    return false;
+}
+
 Unit expectedUnit(ValueType t) noexcept {
     switch (t) {
         case ValueType::Resistance: return Unit::Ohm;

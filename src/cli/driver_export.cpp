@@ -38,7 +38,28 @@ int runExport(const Options& opts) {
     Design design;
     if (!readNetlist(*root, diags, design)) return finish(diags, opts, kExitUsage);
 
-    std::string rendered = exportDesign(design, format, opts.flatFormat);
+    // Loaded before anything is rendered: a map file with a bad line is a
+    // mistake in what the board is meant to be, not a detail to discover
+    // halfway through writing the output.
+    FootprintMap footprints;
+    if (!opts.footprintMapPath.empty()) {
+        std::string mapText;
+        if (!readFileBinary(opts.footprintMapPath, mapText, error)) {
+            diags.report(DiagId::Io, Span{},
+                         std::format("{}: {}", opts.footprintMapPath, error));
+            return finish(diags, opts, kExitUsage);
+        }
+        if (!loadFootprintMap(mapText, opts.footprintMapPath, diags, footprints)) {
+            return finish(diags, opts, kExitUsage);
+        }
+    }
+
+    ExportOptions exportOptions;
+    exportOptions.flatFormat = opts.flatFormat;
+    exportOptions.footprints = opts.footprintMapPath.empty() ? nullptr : &footprints;
+    exportOptions.footprintLib = opts.footprintLib;
+
+    std::string rendered = exportDesign(design, format, exportOptions, diags);
 
     std::string outputPath = opts.output.empty()
                                  ? withExtension(input, exportExtension(format))
