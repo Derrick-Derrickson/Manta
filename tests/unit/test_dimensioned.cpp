@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Spec 3.2 (dimensioned values), 3.4 (metric only), 2.3 (identifiers) and the
 // canonical SI-substituted rendering the formatter emits (spec 17).
 #include "lex/dimensioned.h"
@@ -97,6 +99,49 @@ TEST_CASE("spec 3.2: 'm' is metre alone but milli before a unit") {
     CHECK(d.unit == Unit::Hertz);
     CHECK(parseDimensioned("100nH", d));
     CHECK(d.unit == Unit::Henry);
+}
+
+TEST_CASE("an area is a length squared, and so is its prefix") {
+    // 'mm2' is a square millimetre, (10^-3 m)^2 = 10^-6 m2 -- not a
+    // milli-square-metre. Getting this wrong is a factor of a thousand and
+    // entirely silent, which is why it is asserted on the exponent and not
+    // merely on the spelling.
+    Dimensioned d;
+    CHECK(parseDimensioned("1mm2", d));
+    CHECK(d.unit == Unit::SquareMetre);
+    CHECK_EQ(d.mantissa, std::int64_t{1});
+    CHECK_EQ(d.exp10, -6);
+
+    // A bare squared unit parses: the leading 'm' is the unit, not a prefix.
+    CHECK(parseDimensioned("2m2", d));
+    CHECK(d.unit == Unit::SquareMetre);
+    CHECK_EQ(d.exp10, 0);
+    CHECK_EQ(d.mantissa, std::int64_t{2});
+
+    // ...and a length is still a length.
+    CHECK(parseDimensioned("5mm", d));
+    CHECK(d.unit == Unit::Metre);
+    CHECK_EQ(d.exp10, -3);
+}
+
+TEST_CASE("an area renders with an explicit point, and round-trips") {
+    // '1m5m2' would be the point-substituted spelling and reads as nonsense, so
+    // a squared unit always writes the point.
+    auto canon = [](const char* text) {
+        Dimensioned d;
+        CHECK(parseDimensioned(text, d));
+        return d.canonical();
+    };
+    CHECK_EQ(canon("1.5mm2"), std::string("1.5mm2"));
+    CHECK_EQ(canon("2m2"), std::string("2m2"));
+    CHECK_EQ(canon("0.5mm2"), std::string("500000um2"));
+
+    for (const char* text : {"2m2", "0.5mm2", "1.5mm2", "0.35mm2", "1000mm2"}) {
+        Dimensioned a, b;
+        CHECK(parseDimensioned(text, a));
+        CHECK(parseDimensioned(a.canonical(), b));
+        CHECK(a == b);
+    }
 }
 
 TEST_CASE("spec 3.4: imperial literals are recognised so E-17 can fire") {

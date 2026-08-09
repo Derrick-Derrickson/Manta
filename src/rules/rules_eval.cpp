@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "rules/rules_eval.h"
 
 #include <algorithm>
@@ -134,15 +136,9 @@ void RuleEvaluator::typeError(Span at, std::string message) {
 
 namespace {
 
-std::string_view directionName(PortDir d) {
-    switch (d) {
-        case PortDir::None: return "none";
-        case PortDir::In: return "in";
-        case PortDir::Out: return "out";
-        case PortDir::Bidir: return "bidir";
-    }
-    return "none";
-}
+// One spelling, shared with the netlist's per-pin 'direction' (spec 15.4), so a
+// rule and an exported netlist can never disagree about what "out" means.
+std::string_view directionName(PortDir d) { return portDirName(d); }
 
 std::string_view pinTypeText(PinType t) {
     switch (t) {
@@ -224,6 +220,15 @@ RuleValue RuleEvaluator::evalMember(const RuleValue& base, SymbolId name, RuleSc
             if (field == "footprint") return RuleValue::ofText(c.footprint);
             if (field == "fitted") return RuleValue::ofBoolean(c.fitted);
             if (field == "bom") return RuleValue::ofBoolean(c.bom);
+            // '@type' is a system field, so it is not in `fields` with the '#'
+            // ones. Exposed by name because a project's own rules are exactly
+            // where "every connector must be mated" belongs.
+            if (field == "type") return RuleValue::ofText(c.type);
+            // Absent rather than empty when unstated, so 'has(component.mate)'
+            // reads as "something is recorded as plugging in here".
+            if (field == "mate") {
+                return c.mate.empty() ? RuleValue::absent() : RuleValue::ofText(c.mate);
+            }
             if (field == "pins") {
                 RuleValue out;
                 out.kind = RuleValueKind::Collection;
@@ -731,6 +736,7 @@ void RuleEvaluator::runOnPart(const PartInfo& part, std::string_view partName) {
     component.designator = std::string(partName);
     component.identity = component.designator;
     component.partName = std::string(partName);
+    component.type = "board_part";  // overwritten below if the part declares one
     component.pins = part.pins;
     component.span = part.decl ? part.decl->span : Span{};
 
@@ -751,6 +757,8 @@ void RuleEvaluator::runOnPart(const PartInfo& part, std::string_view partName) {
             if (name == "footprint") component.footprint = rendered;
             else if (name == "fitted") component.fitted = rendered != "FALSE";
             else if (name == "bom") component.bom = rendered != "FALSE";
+            else if (name == "type") component.type = rendered;
+            else if (name == "mate") component.mate = rendered;
             continue;
         }
         component.fields.emplace_back(std::string(interner_.text(key.name)),

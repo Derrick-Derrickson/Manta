@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // 'manta annotate' (spec 13, 15.5).
 //
 // Spec 13.1 is emphatic that this is a separate command: "manta compile and

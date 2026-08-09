@@ -1,0 +1,47 @@
+// A card that daisy-chains: power and a data pair leave by J1, and arrive at J2
+// from the card upstream. The loom that joins them is 'jumper-8way'.
+part BACKPLANE-OUT {
+    @type       = boardconnector;
+    @mate       = jumper-8way;
+    @~footprint = HDR2;
+
+    1 = VPOS< &TYPE=POWER;
+    2 = TXD>;
+};
+
+part BACKPLANE-IN {
+    @type       = boardconnector;
+    @~footprint = HDR2;
+
+    1 = VPOS> &TYPE=POWER;
+    2 = RXD>;
+};
+
+part REG {
+    @~footprint = F;
+
+    1 = VO> &TYPE=POWER;
+    2 = G< &TYPE=POWER &~NET=GND;
+};
+
+part MCU {
+    @~footprint = F;
+
+    1 = VI< &TYPE=POWER;
+    2 = G< &TYPE=POWER &~NET=GND;
+    3 = TX>;
+    4 = RX<;
+};
+
+block sensor-card {
+    GND &TYPE=GROUND;
+    RAIL = VO{U1~REG};
+    RAIL == VI{U2~MCU};
+    RAIL == VPOS{J1~BACKPLANE-OUT};
+    UPLINK = VPOS{J2~BACKPLANE-IN};
+    UPLINK &STUB;
+    TX{U2} == TXD{J1};
+    TX{U2} == RXD{J2};
+    G{U1} == GND;
+    G{U2} == GND;
+};

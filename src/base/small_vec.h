@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Vector with inline storage for the first N elements.
 //
 // Most manta constructs are small: a device has one or two terminals, a chain a

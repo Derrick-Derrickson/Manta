@@ -1,5 +1,100 @@
 # Changelog
 
+## 1.2.0 — 2026-08-09
+
+### Licence: GPL-3.0-or-later
+
+manta is now free software. The evaluation licence 1.1.0 shipped under always
+said this was the intent; this is following through on it.
+
+What that means in practice: you may use, study, modify and redistribute manta
+freely, and anyone who distributes a modified version has to offer its source on
+the same terms. It does not reach someone who runs a modified manta behind a
+network service without ever distributing a binary — that would need AGPL, and
+remains available as a later choice.
+
+**Your designs are not covered.** A netlist, a BOM or an exported file is your
+design data, not a derived work of the compiler. manta embeds none of its own
+code in what it emits.
+
+### Language, revision 1.2
+
+- **`cable`** is a declaration kind. Its body is a chain, exactly as a block's
+  is, so replication and ranged designators keep an eight-way loom to a single
+  statement. It may hold only a cable connector, a wire or a crimp (E-44).
+- **A cable is its own deliverable.** `manta link --top <cable>` produces its
+  netlist and its BOM, with wires and crimps as real line items. E-24 (a ground
+  net) and E-20 (a footprint per part) do not apply to one.
+- **`@type`** says what a part is: `board_part` by default, and the structural
+  roles `boardconnector`, `cableconnector`, `wire` and `crimp`. The set stays
+  open, so `@type = regulator` is ordinary and travels to the BOM untouched.
+- **Mating.** A board connector declares `@mate = <cable>`; a cable connector
+  declares `@mates = <part>`, with an optional `@map`. The compiler checks the
+  fit (E-45, E-46) and, when the loom's far end plugs back into this same board,
+  follows each conductor through it and applies the rules that would apply had
+  the two been wired together directly (E-47, E-48) — which is how a board that
+  plugs into another copy of itself is checked from one board's source.
+- **`--assembly`** additionally writes a netlist and BOM for every mated cable,
+  as separate files. The board's own outputs are byte-identical with and without
+  it.
+- **An area unit**, `m2`, so a wire's cross-section is a quantity a rule can
+  check rather than a bare number.
+- **Range values**, `1:20` inside a list, so a twenty-way `@map` is one pair.
+
+Wire ampacity and "every connector must be mated" are deliberately not built in;
+`examples/blinky/blinky.mantaRules` shows both as project rules.
+
+### A KiCad netlist a board can be laid out from
+
+`manta export --format kicad` produced a valid S-expression netlist that KiCad
+could not actually use. Four things were in the way.
+
+- **Footprints now name a library.** KiCad resolves a footprint as
+  `Library:Footprint`; manta wrote bare package names, so components either
+  failed to place or warned on every update. `--footprint-map <file>` maps
+  package names to the target's, `--footprint-lib <nickname>` supplies a
+  default, a name that already names a library passes through, and anything
+  still unqualified is `W-FOOTPRINT`. The translation lives beside the design
+  rather than in the part, so one part library still serves all four targets.
+- **Nets carry pin function and type.** `(pinfunction …)` and `(pintype …)` are
+  emitted per node, which KiCad puts on the pad and its design-rule check reads.
+  This needed `type` and `direction` on each pin in `.mantaNets`, both optional,
+  since the part declaration is not part of the interchange.
+- **Components have a stable identity.** Each carries an RFC 4122 version 5
+  UUID and a sheet path derived from its instance path, so re-annotating a
+  design no longer orphans a placed footprint. Nothing random or clock-derived:
+  export stays byte-identical, verified across x86-64 and ARM64.
+- **Hierarchical components keep their connections.** A designator is unique
+  only within its block, so two instances of one block both held an `R1` and a
+  reader could not tell them apart — every pin of the second copy was silently
+  lost. `.mantaNets` and the BOM now name a component by its flattened instance
+  path, which §13.4 already required of "the single unique string a BOM and a
+  layout tool require".
+
+`examples/blinky` ships `blinky.fpmap`, and `tests/example.cmake` resolves every
+footprint and every pin against KiCad's installed libraries when they are
+present — the same lookup Pcbnew performs.
+
+Recorded in `docs/assumptions.md` as C6, C7 and C8.
+
+### An un-annotated designator now fails the build
+
+- **A block instance written `BLK?` is E-UNANNOTATED.** The check only ever
+  looked at `Component::designator`, and a block instance is not a component —
+  so it slipped through and reached the netlist, the BOM and the layout tool as
+  `BLK?7_R1`. It is an error at link, alongside the unassigned devices, and
+  `-Wno-unannotated` still allows the one link that bootstraps a design, as
+  §13.1 requires.
+- **A range designator on a block resolves.** `instantiateBlock` handled only
+  the `Numbered` form, so `BLK%[1:2]` — which §13.3 defines as the *annotated*
+  form, one token carrying N designators — was treated as unassigned and became
+  `BLK?2`, `BLK?3`. It now hands its members out one per copy, exactly as a
+  device does, so `examples/blinky` exports `BLK1_R1` and `BLK2_R1` as
+  `board.manta` has always said it should.
+
+`tests/spec` declares a block and never instantiates one, which is how both
+survived; `tests/pipeline.cmake` now instantiates one both ways.
+
 ## 1.1.0 — 2026-08-08
 
 First release.

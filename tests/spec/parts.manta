@@ -6,7 +6,7 @@ static part R-10k-1pct-0603 {
     #value      = 10kR;
     #tolerance  = ±1%;
     #power      = 100mW;
-    #!type      = resistor;
+    @!type      = resistor;
     #~mpn       = "RC0603FR-0710KL";
     #~cost      = 0.002;
 

@@ -4,32 +4,32 @@
 
 static part R-0603-generic {
     @~footprint = R-0603;
-    #!type      = resistor;
+    @!type      = resistor;
     1 = A &CASUAL;
     2 = B &CASUAL;
 };
 
-part 10kR-0603  { @~footprint = R-0603; #value = 10kR;  #!type = resistor; 1 = A &CASUAL; 2 = B &CASUAL; };
-part 50R-0603   { @~footprint = R-0603; #value = 50R;   #!type = resistor; 1 = A &CASUAL; 2 = B &CASUAL; };
-part 100kR-0603 { @~footprint = R-0603; #value = 100kR; #!type = resistor; 1 = A &CASUAL; 2 = B &CASUAL; };
-part 0R-0603    { @~footprint = R-0603; #value = 0R;    #!type = resistor; 1 = A &CASUAL; 2 = B &CASUAL; };
+part 10kR-0603  { @~footprint = R-0603; #value = 10kR;  @!type = resistor; 1 = A &CASUAL; 2 = B &CASUAL; };
+part 50R-0603   { @~footprint = R-0603; #value = 50R;   @!type = resistor; 1 = A &CASUAL; 2 = B &CASUAL; };
+part 100kR-0603 { @~footprint = R-0603; #value = 100kR; @!type = resistor; 1 = A &CASUAL; 2 = B &CASUAL; };
+part 0R-0603    { @~footprint = R-0603; #value = 0R;    @!type = resistor; 1 = A &CASUAL; 2 = B &CASUAL; };
 
-part 100nF-0603 { @~footprint = C-0603; #value = 100nF; #!type = capacitor; 1 = A &CASUAL; 2 = B &CASUAL; };
-part 10uF-0805  { @~footprint = C-0805; #value = 10uF;  #!type = capacitor; 1 = A &CASUAL; 2 = B &CASUAL; };
+part 100nF-0603 { @~footprint = C-0603; #value = 100nF; @!type = capacitor; 1 = A &CASUAL; 2 = B &CASUAL; };
+part 10uF-0805  { @~footprint = C-0805; #value = 10uF;  @!type = capacitor; 1 = A &CASUAL; 2 = B &CASUAL; };
 
-part MT100UFA { @~footprint = IND-1210; #value = 10uH; #!type = inductor; 1 = A &CASUAL; 2 = B &CASUAL; };
-part BLM18PG  { @~footprint = L-0603;   #value = 600R; #!type = ferrite;  1 = A &CASUAL; 2 = B &CASUAL; };
+part MT100UFA { @~footprint = IND-1210; #value = 10uH; @!type = inductor; 1 = A &CASUAL; 2 = B &CASUAL; };
+part BLM18PG  { @~footprint = L-0603;   #value = 600R; @!type = ferrite;  1 = A &CASUAL; 2 = B &CASUAL; };
 
 part DI3643 {
     @~footprint = SOD-323;
-    #!type      = diode;
+    @!type      = diode;
     1 = A;
     2 = K;
 };
 
 part FFET123 {
     @~footprint = SOT-23;
-    #!type      = fet;
+    @!type      = fet;
     1 = G<;
     2 = S;
     3 = D;

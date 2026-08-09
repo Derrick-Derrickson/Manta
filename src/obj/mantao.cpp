@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "obj/mantao.h"
 
 #include <format>
@@ -145,6 +147,10 @@ private:
                 // The lexeme as written, because a net-name context reads the
                 // same word differently (spec 11.6).
                 if (valid(v->text)) w_.field("text", in_.text(v->text));
+                break;
+            case ValueKind::Range:
+                w_.field("lo", v->rangeLo);
+                w_.field("hi", v->rangeHi);
                 break;
             case ValueKind::String:
             case ValueKind::Identifier:
@@ -555,6 +561,7 @@ public:
             case ItemKind::Harness: return "harness";
             case ItemKind::Netclass: return "netclass";
             case ItemKind::Match: return "match";
+            case ItemKind::Cable: return "cable";
         }
         return "block";
     }
@@ -645,6 +652,7 @@ public:
             case ValueKind::Boolean: return "bool";
             case ValueKind::Identifier: return "id";
             case ValueKind::List: return "list";
+            case ValueKind::Range: return "range";
             case ValueKind::Repeat: return "repeat";
             case ValueKind::Interp: return "interp";
             case ValueKind::Version: return "version";
@@ -808,6 +816,7 @@ private:
         else if (k == "bool") v->kind = ValueKind::Boolean;
         else if (k == "id") v->kind = ValueKind::Identifier;
         else if (k == "list") v->kind = ValueKind::List;
+        else if (k == "range") v->kind = ValueKind::Range;
         else if (k == "repeat") v->kind = ValueKind::Repeat;
         else if (k == "interp") v->kind = ValueKind::Interp;
         else if (k == "version") v->kind = ValueKind::Version;
@@ -824,6 +833,10 @@ private:
                     fail(std::format("malformed numeric value '{}' in object", o->str("num")));
                 }
                 if (const JsonValue* t = o->find("text")) v->text = in_.intern(t->text);
+                break;
+            case ValueKind::Range:
+                v->rangeLo = o->integer("lo");
+                v->rangeHi = o->integer("hi");
                 break;
             case ValueKind::String:
             case ValueKind::Identifier:
@@ -1224,6 +1237,7 @@ private:
                      : k == "harness"  ? ItemKind::Harness
                      : k == "netclass" ? ItemKind::Netclass
                      : k == "match"    ? ItemKind::Match
+                     : k == "cable"    ? ItemKind::Cable
                                        : ItemKind::Block;
         item->name = readName(o.find("name"));
         item->nameSpan = item->name.span;

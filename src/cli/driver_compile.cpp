@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // 'manta compile' (spec 15.2, 15.5).
 //
 // Per source file: lex and parse, validate locally, emit a .mantaO object with

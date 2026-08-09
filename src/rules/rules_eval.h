@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Evaluating user rules over an elaborated design.
 //
 // A small interpreter. Domains are enumerated in Design order, which is already

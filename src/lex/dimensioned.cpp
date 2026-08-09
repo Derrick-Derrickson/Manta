@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "lex/dimensioned.h"
 
 #include <array>
@@ -40,8 +42,10 @@ struct UnitEntry {
 
 // Ordered longest-first so that "Hz" wins over "H": "100nHz" is a frequency,
 // "100nH" an inductance.
-constexpr std::array<UnitEntry, 11> kUnits{{
+constexpr std::array<UnitEntry, 12> kUnits{{
     {"Hz", Unit::Hertz},
+    {"m2", Unit::SquareMetre},
+
     {"R", Unit::Ohm},
     {"F", Unit::Farad},
     {"H", Unit::Henry},
@@ -98,6 +102,7 @@ std::string_view unitSuffix(Unit u) noexcept {
         case Unit::Watt: return "W";
         case Unit::Hertz: return "Hz";
         case Unit::Metre: return "m";
+        case Unit::SquareMetre: return "m2";
         case Unit::Second: return "s";
         case Unit::Celsius: return "C";
         case Unit::Percent: return "%";
@@ -107,6 +112,7 @@ std::string_view unitSuffix(Unit u) noexcept {
 
 bool isTimeUnit(Unit u) noexcept { return u == Unit::Second; }
 bool isLengthUnit(Unit u) noexcept { return u == Unit::Metre; }
+bool isSquaredUnit(Unit u) noexcept { return u == Unit::SquareMetre; }
 
 bool operator==(const Dimensioned& a, const Dimensioned& b) noexcept {
     return a.unit == b.unit && a.differential == b.differential &&
@@ -220,6 +226,7 @@ std::string_view unitName(Unit u) noexcept {
         case Unit::Watt: return "power";
         case Unit::Hertz: return "frequency";
         case Unit::Metre: return "length";
+        case Unit::SquareMetre: return "area";
         case Unit::Second: return "time";
         case Unit::Celsius: return "temperature";
         case Unit::Percent: return "percentage";
@@ -237,7 +244,8 @@ bool unitFromName(std::string_view name, Unit& out) noexcept {
         {"capacitance", Unit::Farad},   {"inductance", Unit::Henry},
         {"voltage", Unit::Volt},        {"current", Unit::Ampere},
         {"power", Unit::Watt},          {"frequency", Unit::Hertz},
-        {"length", Unit::Metre},        {"time", Unit::Second},
+        {"length", Unit::Metre},        {"area", Unit::SquareMetre},
+        {"time", Unit::Second},
         {"temperature", Unit::Celsius}, {"percentage", Unit::Percent},
     };
     for (const Entry& e : kNames) {
@@ -292,10 +300,14 @@ std::string Dimensioned::canonical() const {
     char prefix = '\0';
     std::int32_t shift = 0;
     if (unit != Unit::None && unit != Unit::Percent && unit != Unit::Celsius) {
+        // A prefix on a squared unit squares with it, so the ladder steps by
+        // 10^6 and the character written is the root: 10^-6 m2 is 'mm2', a
+        // square millimetre, not a milli-square-metre.
+        std::int32_t step = isSquaredUnit(unit) ? 2 : 1;
         for (auto [e, ch] : kPrefixes) {
-            if (magnitude >= e) {
+            if (magnitude >= e * step) {
                 prefix = ch;
-                shift = e;
+                shift = e * step;
                 break;
             }
         }
@@ -317,8 +329,18 @@ std::string Dimensioned::canonical() const {
     out += lhs;
 
     std::string_view suffix = unitSuffix(unit);
+    // The point-substituted spellings exist because "4k7R" is compact and reads
+    // at a glance. A unit that is itself two characters ending in a digit gets
+    // no such benefit -- 1.5mm2 would render as "1m5m2", which reads as
+    // nonsense -- so a squared unit always writes an explicit point.
+    bool substitutePoint = !isSquaredUnit(unit);
     if (rhs.empty()) {
         // No fractional part: prefix and unit simply follow. "10kR", "100nF".
+        if (prefix) out += prefix;
+        out += suffix;
+    } else if (!substitutePoint) {
+        out += '.';
+        out += rhs;
         if (prefix) out += prefix;
         out += suffix;
     } else if (prefix) {
@@ -341,7 +363,7 @@ std::string Dimensioned::canonical() const {
 
 bool isReservedWord(std::string_view t) noexcept {
     return t == "block" || t == "part" || t == "harness" || t == "netclass" || t == "match" ||
-           t == "static" || t == "extern";
+           t == "cable" || t == "static" || t == "extern";
 }
 
 std::string_view imperialSuffix(std::string_view text) noexcept {
@@ -428,9 +450,16 @@ bool parseDimensioned(std::string_view text, Dimensioned& out) noexcept {
     }
 
     // An SI prefix is only consumed when something follows it, so that "1m" is
-    // one metre while "5mm" is five millimetres.
+    // one metre while "5mm" is five millimetres -- and when what follows is not
+    // itself the whole unit, so that "2m2" is two square metres rather than a
+    // milli-prefix with nothing left to qualify.
+    Unit wholeUnit = Unit::None;
+    std::size_t wholeConsumed = 0;
+    bool restIsWholeUnit = matchUnit(rest, wholeUnit, wholeConsumed) &&
+                           wholeConsumed == rest.size();
+
     std::int32_t siExp = 0;
-    if (rest.size() > 1) {
+    if (rest.size() > 1 && !restIsWholeUnit) {
         std::int32_t e = siPrefixExponent(rest[0]);
         if (e != kNotPrefix) {
             siExp = e;
@@ -475,6 +504,11 @@ bool parseDimensioned(std::string_view text, Dimensioned& out) noexcept {
     }
 
     if (!rest.empty()) return false;
+
+    // A prefix on a squared unit squares with it: 'mm2' is a square millimetre,
+    // (10^-3 m)^2 = 10^-6 m^2, not a milli-square-metre. Getting this wrong
+    // would be off by a thousand and entirely silent.
+    if (isSquaredUnit(unit)) siExp *= 2;
 
     out.mantissa = negative ? -mantissa : mantissa;
     out.exp10 = exp10 + siExp;

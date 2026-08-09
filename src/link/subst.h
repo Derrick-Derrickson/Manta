@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Substitution evaluation (spec 14).
 //
 // Spec 14.1: "$...$ is evaluated at link time. A field may be overridden at an

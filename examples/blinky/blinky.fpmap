@@ -1,0 +1,30 @@
+# KiCad footprints for the blinky example.
+#
+#   manta export --format kicad --footprint-map blinky.fpmap blinky.mantaNets
+#
+# The parts in parts.manta name packages, not libraries: '@~footprint = R-0603'
+# says what the part is, and nothing about what any one EDA tool calls it. This
+# file is where that translation lives, so the same library also exports to
+# Altium, OrCAD and Allegro without editing a part.
+#
+# Every entry must be 'Library:Footprint'. KiCad resolves footprints against its
+# library table and a bare name will not place; manta rejects an entry here that
+# has no library, which is the whole reason for writing the file.
+#
+# The names below are from KiCad's standard footprint library, version 9.
+
+R-0603      Resistor_SMD:R_0603_1608Metric
+C-0603      Capacitor_SMD:C_0603_1608Metric
+C-0805      Capacitor_SMD:C_0805_2012Metric
+LED-0603    LED_SMD:LED_0603_1608Metric
+SOT-23-5    Package_TO_SOT_SMD:SOT-23-5
+SOIC-8      Package_SO:SOIC-8_3.9x4.9mm_P1.27mm
+
+# A footprint's pads have to be the pins the part declares -- the map renames,
+# it does not translate a pinout. CONN-USB-C declares four numbered pins
+# (VBUS, GND, CC1, CC2), so it maps to a four-pad connector. A real USB-C
+# receptacle has pads named A1, A4, B1 and so on, and nothing on it would
+# answer to '1'; using one here would place the part and connect none of it.
+# Giving the example a genuine USB-C means changing the part to declare that
+# pinout, which is a question about the design rather than about export.
+USB-C-16    Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The single source of truth for every diagnostic manta can emit.
 //
 // Spec 1.3 requires a conforming implementation to "implement all diagnostics in
@@ -45,6 +47,32 @@ MANTA_DIAG(UserRule, "E-RULE",     "rule",     Severity::Error, "{}")
 // what the bootstrap run needs.
 MANTA_DIAG(Unannotated, "E-UNANNOTATED", "unannotated", Severity::Error,
            "instance '{}' has no designator; run 'manta annotate' to assign one")
+// A footprint exported to KiCad with no library nickname. KiCad resolves a
+// footprint as 'Library:Footprint' against its library table, so a bare name
+// either fails to place or places with a warning on every subsequent update.
+// A warning rather than an error because the netlist is still worth having:
+// '--footprint-map' or '--footprint-lib' is how you silence it, and
+// '-Werror=footprint' is how you refuse to ship one that would not place.
+MANTA_DIAG(Footprint, "W-FOOTPRINT", "footprint", Severity::Warning, "{}")
+// A '@type' value that is nearly, but not exactly, one of the structural roles.
+// The set is open on purpose -- '@type = resistor' is ordinary and means nothing
+// to the compiler -- so a typo cannot be an error. But the consequence of one is
+// silent: 'boardconector' is simply not a connector, and every mating check
+// stops applying without a word. This is that word.
+MANTA_DIAG(PartTypeNearMiss, "W-TYPE", "part-type", Severity::Warning,
+           "'@type = {}' is not a structural role; did you mean '{}'?")
+
+// ---------------------------------------------------------------------------
+// Connectors, cables and mating (spec 12A). Numbered, because these are
+// properties of the design rather than of the build.
+// ---------------------------------------------------------------------------
+MANTA_DIAG(E44, "E-44", "cable-contents", Severity::Error,
+           "'{}' is a {} and cannot go in a cable; a cable holds cable "
+           "connectors, wires and crimps")
+MANTA_DIAG(E45, "E-45", "no-mate", Severity::Error, "{}")
+MANTA_DIAG(E46, "E-46", "mate-pins", Severity::Error, "{}")
+MANTA_DIAG(E47, "E-47", "mate-drivers", Severity::Error, "{}")
+MANTA_DIAG(E48, "E-48", "mate-power", Severity::Error, "{}")
 
 // ---------------------------------------------------------------------------
 // Section 16.1 — errors

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // A minimal test harness.
 //
 // Deliberately not a third-party framework: it is ~80 lines, needs no network

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The .mantaO round trip (spec 15.2, 15.4) and its determinism (spec 15.8).
 //
 // Writing, reading and writing again must produce byte-identical JSON. That one
@@ -66,6 +68,26 @@ std::string reserialise(const std::string& objectText, bool* ok) {
     return out;
 }
 
+// The same identity check, on source given inline rather than as a fixture.
+void checkRoundTripOf(const char* what, const std::string& text) {
+    std::size_t errors = 0;
+    std::string first = compileToObject(text, &errors);
+    if (errors != 0) {
+        ::mantatest::fail(__FILE__, __LINE__, std::string(what) + " failed to compile");
+        return;
+    }
+    bool ok = false;
+    std::string second = reserialise(first, &ok);
+    if (!ok) {
+        ::mantatest::fail(__FILE__, __LINE__, std::string(what) + " failed to read back");
+        return;
+    }
+    if (first != second) {
+        ::mantatest::fail(__FILE__, __LINE__, std::string(what) + ": round trip differs\n" +
+                                                  first + "\n---\n" + second);
+    }
+}
+
 void checkRoundTrip(const char* fixture) {
     std::string text = readFixture(fixture);
     if (text.empty()) {
@@ -117,6 +139,21 @@ TEST_CASE("spec 15.2: a block with substitutions round-trips unevaluated") {
 
 TEST_CASE("spec 15.2: the complete board round-trips") {
     checkRoundTrip("board.manta");
+    checkRoundTrip("cable.manta");
+}
+
+TEST_CASE("a range value survives the object round trip") {
+    // '1:20' inside a list is what keeps a twenty-way pin map to one pair. A
+    // range may descend -- that is how a reversed map is written -- so the
+    // order of its endpoints is part of its meaning and must not be normalised.
+    checkRoundTripOf("range value", R"(part p {
+    @~footprint = F;
+    #map = [[1:20],[20:1]];
+    #mixed = [3, 7:9, 4];
+    1 = A &CASUAL;
+    2 = B &CASUAL;
+};
+)");
 }
 
 TEST_CASE("spec 15.8: compiling twice gives byte-identical objects") {

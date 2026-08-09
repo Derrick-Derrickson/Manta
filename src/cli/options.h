@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Command-line parsing for the six subcommands of spec 15.5.
 #pragma once
 
@@ -49,6 +51,7 @@ struct Options {
     std::string bomPath;
     std::string mapPath;
     bool noErc = false;
+    bool assembly = false;
     bool noEmit = false;
 
     // annotate
@@ -67,6 +70,8 @@ struct Options {
     std::string format;
     std::string constraintsPath;
     std::string flatFormat;
+    std::string footprintMapPath;
+    std::string footprintLib;
 };
 
 struct ParseOutcome {

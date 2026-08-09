@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Console and process-entry portability.
 //
 // Three things differ between Linux and Windows and are confined here:

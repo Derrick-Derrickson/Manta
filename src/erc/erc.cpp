@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "erc/erc.h"
 
 #include <algorithm>
@@ -51,6 +53,9 @@ std::string_view ErcChecker::nameOf(const Component& c) const {
 bool ErcChecker::isCapacitor(const Component& c) const {
     // See docs/assumptions.md, B1. The specification never says how a capacitor
     // is identified, yet W-03 and W-04 both depend on it.
+    if (c.type == "capacitor") return true;
+    // A '#type' user field is still honoured, because a design written before
+    // 'type' moved to the system namespace is still a valid design.
     for (const auto& [name, value] : c.fields) {
         if (name == "type" && value == "capacitor") return true;
     }
@@ -142,6 +147,10 @@ void ErcChecker::checkDrivers() {
 
 void ErcChecker::checkFootprints() {
     for (const Component& c : design_.components) {
+        // A footprint is a place on a board. A wire and a crimp have neither a
+        // board nor a place on one, so E-20 is not about them.
+        if (c.partType == PartType::Wire || c.partType == PartType::Crimp) continue;
+        if (design_.kind == "cable") continue;
         // Spec 9.5: "@footprint ... Required for any fitted part."
         if (c.fitted && c.footprint.empty()) {
             diags_.report(DiagId::E20, c.span, nameOf(c));
@@ -150,6 +159,9 @@ void ErcChecker::checkFootprints() {
 }
 
 void ErcChecker::checkGroundDeclared() {
+    // A loom carries whatever the boards at its ends carry. Requiring it to
+    // declare a ground of its own would mean inventing one.
+    if (design_.kind == "cable") return;
     // Spec 5.3: "A design that declares no ground net is error E-24."
     for (const Net& net : design_.nets) {
         if (net.ground) return;

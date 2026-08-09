@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Deterministic JSON writing and reading.
 //
 // Hand-rolled rather than pulled in, for one reason above all: spec 15.8

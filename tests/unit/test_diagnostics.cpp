@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The conformance suite (spec 1.3).
 //
 // Every fixture in tests/diag is named for the diagnostic code it must provoke.
@@ -170,6 +172,7 @@ TEST_CASE("W-06 weak field never overridden") { expectFires("W-06"); }
 TEST_CASE("W-07 identifiers differing only by '-' versus '_'") { expectFires("W-07"); }
 TEST_CASE("W-08 frozen swap group") { expectFires("W-08"); }
 TEST_CASE("W-09 supply with no consumers") { expectFires("W-09"); }
+TEST_CASE("W-TYPE near miss on a structural role") { expectFires("W-TYPE"); }
 
 // ---------------------------------------------------------------------------
 // The table itself

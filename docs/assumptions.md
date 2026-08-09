@@ -108,8 +108,8 @@ Nothing in the language marks a part as capacitive; parts are opaque.
 
 **Resolution.** A part is treated as a capacitor when either holds:
 
-1. it carries a `#type` field whose value is `capacitor` — the convention the
-   specification itself establishes when it writes `#!type = resistor`; or
+1. it carries a `@type` field whose value is `capacitor` — the convention the
+   specification itself establishes when it writes `@!type = resistor`; or
 2. it is two-terminal and carries a `#value` dimensioned in farads.
 
 Both warnings are individually suppressible (`-Wno-W-03`, `-Wno-cap-in-series`).
@@ -167,7 +167,126 @@ The netlist example shows a physical pin number for one component
 (`{"designator": "C1", "pin": "A"}`).
 
 **Resolution.** Both are emitted: `pin` is the physical package pin, which is
-what a layout tool needs, and `logical` is the name the part declares.
+what a layout tool needs, and `logical` is the name the part declares. Each
+entry also carries `type` and `direction`, which no other part of the
+interchange records and which a layout tool needs: KiCad puts them on the pad
+and its design-rule check reads them. Both are optional, so a netlist written
+before they existed still validates.
+
+### C6. Footprint names a layout tool can resolve
+
+A part says `@~footprint = R-0603`, which names a package. KiCad resolves a
+footprint as `Library:Footprint` against its footprint library table, and a bare
+name either fails to place or places with a warning on every later update. The
+specification says nothing about how one becomes the other, and it should not:
+the four export targets name footprints differently, and a part library that
+hard-codes any one of them stops serving the other three.
+
+**Resolution.** The translation lives beside the design, not in the part.
+`manta export --footprint-map <file>` reads a table of `name  Library:Footprint`
+pairs, and resolution takes the first of these that applies:
+
+1. an entry in the map file;
+2. otherwise the raw name, if it already names a library;
+3. otherwise `<--footprint-lib>:<raw>`, when a default nickname was given;
+4. otherwise the raw name, and `W-FOOTPRINT`.
+
+The map is only a rename table, so it applies to every target. The default
+nickname and the warning are KiCad's alone, because only KiCad resolves
+`Library:Footprint`. A map entry that names no library is refused outright: it
+would produce exactly the unresolvable name the file exists to prevent.
+
+`W-FOOTPRINT` is a warning and not an error because the netlist is still worth
+having — `-Werror=footprint` is how a project refuses to ship one that will not
+place. It is reported once per distinct footprint, not once per component.
+
+The map cannot translate a *pinout*, only a name. A footprint whose pads are
+`A1` and `B1` will not serve a part declaring pins `1`..`4`, and choosing one
+that does is a question about the design rather than about export.
+
+### C7. Component identity across a re-import
+
+A layout tool matches a netlist component to a footprint already on the board
+either by reference designator or by UUID. Manta emitted no UUID, so only the
+first was possible, and re-annotating a design orphaned every placement.
+
+**Resolution.** The KiCad netlist carries an RFC 4122 version 5 UUID per
+component and per sheet, derived from the component's **instance path** rather
+than its designator — which is the point: renaming `U3` to `U7` must not move
+the part, and moving a part between blocks must.
+
+Version 5 rather than a scheme of manta's own, so the UUID for a given path can
+be recomputed by anyone without reading manta's source. The namespace UUID is
+`ae130b25-7266-4fdc-8da0-a1330e189542`, generated once and frozen; changing it
+would orphan every footprint manta has ever placed.
+
+Nothing here is random or clock-derived, so spec 15.8 still holds: the same
+design exports byte-identically every time.
+
+### C8. Which name a net's pin entry uses for its component
+
+A designator is unique only within its block, so instantiating a block twice
+gives two components called `R1`. A net's pins name their component by one
+string and nothing else, and a reader given `R1` twice cannot tell them apart —
+so every pin of the second copy is lost.
+
+**Resolution.** `.mantaNets` and the BOM name a component by its flattened
+instance path whenever it is nested, which §13.4 already calls "the single
+unique string a BOM and a layout tool require". The local designator is not
+lost: a component entry also carries its `path`, whose last element is exactly
+that.
+
+### C9. What a part is, and how far the set is closed
+
+`@type` had to interpret `boardconnector` and `wire` while leaving `resistor`
+and `ferrite` alone. A closed set would reject the classifications a design
+legitimately carries; a wholly open one would let `boardconector` silently
+disable every mating check.
+
+**Resolution.** The set is open. Five values are structural and are interpreted;
+anything else is an ordinary classification, carried to the BOM untouched. A
+value that is not structural but is within one edit of one, or matches one after
+case folding, is warning **W-TYPE** — a typo cannot be an error when the set is
+open, but its consequence is silent, and that is worth a word.
+
+`@type` is a system field yet is emitted in the netlist, given a BOM column and
+exposed to rules as `component.type`. Without that, moving `type` out of the `#`
+namespace would have removed it from both, and the project rules that check
+mating depend on it.
+
+### C10. Which end of a loom is plugged in where
+
+A cable with two identical housings mates with a board connector at either end,
+and nothing in the source distinguishes them.
+
+**Resolution.** The first connector in elaboration order is taken as the near
+end and the other as the far end. They are interchangeable by construction — two
+identical housings on one loom — so there is nothing to choose between them, and
+the choice is deterministic.
+
+Deciding the far end *on the board* is the same question and is not: the far end
+is the first board connector, other than the one the loom is already plugged
+into, whose part the far housing names in `@mates`. A board with two identical
+outgoing sockets and one loom is therefore resolved arbitrarily but consistently.
+Where that matters, the two sockets are different parts.
+
+### C11. How far a conductor is traced
+
+**Resolution.** One hop. A conductor is followed from a board pin, through the
+loom's wires and crimps, to the pin at the far end, and no further. When the far
+end plugs back into this same board — a board plugged into another copy of
+itself — that is enough to see the whole loop, because the second copy is the
+same design.
+
+What is deliberately *not* done is to treat the chain as N cards deep. A signal
+that passes straight through and would collide with itself at the next hop is
+not reported. That check needs a policy about what a chain is for, which belongs
+in a project's rules rather than in the language.
+
+One consequence worth stating: a net whose only driver is on the next card
+reports **E-02** on this one, because ERC sees a board and the driver is not on
+it. That is honest — the board alone does have an undriven input — but it means
+a daisy-chained design carries `-Wno-E-02` or a `&STUB` on its uplink nets.
 
 ---
 

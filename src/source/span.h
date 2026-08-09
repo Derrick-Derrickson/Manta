@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Source locations.
 //
 // A Span is 12 bytes: file id, byte offset, byte length. Line and column are

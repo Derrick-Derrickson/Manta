@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Diagnostic collection, severity policy and rendering.
 //
 // Output form is fixed by spec 15.6:

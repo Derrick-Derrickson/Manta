@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Name resolution across objects (spec 4.1, 4.2, 4.3).
 //
 // Spec 4.1: "Names are resolved at link across every object supplied to the

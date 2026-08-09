@@ -9,7 +9,7 @@
   "properties": {
     "version": {
       "description": "The language revision this netlist targets.",
-      "enum": ["1.0", "1.1"]
+      "enum": ["1.0", "1.1", "1.2"]
     },
     "kind": { "const": "mantaNets" },
     "top": {
@@ -43,6 +43,10 @@
             "type": "boolean"
           },
           "footprint": { "type": "string" },
+          "type": {
+            "description": "What the part is, from '@type' (section 9.5). Five values are structural -- board_part, boardconnector, cableconnector, wire, crimp -- and the rest are ordinary classifications carried through untouched. Absent means board_part.",
+            "type": "string"
+          },
           "fields": {
             "description": "User fields, carried through untouched (section 9.1). Values are rendered per section 14.7.",
             "type": "object",
@@ -78,6 +82,16 @@
                 "logical": {
                   "description": "The name the part declares for that pin. Section 15.4's example shows a physical number for one component and a logical name for another; both are emitted so a consumer can take whichever it needs.",
                   "type": "string"
+                },
+                "type": {
+                  "description": "The pin type in force after the strength ladder (section 11.6). Optional: a netlist written before it was emitted simply has no such key, and the reader's default is PASSIVE.",
+                  "type": "string",
+                  "enum": ["PASSIVE", "SIGNAL", "POWER", "OPENDRAIN", "NC", "GROUND"]
+                },
+                "direction": {
+                  "description": "The direction the part's arrow declares (section 10). Optional, defaulting to 'none'.",
+                  "type": "string",
+                  "enum": ["none", "in", "out", "bidir"]
                 }
               }
             }

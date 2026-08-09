@@ -62,7 +62,8 @@ been decorated yet. That is noise, and noise gets rules switched off.
 
 **Declare the quantity of every field you use.** `#VOH : voltage;` is what turns
 `sum(pins.DRAW) <= min(pins.VOH)` into an error instead of a comparison that
-silently always fails.
+silently always fails. The quantities are `voltage current resistance capacitance
+inductance power frequency time length area temperature number boolean text`.
 
 **Put one-sided guards first in a pin-pair check.** They are hoisted out of the
 quadratic inner loop and used to filter each side once. A 200-pin power rail is
@@ -71,6 +72,32 @@ quadratic inner loop and used to filter each side once. A 200-pin power rail is
 **Name checks carefully.** A check's name *is* its diagnostic code, so it is
 what someone types in `-Wno-`. `drive-high` is good; `check1` is not. It may not
 collide with a built-in code or mnemonic.
+
+## What the language leaves to you
+
+Two checks are deliberately not built in, because the answer is a project's and
+not a language's. Both read what `@type` and `@mate` put on a component.
+
+```
+check every-connector-is-mated for component {
+    when    component.type == boardconnector;
+    require has(component.mate);
+    error   "{component} is a connector and nothing says what plugs into it";
+};
+
+check conductors-are-thick-enough for part {
+    // IPC-2221, external layer, 1oz copper, 30C rise. A number worth arguing
+    // with, which is exactly why it lives here.
+    when    part.type == wire;
+    when    has(part.csa);
+    require part.csa >= 100000um2;
+    error   "{part.name} is {part.csa}, thinner than this project allows";
+};
+```
+
+A rule that mentions cable parts often needs the converse too: a footprint rule
+written for a board will fire on every wire and crimp until it says
+`when part.type != wire;`.
 
 ## Both halves, every time
 

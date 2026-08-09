@@ -92,6 +92,74 @@ run_manta(compile -o "${WORK}/annbuild/" ${SOURCES})
 # hands its members out one per copy (spec 13.3), so those resolve too.
 run_manta(link --top power-and-signal -L "${WORK}/annbuild" --no-erc
           -o "${WORK}/ann.mantaNets")
+# Nothing may still be carrying a '?'. An unassigned name reaches the netlist,
+# the BOM and the layout tool, so "it linked" is not the same as "it annotated".
+file(STRINGS "${WORK}/ann.mantaNets" leftover REGEX "\"designator\": \"[^\"]*[?]")
+if(leftover)
+    message(FATAL_ERROR "an unassigned designator survived annotation: ${leftover}")
+endif()
+
+# --- block instances -------------------------------------------------------
+# A block instance is not a component and has no Component::designator, but its
+# label names a level of the hierarchy and lands in the path of everything
+# beneath it. tests/spec declares a block and never instantiates one, which is
+# how an un-annotated block once reached the netlist unreported.
+set(BLOCKSRC "${WORK}/blocks.manta")
+file(WRITE "${BLOCKSRC}" "\
+part BR-1k { @~footprint = R-0603; #value = 1kR; 1 = A &CASUAL; 2 = B &CASUAL; };
+
+block leg {
+    >IN;
+    IN = .{R1~BR-1k}. = BGND;
+};
+
+block blocktop {
+    BGND &TYPE=GROUND &STUB;
+    BPWR>>;
+    BDRIVE[0:1] = [[{BLK%[1:2]~leg}IN]];
+    BDRIVE[0] == BPWR;
+    BDRIVE[1] == BPWR;
+};
+")
+run_manta(compile -o "${WORK}/blockbuild/" "${BLOCKSRC}")
+
+# A range designator is the *annotated* form (spec 13.3): one token carrying N
+# designators, handed out one per copy. Reading it as unassigned would report an
+# annotated design as un-annotated and put a '?' in the netlist.
+run_manta(link --top blocktop -L "${WORK}/blockbuild" --no-erc
+          -o "${WORK}/blocks.mantaNets")
+foreach(want "\"BLK1\"" "\"BLK2\"")
+    file(STRINGS "${WORK}/blocks.mantaNets" hit REGEX "${want}")
+    if(NOT hit)
+        message(FATAL_ERROR "a range designator on a block did not resolve to ${want}")
+    endif()
+endforeach()
+file(STRINGS "${WORK}/blocks.mantaNets" bad REGEX "BLK[?]")
+if(bad)
+    message(FATAL_ERROR "a range-designated block was treated as unassigned: ${bad}")
+endif()
+
+# The same design left un-annotated must fail the link.
+file(READ "${BLOCKSRC}" blocks_text)
+string(REPLACE "BLK%[1:2]" "BLK?" blocks_text "${blocks_text}")
+file(WRITE "${WORK}/blocks-unassigned.manta" "${blocks_text}")
+run_manta(compile -o "${WORK}/blockbuild2/" "${WORK}/blocks-unassigned.manta")
+
+execute_process(COMMAND "${MANTA}" link --top blocktop -L "${WORK}/blockbuild2" --no-erc
+                        -o "${WORK}/blocks2.mantaNets"
+                ERROR_VARIABLE blk_err RESULT_VARIABLE blk_code)
+if(blk_code EQUAL 0)
+    message(FATAL_ERROR "an un-annotated block instance linked without complaint")
+endif()
+if(NOT blk_err MATCHES "E-UNANNOTATED")
+    message(FATAL_ERROR "expected E-UNANNOTATED for a block, got: ${blk_err}")
+endif()
+
+# ...and the bootstrap still works, because 'manta annotate' reads a netlist and
+# there has to be a way to produce the first one (spec 13.1).
+run_manta(link --top blocktop -L "${WORK}/blockbuild2" --no-erc -Wno-unannotated
+          -o "${WORK}/blocks2.mantaNets")
+
 # Annotating again must change nothing (spec 13.6: designators are stable).
 file(READ "${WORK}/src/board.manta" before)
 run_manta(annotate -n "${WORK}/ann.mantaNets" ${SOURCES})
@@ -108,7 +176,68 @@ foreach(format kicad altium orcad allegro)
     if(size LESS 100)
         message(FATAL_ERROR "export ${format} produced almost nothing")
     endif()
+
+    # Spec 15.8, the same rule every other stage is held to. A UUID or a map
+    # leaking iteration order into the output would show up here and nowhere
+    # else, because export is the one stage whose input is already a file.
+    run_manta(export --format ${format} -o "${WORK}/board2.${format}"
+              "${WORK}/board.mantaNets")
+    file(SHA256 "${WORK}/board.${format}" a)
+    file(SHA256 "${WORK}/board2.${format}" b)
+    if(NOT a STREQUAL b)
+        message(FATAL_ERROR "export ${format} is not deterministic")
+    endif()
 endforeach()
+
+# Every component reaches the netlist with its pins attached. A designator is
+# unique only within its block, so two instances of one block both hold an 'R1';
+# if the netlist names them both 'R1' a reader cannot tell them apart and the
+# second copy silently arrives with no connections at all.
+file(READ "${WORK}/board.kicad" kicad_net)
+file(STRINGS "${WORK}/board.kicad" comp_refs REGEX "\\(comp \\(ref ")
+foreach(line ${comp_refs})
+    string(REGEX REPLACE ".*\\(comp \\(ref \"([^\"]*)\".*" "\\1" ref "${line}")
+    # A literal search, not MATCHES: an un-annotated designator contains '?',
+    # which a regex would read as an operator and match the wrong thing.
+    string(FIND "${kicad_net}" "(node (ref \"${ref}\")" at)
+    if(at EQUAL -1)
+        message(FATAL_ERROR "component '${ref}' is in the netlist with no connections")
+    endif()
+endforeach()
+
+# A footprint with no library nickname will not place in KiCad, so exporting one
+# is a warning; '-Werror' is how a project refuses to ship a netlist that cannot
+# be laid out. tests/spec uses bare package names, so this must fire.
+execute_process(COMMAND "${MANTA}" export --format kicad -Werror
+                        -o "${WORK}/board.werror.net" "${WORK}/board.mantaNets"
+                ERROR_VARIABLE fp_err RESULT_VARIABLE fp_code)
+if(fp_code EQUAL 0)
+    message(FATAL_ERROR "an unqualified footprint did not warn")
+endif()
+if(NOT fp_err MATCHES "W-FOOTPRINT")
+    message(FATAL_ERROR "expected W-FOOTPRINT, got: ${fp_err}")
+endif()
+
+# ...and giving it a library silences it.
+file(WRITE "${WORK}/fp.map" "# every package tests/spec uses\n")
+foreach(fp QFP-STM32-32 TSSOP-14 SOD-323 HDR-1x4 BGA-96 TP-1MM R-0603 C-0603)
+    file(APPEND "${WORK}/fp.map" "${fp}  Test_Library:${fp}\n")
+endforeach()
+run_manta(export --format kicad --footprint-map "${WORK}/fp.map" --footprint-lib Fallback
+          -Werror -o "${WORK}/board.mapped.net" "${WORK}/board.mantaNets")
+file(STRINGS "${WORK}/board.mapped.net" bare REGEX "\\(footprint \"[^:\"]*\"\\)")
+if(bare)
+    message(FATAL_ERROR "a footprint reached KiCad with no library: ${bare}")
+endif()
+
+# A map file that names no library defeats its own purpose, so it is refused.
+file(WRITE "${WORK}/bad.map" "R-0603  R_0603_1608Metric\n")
+execute_process(COMMAND "${MANTA}" export --format kicad --footprint-map "${WORK}/bad.map"
+                        -o "${WORK}/board.bad.net" "${WORK}/board.mantaNets"
+                ERROR_VARIABLE map_err RESULT_VARIABLE map_code)
+if(map_code EQUAL 0)
+    message(FATAL_ERROR "a map entry with no library was accepted")
+endif()
 
 # --- the end-of-content marker (spec 2.8) ----------------------------------
 # 'manta fmt' rewrites whole files from the AST, so without deliberate care it
@@ -134,3 +263,74 @@ if(NOT tail_before STREQUAL tail_after)
 endif()
 
 message(STATUS "pipeline: compile, link, fmt, annotate and export all verified")
+
+# --- connectors, cables and mating (spec 12A) -------------------------------
+# A cable is its own deliverable: it links on its own, with its own netlist and
+# its own BOM, and a board's netlist never absorbs one.
+set(CABLEDIR "${CMAKE_CURRENT_LIST_DIR}/cable")
+run_manta(compile -o "${WORK}/cable/" "${CABLEDIR}/card.manta" "${CABLEDIR}/loom.manta")
+
+run_manta(link --top jumper-8way -L "${WORK}/cable" -Werror
+          -o "${WORK}/loom.mantaNets" --bom "${WORK}/loom.csv")
+
+# Determinism, as every other stage is held to.
+run_manta(link --top jumper-8way -L "${WORK}/cable" -Werror -o "${WORK}/loom2.mantaNets")
+file(SHA256 "${WORK}/loom.mantaNets" a)
+file(SHA256 "${WORK}/loom2.mantaNets" b)
+if(NOT a STREQUAL b)
+    message(FATAL_ERROR "linking a cable is not deterministic")
+endif()
+
+# A loom's BOM carries its wires and crimps, which is the whole reason a cable
+# is a first-class thing rather than a comment.
+file(STRINGS "${WORK}/loom.csv" wires REGEX ",wire,")
+file(STRINGS "${WORK}/loom.csv" crimps REGEX ",crimp,")
+if(NOT wires OR NOT crimps)
+    message(FATAL_ERROR "a cable BOM lists no wires or no crimps")
+endif()
+
+# The board alone: the mating is checked, the cable is not emitted.
+set(QUIET -Wno-W-04 -Wno-W-09 -Wno-E-02)
+run_manta(link --top sensor-card -L "${WORK}/cable" ${QUIET} -o "${WORK}/card.mantaNets")
+
+# '--assembly' writes the loom beside the board and never merges the two.
+file(REMOVE "${WORK}/jumper-8way.mantaNets")
+execute_process(COMMAND "${MANTA}" link --top sensor-card -L "${WORK}/cable" ${QUIET}
+                        --assembly -o "${WORK}/card2.mantaNets" --bom "${WORK}/card.csv"
+                WORKING_DIRECTORY "${WORK}" RESULT_VARIABLE asm_code)
+if(NOT asm_code EQUAL 0)
+    message(FATAL_ERROR "--assembly failed")
+endif()
+if(NOT EXISTS "${WORK}/jumper-8way.mantaNets")
+    message(FATAL_ERROR "--assembly wrote no netlist for the mated cable")
+endif()
+file(SHA256 "${WORK}/card.mantaNets" a)
+file(SHA256 "${WORK}/card2.mantaNets" b)
+if(NOT a STREQUAL b)
+    message(FATAL_ERROR "--assembly changed the board's own netlist")
+endif()
+
+# Each check must be shown to fire. A check that cannot fail is worth nothing,
+# and every one of these was written only after watching it fail.
+function(expect_mating_error name top code)
+    file(REMOVE_RECURSE "${WORK}/bad-${name}")
+    execute_process(COMMAND "${MANTA}" compile -o "${WORK}/bad-${name}/"
+                            "${CABLEDIR}/bad-${name}.manta" "${CABLEDIR}/loom.manta"
+                    OUTPUT_QUIET ERROR_QUIET)
+    execute_process(COMMAND "${MANTA}" link --top ${top} -L "${WORK}/bad-${name}"
+                            -Wno-W-01 -Wno-W-04 -Wno-W-09 -Wno-E-01 -Wno-E-02
+                            -Wno-E-24 -Wno-E-27 -Wno-E-28 -o "${WORK}/bad-${name}.mantaNets"
+                    ERROR_VARIABLE err RESULT_VARIABLE code_out)
+    if(code_out EQUAL 0)
+        message(FATAL_ERROR "${code} did not fire on bad-${name}.manta")
+    endif()
+    if(NOT err MATCHES "${code}")
+        message(FATAL_ERROR "expected ${code} on bad-${name}.manta, got: ${err}")
+    endif()
+endfunction()
+
+expect_mating_error(contents bad-loom    "E-44")
+expect_mating_error(fit      bd          "E-45")
+expect_mating_error(pins     bd          "E-46")
+expect_mating_error(drivers  sensor-card "E-47")
+expect_mating_error(power    sensor-card "E-48")

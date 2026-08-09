@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // User-defined ERC rules: parsing a .mantaRules file and evaluating it over an
 // elaborated design.
 //

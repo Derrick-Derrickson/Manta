@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Elaboration: turning declarations into a netlist (spec 15.3).
 //
 // The linker "elaborates the top-level block, instantiating recursively and
@@ -193,6 +195,11 @@ private:
     FlatMap<NetKey, std::uint32_t> netNodes_;
 
     std::vector<Component> components_;
+    // Block instances written with '?'. A block is not a component, so it has no
+    // Component::designator to be empty, but its label lands in the path of
+    // every component beneath it and so in the netlist and the BOM. Collected
+    // here and reported with the unassigned devices (E-UNANNOTATED).
+    std::vector<UnannotatedBlock> unannotatedBlocks_;
     std::vector<std::uint32_t> shorted_;
     std::uint32_t nextScopeId_ = 1;
     int depth_ = 0;

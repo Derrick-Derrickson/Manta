@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Parsing a .mantaRules file.
 //
 // Reuses the manta lexer unchanged: a rules file is written in the same tokens,

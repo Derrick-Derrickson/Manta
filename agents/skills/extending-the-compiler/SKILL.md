@@ -39,8 +39,22 @@ writer and forget the reader, which is the point of it.
 
 **A new ERC rule** — `src/erc/erc.cpp`, one method, called from `run()`.
 
-**A new export backend** — `src/export/exporters.cpp`, one function, plus the
-format name in `parseExportFormat` and the extension in `exportExtension`.
+**A new declaration kind** — six places the compiler will *not* point at:
+`isReservedWord` (`src/lex/dimensioned.cpp`), `atItemStart` and `parseItem`
+(`src/parse/parser.cpp`), the `readItem` kind ternary (`src/obj/mantao.cpp`,
+which falls back to `Block`, so a forgotten kind degrades in silence), the
+`kind` enum in `schema/mantaO.schema.json`, and `kLanguageVersion`. Three it
+will: the exhaustive switches in `local_check.cpp`, `formatter.cpp` and
+`mantao.cpp`. `cable` is the worked example.
+
+**A new export backend** — `src/export/exporters.cpp`, one function taking
+`(const Design&, const ExportOptions&)`, plus the format name in
+`parseExportFormat` and the extension in `exportExtension`. Anything a backend
+needs to be told goes on `ExportOptions`, so adding one does not change the
+others. A target that resolves footprints through a library table wants
+`resolveFootprint` (`src/export/footprint_map.h`); one that has to recognise a
+component across a re-import wants `pathUuid` (`src/export/uuid.h`), which is
+derived from the instance path so a re-annotation does not orphan a placement.
 
 ## The four invariants
 

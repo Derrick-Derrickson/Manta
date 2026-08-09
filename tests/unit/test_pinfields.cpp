@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // '#' fields on pins (spec 4.5), which is what user-defined ERC rules read.
 //
 // The '&' namespace is closed because the compiler interprets it; '#' is the

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Minimal UTF-8 support.
 //
 // Spec 2.1: outside comments and string literals source is ASCII, so the lexer's

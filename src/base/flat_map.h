@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Insertion-ordered hash map and set.
 //
 // Iteration order is the order in which keys were first inserted, never bucket

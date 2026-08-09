@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The elaborated design, and the .mantaNets format of spec 15.4.
 #pragma once
 
@@ -73,6 +75,19 @@ struct Component {
     bool fitted = true;
     bool bom = true;
     std::string footprint;
+    // What the part is, from '@type'. A first-class member rather than a user
+    // field because the compiler interprets the structural roles -- what may go
+    // in a cable, what takes part in mating -- and because a system field is
+    // excluded from `fields`, which would otherwise drop it from the BOM and
+    // hide it from user rules.
+    std::string type;
+    PartType partType = PartType::BoardPart;
+    // Mating (spec 12A). '@mate' names the cable fitted to a board connector;
+    // '@mates' names what a cable connector plugs into; '@map' is the pin
+    // correspondence, already expanded from its ranges, empty meaning 1:1.
+    std::string mate;
+    std::vector<std::string> mates;
+    std::vector<std::pair<std::int64_t, std::int64_t>> pinMap;
     std::vector<std::pair<std::string, std::string>> fields;  // user fields, source order
     std::vector<ComponentPin> pins;
     Span span;
@@ -135,8 +150,19 @@ struct SwapRecord {
     std::vector<std::string> order;  // permuted member order
 };
 
+// A block instance left un-annotated. Spec 13.1 lets an un-annotated design
+// elaborate so that 'manta annotate' has a netlist to read; this is what makes
+// the leftovers reportable afterwards.
+struct UnannotatedBlock {
+    std::string identity;  // the label standing in for a designator
+    Span span;
+};
+
 struct Design {
     std::string top;
+    // "block" or "cable". A loom has no ground net and its parts have no
+    // footprints, so two ERC rules that are right for a board are wrong for it.
+    std::string kind = "block";
     std::vector<Component> components;
     std::vector<Net> nets;
     std::vector<MatchGroup> matches;
@@ -146,6 +172,7 @@ struct Design {
     std::vector<std::uint32_t> shorted;
     // Instance path to designator, for "manta link --map".
     std::vector<std::pair<std::string, std::string>> elaborationMap;
+    std::vector<UnannotatedBlock> unannotatedBlocks;
 };
 
 // Writes .mantaNets in the shape of spec 15.4. Deterministic (spec 15.8).

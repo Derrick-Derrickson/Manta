@@ -116,6 +116,35 @@ parameters produces two elaborations from one source:
 >SIG-B = {BLK2~rc-filter: #r-value=47; }OUT = FILTERED-B>;
 ```
 
+## Cables
+
+A loom is not on the board, so it is not in the board's block. A `cable` is its
+own declaration and its own deliverable: it links on its own and produces its own
+netlist and BOM, with the wires and crimps as real line items.
+
+```
+cable jumper-8way {
+    {J1~JST-8-PLUG}P[1:8]
+        = [[ .{C%[1:8]~JST-8-CRIMP}. = .{W%[1:8]~WIRE-22AWG}.
+           = .{C%[9:16]~JST-8-CRIMP}. ]]
+        = P[1:8]{J2~JST-8-PLUG};
+};
+```
+
+A cable body is a chain, exactly as a block's is, which is why replication and
+ranged designators keep eight conductors to one statement. It may hold only a
+cable connector, a wire or a crimp — anything else is **E-44**.
+
+The board says which loom plugs in with `@mate`, the loom says what it plugs into
+with `@mates`, and the linker checks that the two fit. When the far end plugs
+back into another connector on this same board — a card that daisy-chains into a
+copy of itself — each conductor is followed through the loom and judged as though
+the two had been wired directly, because once the lead is fitted they have been.
+
+One consequence to expect: a net driven only from the *next* card reports E-02 on
+this one, since ERC sees a board and the driver is not on it. Put `&STUB` on the
+uplink nets or carry `-Wno-E-02`.
+
 ## Substitution
 
 `$…$` is evaluated at link, against the fields in force where the block was

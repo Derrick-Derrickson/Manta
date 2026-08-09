@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Recursive-descent parser for the grammar of spec 19.
 //
 // The grammar is LL(2) once three ambiguities are handled by bounded lookahead
@@ -69,6 +71,7 @@ private:
     Item* parseHarness(Span startSpan);
     Item* parseNetclass(Span startSpan);
     Item* parseMatch(Span startSpan);
+    Item* parseCable(bool isStatic, Span startSpan);
 
     // ---- bodies -----------------------------------------------------------
     void parseBlockBody(std::vector<BodyEntry>& out);

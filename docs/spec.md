@@ -1,11 +1,24 @@
 # The Manta Schematic Definition Language
 
-**Specification, revision 1.1**
+**Specification, revision 1.2**
 
 > **Corrected against a reference implementation.**
 >
-> **1.1 adds one construct**: the end-of-content marker of §2.8, which lets a
-> file carry documentation after its declarations. A 1.0 source is a valid 1.1
+> **1.2 describes what plugs into a board.** A `cable` (§12A) is a loom: its own
+> declaration and its own deliverable, with its own netlist and bill of
+> materials. A connector says which loom is fitted to it and what that loom
+> plugs into, and the compiler checks that the two fit — including the case
+> where a board plugs into another copy of itself. `@type` (§9.7) says what a
+> part is, and is what makes a connector, a wire and a crimp distinguishable
+> from anything else on the board. Two smaller additions serve those: an area
+> unit (§3.2), so a conductor's cross-section is a quantity a rule can check,
+> and a range inside a value list (§12A.2), so a twenty-way pin map is one pair
+> rather than twenty.
+>
+> **1.1 added one construct**: the end-of-content marker of §2.8, which lets a
+> file carry documentation after its declarations.
+>
+> Each revision is a superset of the one before. A 1.0 source is a valid 1.2
 > source, and a toolchain reads any object whose revision is no newer than its
 > own.
 >
@@ -159,7 +172,7 @@ SW == SW-NODE   // the switching node
 ### 2.6 Reserved words
 
 ```
-block   part   harness   netclass   match   static   extern
+block   part   harness   netclass   match   cable   static   extern
 ```
 
 Reserved words are lowercase. `Block` and `PART` are legal identifiers.
@@ -256,6 +269,7 @@ intervening space.
 | Power | `W` | `250mW` |
 | Frequency | `Hz` | `100MHz`, `2G4Hz` |
 | Length | `m` | `5mm`, `100um` |
+| Area | `m2` | `0.35mm2`, `2m2` |
 | Time | `s` | `10ns`, `1ms` |
 | Temperature | `C` | `85C`, `-40C` |
 
@@ -269,6 +283,20 @@ forms are accepted and the formatter emits the substituted form.
 3V3     ==  3.3V
 2u2H    ==  2.2uH
 2G4Hz   ==  2.4GHz
+```
+
+A suffix that is itself two characters ending in a digit gains nothing from the
+substituted form — `1.5mm2` would become `1m5m2`, which reads as nothing at all
+— so a squared unit always writes an explicit point.
+
+`m2` is a length squared, and an SI prefix on it squares with it: `1mm2` is a
+square millimetre, `(10⁻³ m)² = 10⁻⁶ m²`, and not a milli-square-metre. The
+canonical form therefore steps through prefixes by `10⁶`.
+
+```
+1mm2      ==  0.000001m2
+1000mm2   ==  0.001m2
+2m2                            // the leading 'm' is the unit, not a prefix
 ```
 
 ### 3.3 Tolerance
@@ -346,13 +374,13 @@ A list is a comma-separated sequence in square brackets.
 
 ```ebnf
 file = { item } ;
-item = block_def | part_def | harness_def | netclass_def | match_def ;
+item = block_def | part_def | harness_def | netclass_def | match_def | cable_def ;
 ```
 
 A file has no identity. There is no implicit file-level block, and a filename means
 nothing to the language: a `.manta` file is a collection of named declarations. Every
-block, part, harness, netclass and match group is declared explicitly and referenced by
-that name.
+block, part, harness, netclass, match group and cable is declared explicitly and
+referenced by that name.
 
 Order of declaration is irrelevant. A name may be used before it is declared.
 
@@ -1060,6 +1088,7 @@ part definition is error **E-43**.
 | `@footprint` | identifier | — | Physical footprint name. Required for any fitted part. |
 | `@fitted` | boolean | `TRUE` | Whether the part is populated. `FALSE` is equivalent to a `!` prefix. |
 | `@bom` | boolean | `TRUE` | Whether the part appears on the BOM. |
+| `@type` | identifier | `board_part` | What the part is (§9.7). |
 | `@VERSION` | constraint | — | Language revision required (§4.3). |
 
 `@fitted` and `@bom` are independent.
@@ -1082,7 +1111,7 @@ part R-10k-1pct-0603 {
     #value      = 10kR;
     #tolerance  = ±1%;
     #power      = 100mW;
-    #!type      = resistor;
+    @!type      = resistor;
     #~mpn       = "RC0603FR-0710KL";
     #~cost      = 0.002;
     #~supplier  = digikey;
@@ -1098,6 +1127,31 @@ editing the part.
 ```
 .{R1~R-10k-1pct-0603: #mpn = "ERJ-3EKF1002V"; }.
 ```
+
+### 9.7 What a part is
+
+`@type` says what a part is. Its value set is open: a design is free to write
+`@type = regulator` or `@type = ferrite`, and such a value means nothing to the
+compiler and travels to the BOM untouched.
+
+Five values are **structural**, and the compiler does interpret them.
+
+| Value | Meaning |
+|---|---|
+| `board_part` | Something on the board. The default when `@type` is unstated. |
+| `boardconnector` | Something plugs into it. May carry `@mate`. |
+| `cableconnector` | It plugs into something. May carry `@mates` and `@map`. |
+| `wire` | A conductor. Its pins are its cores. |
+| `crimp` | A terminal on a wire end. |
+
+Because the set is open, a misspelt structural role cannot be an error — but its
+consequence is silent, since `@type = boardconector` is simply not a connector
+and every check that depends on one stops applying without a word. A value that
+is not a structural role but is within one edit of one, or matches one after
+case folding, is therefore warning **W-TYPE**.
+
+`@type` is carried in the netlist and given a BOM column, and a rule may read it
+as `component.type`.
 
 ---
 
@@ -1548,6 +1602,109 @@ usb-dev  &HARNESS=usb2;
 
 ---
 
+## 12A. Connectors, cables and mating
+
+A board describes what is on it. A loom is not on it: it is a separate thing to
+build, with its own bill of materials, and the question of whether the two fit is
+one nobody can answer from either alone.
+
+### 12A.1 A cable is a declaration
+
+```
+cable jumper-8way {
+    #length = 300mm;
+
+    {J1~JST-PH-8-PLUG}P[1:8]
+        = [[ .{C%[1:8]~JST-PH-8-CRIMP}. = .{W%[1:8]~WIRE-22AWG-RED}.
+           = .{C%[9:16]~JST-PH-8-CRIMP}. ]]
+        = P[1:8]{J2~JST-PH-8-PLUG};
+};
+```
+
+A cable body is a chain, exactly as a block body is, so replication, groups,
+ranges and bindings all work in one. That is what keeps an eight-way loom to a
+single statement.
+
+A cable may hold only a cable connector, a wire or a crimp (§9.7). Anything else
+is error **E-44**. Wires and crimps are ordinary parts, so each carries an MPN
+and appears on a BOM: a loom is bought as much as a board is.
+
+A cable is a top in its own right. `manta link --top jumper-8way` produces the
+loom's netlist and BOM, and never the board's. Two rules that are right for a
+board are wrong for a loom and do not apply to one: **E-24**, which requires a
+ground net, and **E-20**, which requires a footprint of every fitted part.
+
+### 12A.2 Mating
+
+One field per side, so the two never appear on the same declaration:
+
+| Field | Written on | Meaning |
+|---|---|---|
+| `@mate` | a `boardconnector` | which cable is fitted here |
+| `@mates` | a `cableconnector` | which board connector it plugs into |
+| `@map` | either | how the pins line up; absent means one to one |
+
+`@mate` takes the strength ladder like any field, so a part may carry a weak
+default and a call site override it:
+
+```
+part BACKPLANE-OUT { @type = boardconnector; @~mate = jumper-8way; };
+
+.{J3~BACKPLANE-OUT: @mate = short-jumper; }.
+```
+
+A `@map` is a list of pairs. Each element is a pin number or a range, and a range
+pairs element-wise with its opposite — descending included, which is how a
+reversed ribbon is written.
+
+```
+@map = [[2,3],[3,2],[7,8],[8,7]];    // a null modem
+@map = [[1:20],[20:1]];              // a reversed ribbon
+```
+
+### 12A.3 What is checked
+
+Structural fit, always:
+
+- the cable named by `@mate` exists and is a cable;
+- one of its connectors declares `@mates` naming this board connector's part —
+  otherwise **E-45**;
+- the pins line up: a count mismatch with no `@map`, or a `@map` naming a pin
+  that does not exist, is **E-46**.
+
+And electrically, when the loom's far end plugs back into a connector on this
+same board — a board plugged into another copy of itself, which one board's
+source is enough to describe. Each conductor is followed from the near board
+pin, through the loom's wires and crimps, to the far board pin, and the result
+is judged as though the two had been wired together directly, because once the
+loom is fitted they have been:
+
+- two pins that both drive are **E-47**;
+- a supply meeting a ground is **E-48**.
+
+Wire ampacity, insulation voltage and "every connector must be mated" are
+deliberately not built in. They are one-line checks in a `.mantaRules` file,
+because the derating a project accepts is a project's decision and not a
+language's:
+
+```
+check unmated for component {
+    when    component.type == boardconnector;
+    require has(component.mate);
+    error   "{component} is a connector with nothing plugged into it";
+};
+```
+
+### 12A.4 Assembly output
+
+`manta link --assembly` additionally writes a netlist, and with `--bom` a bill of
+materials, for every cable a connector on the board mates with. They are separate
+files named for the cable. The board's own outputs are byte-identical with and
+without the flag: a loom is not part of a board, and a layout tool has nowhere to
+put a wire.
+
+---
+
 ## 13. Designators and annotation
 
 ### 13.1 Annotation is a separate command
@@ -1849,8 +2006,16 @@ unpowered-net are whole-design properties and cannot be evaluated one object at 
 carry a `version` field naming the language revision they target.
 
 Each entry in a net's `pins` array carries both `pin`, the physical package pin
-a layout tool routes to, and `logical`, the name the part declares for it. A
-netlist may also carry a top-level `swaps` array recording the exchanges a
+a layout tool routes to, and `logical`, the name the part declares for it. It
+also carries `type` and `direction`, the pin's electrical character after the
+strength ladder (§11.6) and the direction its arrow declares (§10). Those two
+cannot be recovered from a netlist any other way, because the part declaration
+is not part of the interchange, and a layout tool needs them: KiCad puts them on
+the pad and its design-rule check reads them. Both are optional, so a netlist
+written before they were emitted remains valid; a reader that finds neither
+shall assume `PASSIVE` and `none`.
+
+A netlist may also carry a top-level `swaps` array recording the exchanges a
 router made within a swap group, which is what `manta annotate --swaps` reconciles
 back to source (§13.6); it is optional, and its absence makes `--swaps` a no-op.
 
@@ -1874,8 +2039,8 @@ back to source (§13.6); it is optional, and its absence makes `--swaps` a no-op
     {
       "name": "3V3",
       "pins": [
-        {"designator": "U1", "pin": "1",  "logical": "VCC"},
-        {"designator": "C1", "pin": "1",  "logical": "A"}
+        {"designator": "U1", "pin": "1",  "logical": "VCC", "type": "POWER",   "direction": "in"},
+        {"designator": "C1", "pin": "1",  "logical": "A",   "type": "PASSIVE", "direction": "none"}
       ],
       "directives": { "CURRENT": "3A", "CLASS": "power" }
     }
@@ -1930,6 +2095,7 @@ manta link [options] --top <block> <object.mantaO>...
 | `-L`, `--library <dir>` | Directory of objects to resolve against. Repeatable. |
 | `--bom <file>` | Also emit a BOM as CSV. |
 | `--no-erc` | Skip ERC and emit regardless. |
+| `--assembly` | Also write a netlist and BOM for every mated cable, as separate files. |
 | `--no-emit` | Run every stage including ERC, emit nothing. |
 | `--map <file>` | Write the elaboration map: instance path to designator. |
 
@@ -1979,6 +2145,8 @@ manta export [options] --format <target> <netlist.mantaNets>
 | `-o`, `--output <file>` | Output path. Default: derived from the input name. |
 | `--constraints <file>` | Write directives to a separate constraint file where the target cannot carry them. |
 | `--flat-format <template>` | Override `@FLATFORMAT` for hierarchical designators. |
+| `--footprint-map <file>` | Map footprint names to the target's, one `name  Library:Footprint` pair per line. |
+| `--footprint-lib <nickname>` | Library nickname for any footprint the map does not cover and that names no library itself. KiCad only. |
 
 ### 15.6 Diagnostics
 
@@ -2068,6 +2236,11 @@ from mistakes.
 | E-41 | A dimensioned value, string or list used as an arithmetic operand. |
 | E-42 | A negative exponent. |
 | E-43 | A `part` declaration exports a field. |
+| E-44 | A cable holds a part that is not a cable connector, a wire or a crimp. |
+| E-45 | A `@mate` names a cable whose connectors do not fit this one. |
+| E-46 | Mating pins do not line up: a count mismatch, or a `@map` naming a pin that does not exist. |
+| E-47 | Two pins that both drive are joined through a cable. |
+| E-48 | A supply and a ground are joined through a cable. |
 | E-UNANNOTATED | An instance still carries `?` when the netlist is built. |
 
 `E-UNANNOTATED` is the one diagnostic outside the numbered space, because it is
@@ -2089,6 +2262,12 @@ instance carries a designator. `--warn=unannotated` demotes it to a warning
 instead. It is checked by the linker rather than by ERC, and so is unaffected by
 `--no-erc`.
 
+A **block** instance is covered as well as a device. It has no designator of its
+own to appear in a BOM, but its label names a level of the hierarchy and so
+appears in the instance path of every component beneath it — and from there in
+the netlist, in the BOM and in whatever a layout tool calls the part. A
+component exported as `BLK?7_R1` is no more shippable than a bare `?`.
+
 ### 16.2 Warnings
 
 | Code | Rule |
@@ -2101,6 +2280,8 @@ instead. It is checked by the linker rather than by ERC, and so is unaffected by
 | W-07 | Two identifiers in one design differ only by `-` versus `_`. |
 | W-08 | A swap group's members carry incompatible directives, so the group is frozen. |
 | W-09 | A `&TYPE=POWER>` net has no consumers. |
+| W-TYPE | A `@type` value is not a structural role but is within one edit of one (§9.7). |
+| W-FOOTPRINT | A footprint reaches a layout tool with no library nickname. Export only. |
 
 Every warning above is enabled by default except **W-06**, which is enabled with
 `-WW-06` or `-Wweak-never-overridden`. A part library declares `@~footprint`
@@ -2111,8 +2292,8 @@ findings that matter. `-W<name>` in §15.5 exists for exactly this.
 W-03 and W-04 both require recognising a capacitor, which is not a language
 construct: parts are opaque and nothing marks one as capacitive. An
 implementation shall document how it identifies one. The reference
-implementation treats a part as a capacitor when it carries `#type = capacitor`
-— the convention §9.6 establishes when it writes `#!type = resistor` — or when
+implementation treats a part as a capacitor when it carries `@type = capacitor`
+— the convention §9.7 establishes — or when
 it is two-terminal with a `#value` dimensioned in farads. Neither warning fires
 on a part it cannot classify.
 
@@ -2180,13 +2361,15 @@ pads exist, and the copper is routed.
 
 ```ebnf
 file            = { item } ;
-item            = block_def | part_def | harness_def | netclass_def | match_def ;
+item            = block_def | part_def | harness_def | netclass_def | match_def
+                | cable_def ;
 
 block_def       = [ linkage ] "block" identifier "{" { item | statement } "}" ";" ;
 part_def        = [ linkage ] "part" identifier "{" { field_decl | pin_map } "}" ";" ;
 harness_def     = "harness" identifier "{" { member_decl | directive } "}" ";" ;
 netclass_def    = "netclass" identifier "{" { directive } "}" ";" ;
 match_def       = "match" identifier "{" { field_decl | match_def } "}" ";" ;
+cable_def       = [ linkage ] "cable" identifier "{" { item | statement } "}" ";" ;
 linkage         = "static" ;
 
 pin_map         = pin_spec "=" pin_name [ arrow ] { directive | field_decl } ";" ;
@@ -2268,7 +2451,7 @@ static part R-10k-1pct-0603 {
     #value      = 10kR;
     #tolerance  = ±1%;
     #power      = 100mW;
-    #!type      = resistor;
+    @!type      = resistor;
     #~mpn       = "RC0603FR-0710KL";
     #~cost      = 0.002;
 

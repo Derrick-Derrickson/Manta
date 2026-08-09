@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "cli/options.h"
 
 #include <charconv>
@@ -223,6 +225,7 @@ ParseOutcome parseOptions(const std::vector<std::string>& args, Options& out) {
                 if (takeValue(c, "--map", "", value, err)) { out.mapPath = value; continue; }
                 if (!err.empty()) break;
                 if (a == "--no-erc") { out.noErc = true; continue; }
+                if (a == "--assembly") { out.assembly = true; continue; }
                 if (a == "--no-emit") { out.noEmit = true; continue; }
                 break;
 
@@ -287,6 +290,16 @@ ParseOutcome parseOptions(const std::vector<std::string>& args, Options& out) {
                     continue;
                 }
                 if (!err.empty()) break;
+                if (takeValue(c, "--footprint-map", "", value, err)) {
+                    out.footprintMapPath = value;
+                    continue;
+                }
+                if (!err.empty()) break;
+                if (takeValue(c, "--footprint-lib", "", value, err)) {
+                    out.footprintLib = value;
+                    continue;
+                }
+                if (!err.empty()) break;
                 break;
 
             case Command::None:
@@ -319,6 +332,14 @@ ParseOutcome parseOptions(const std::vector<std::string>& args, Options& out) {
         result.ok = false;
         result.exitCode = kExitUsage;
         result.error = "'--format <target>' is required";
+        return result;
+    }
+    // A nickname is one half of 'Library:Footprint'; giving the whole thing here
+    // would produce 'Lib:Fp:R-0603', which resolves to nothing.
+    if (out.command == Command::Export && out.footprintLib.find(':') != std::string::npos) {
+        result.ok = false;
+        result.exitCode = kExitUsage;
+        result.error = "'--footprint-lib' takes a library nickname, without ':'";
         return result;
     }
     // 'link' and 'check' may take their objects entirely from -L: spec 20.8
@@ -402,6 +423,9 @@ Run 'manta <command> --help' for the options of one command.
   -t, --top <block>     Name of the top-level block. Required.
   -o, --output <file>   Netlist path. Default: <top>.mantaNets
   -L, --library <dir>   Directory of objects to resolve against. Repeatable.
+      --assembly        Also write a netlist and BOM for every cable a
+                        connector on this board mates with. Separate files;
+                        the board's own outputs are unchanged.
   --bom <file>          Also emit a BOM as CSV.
   --no-erc              Skip ERC and emit regardless.
   --no-emit             Run every stage including ERC, emit nothing.
@@ -452,6 +476,12 @@ Equivalent to 'manta link --no-emit'. Accepts the same options.
   --constraints <file>  Write directives to a separate constraint file where
                         the target cannot carry them.
   --flat-format <tmpl>  Override @FLATFORMAT for hierarchical designators.
+  --footprint-map <file>
+                        Map manta footprint names to the layout tool's, one
+                        'name  Library:Footprint' pair per line.
+  --footprint-lib <nick>
+                        Library nickname for any footprint the map does not
+                        cover and that names no library itself. KiCad only.
 )";
             break;
     }

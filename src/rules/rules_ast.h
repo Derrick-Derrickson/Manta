@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The AST for a .mantaRules file.
 //
 // A rules file declares the '#' fields it reads, then the checks over them. It

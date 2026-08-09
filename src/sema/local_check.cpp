@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "sema/local_check.h"
 
 #include <algorithm>
@@ -460,6 +462,12 @@ void LocalChecker::checkItem(const Item* item) {
         case ItemKind::Harness: checkHarnessBody(item); break;
         case ItemKind::Netclass: checkNetclassBody(item); break;
         case ItemKind::Match: checkMatchBody(item); break;
+        // A cable body is a chain, so it checks exactly as a block body does.
+        // What may be *instantiated* in one is narrower -- only a cable
+        // connector, a wire or a crimp -- but that needs each part's '@type',
+        // which lives in whichever object declares it. It is a link-time rule
+        // (E-44), not one this file can see.
+        case ItemKind::Cable: checkBlockBody(item); break;
     }
 }
 

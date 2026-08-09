@@ -63,7 +63,45 @@ rules power-budget {
 // ---------------------------------------------------------------------------
 rules library-policy {
     check every-part-has-a-footprint for part {
+        // A footprint is a place on a board. A wire, a crimp and the housing on
+        // the end of a lead have no board and no place on one, so the rule is
+        // about board parts -- which is what '@type' is for.
+        when    part.type != wire;
+        when    part.type != crimp;
+        when    part.type != cableconnector;
         require has(part.footprint) & part.footprint != "";
         error   "part {part.name} declares no footprint";
+    };
+};
+
+// ---------------------------------------------------------------------------
+// Assembly policy.
+//
+// Neither of these is built in, deliberately. Whether an unmated connector is a
+// mistake, and what derating a conductor is held to, are a project's decisions
+// and not a language's -- so they are written here, where a project can argue
+// with them.
+// ---------------------------------------------------------------------------
+rules assembly-policy {
+    #csa : area;
+
+    check every-connector-is-mated for component {
+        // A board connector with no '@mate' is a socket with nothing recorded
+        // as plugging into it. On this board that is always a mistake; on one
+        // with test points and programming headers it would not be, and the
+        // rule would be dropped rather than the compiler taught an exception.
+        when    component.type == boardconnector;
+        require has(component.mate);
+        error   "{component} is a connector and nothing says what plugs into it";
+    };
+
+    check conductors-are-thick-enough for part {
+        // IPC-2221 external-layer, 1oz copper, 30C rise gives roughly 6A per
+        // square millimetre for a short run. A number worth arguing with, which
+        // is the point of it being here.
+        when    part.type == wire;
+        when    has(part.csa);
+        require part.csa >= 100000um2;
+        error   "{part.name} is {part.csa}, thinner than this project allows";
     };
 };

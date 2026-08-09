@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The manta abstract syntax tree.
 //
 // Every node is arena-allocated and trivially destructible, so child lists are
@@ -108,6 +110,7 @@ enum class ValueKind : std::uint8_t {
     Boolean,
     Identifier,
     List,         // "[a, b, c]"
+    Range,        // "1:20" inside a list, so a wide pin map is one pair
     Repeat,       // "(5ps)*3", the element-wise tolerance form of spec 11.4
     Interp,       // a value that is, or contains, "$...$"
     Version,      // "1.2+", "1.2-", "0.2-1.2" (spec 4.3)
@@ -129,6 +132,7 @@ struct Value {
     bool boolean = false;
     bool upperCaseSpelling = false;         // "TRUE" vs "true"; checked by E-34
     std::span<Value*> list;                 // List
+    std::int64_t rangeLo = 0, rangeHi = 0;  // Range; descending when hi < lo
     Value* inner = nullptr;                 // Repeat
     std::int64_t count = 0;                 // Repeat
     InterpText* interp = nullptr;           // Interp
@@ -403,7 +407,7 @@ struct MemberDecl {
     Span span;
 };
 
-enum class ItemKind : std::uint8_t { Block, Part, Harness, Netclass, Match };
+enum class ItemKind : std::uint8_t { Block, Part, Harness, Netclass, Match, Cable };
 
 // One entry in a declaration body, tagged so that source order survives into
 // the formatter unchanged.
