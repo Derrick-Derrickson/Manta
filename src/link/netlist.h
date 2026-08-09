@@ -95,6 +95,29 @@ struct Component {
     Span span;
 };
 
+// One declared port of an instantiated block, resolved to the design-wide net
+// it ended up on in that instance. -1 when the port reached no emitted net.
+struct BlockPort {
+    std::string name;
+    PortDir direction = PortDir::None;
+    std::int32_t net = -1;
+};
+
+// A child block instance, recorded so a renderer can reconstruct the hierarchy
+// the flat netlist was elaborated from. The top block is the design itself and
+// has no record here.
+struct BlockInstance {
+    std::vector<std::string> path;  // instance path from the top, e.g. ["BLK1"]
+    std::string block;              // definition name, e.g. "indicator"
+    std::string section;            // empty until assigned
+    std::vector<BlockPort> ports;   // declaration order
+    // Every named net local to this instance -- its local spelling, "LED-ANODE"
+    // or "NAME[3]" -- mapped to the design net index, sorted by name. This is
+    // what lets a child page be labelled with local names rather than
+    // parent-flat ones.
+    std::vector<std::pair<std::string, std::int32_t>> localNets;
+};
+
 struct PinRef {
     std::uint32_t component = 0;
     std::uint32_t pin = 0;
@@ -167,6 +190,7 @@ struct Design {
     std::string kind = "block";
     std::vector<Component> components;
     std::vector<Net> nets;
+    std::vector<BlockInstance> blocks;  // elaboration order
     std::vector<MatchGroup> matches;
     std::vector<SwapRecord> swaps;
     // Components a '==' run shorted out (spec 6.3), for W-02. Detected during

@@ -160,6 +160,43 @@ void writeNetlist(const Design& design, std::string& out) {
     }
     w.endArray();
 
+    // Child block instances, so a renderer can rebuild the hierarchy the flat
+    // netlist came from. A cable, or a board with no blocks, has none.
+    if (!design.blocks.empty()) {
+        w.key("blocks");
+        w.beginArray();
+        for (const BlockInstance& b : design.blocks) {
+            w.beginObject();
+            w.key("path");
+            w.beginArray();
+            for (const std::string& p : b.path) w.value(p);
+            w.endArray();
+            w.field("block", b.block);
+            if (!b.section.empty()) w.field("section", b.section);
+            w.key("ports");
+            w.beginArray();
+            for (const BlockPort& p : b.ports) {
+                w.beginObject();
+                w.field("name", p.name);
+                w.field("direction", portDirName(p.direction));
+                w.field("net", p.net);
+                w.endObject();
+            }
+            w.endArray();
+            w.key("localNets");
+            w.beginArray();
+            for (const auto& [name, net] : b.localNets) {
+                w.beginObject();
+                w.field("name", name);
+                w.field("net", net);
+                w.endObject();
+            }
+            w.endArray();
+            w.endObject();
+        }
+        w.endArray();
+    }
+
     w.key("matches");
     w.beginArray();
     for (const MatchGroup& m : design.matches) {

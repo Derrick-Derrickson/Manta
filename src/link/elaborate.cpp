@@ -477,6 +477,9 @@ Elaborator::ElemValue Elaborator::evalNet(const NetExpr* net, Scope& scope,
             NodeInfo& info = nodeInfo_[uf_.find(nd)];
             info.direction = port.dir;
             info.global = info.global || port.global;
+            // Spec 4.4: the arrow is what makes a net a port of its block, so
+            // this is where the block's declared interface is recorded.
+            pendingPorts_.push_back(PendingPort{scope.id, nd, port.dir});
         }
     }
 
@@ -1339,6 +1342,7 @@ void Elaborator::elaborateStatement(const Stmt* stmt, Scope& scope) {
                     NodeInfo& info = nodeInfo_[uf_.find(nd)];
                     info.global = info.global || stmt->listArrow.global;
                     if (info.direction == PortDir::None) info.direction = stmt->listArrow.dir;
+                    pendingPorts_.push_back(PendingPort{scope.id, nd, stmt->listArrow.dir});
                 }
             }
             applyStatementDirectives(stmt, touched, scope);
@@ -1519,6 +1523,13 @@ std::unique_ptr<Elaborator::Scope> Elaborator::instantiateBlock(const Instance* 
                            falseValue, Strength::Locked, inst->span);
     }
 
+    // Recorded before the body is walked, so the design's block list is the
+    // order instances are encountered, parents before the blocks within them.
+    pendingBlocks_.push_back(PendingBlock{
+        child->id, child->path,
+        valid(block->name.symbol) ? std::string(interner_.text(block->name.symbol))
+                                  : std::string{}});
+
     ++depth_;
     elaborateBlock(block, *child);
     --depth_;
@@ -1645,7 +1656,9 @@ void Elaborator::collectMatchGroups(Design& design) {
 void Elaborator::buildNets(Design& design) {
     // Group nodes by union-find root, in the order the roots were first
     // created, so the emitted net order follows source order (spec 15.8).
-    FlatMap<std::uint32_t, std::uint32_t> rootToNet;
+    // A member rather than a local because collectBlockInstances resolves its
+    // recorded node handles against it afterwards.
+    FlatMap<std::uint32_t, std::uint32_t>& rootToNet = rootToNet_;
 
     // A pin left deliberately floating by "&NET=?" joins no net at all: spec
     // 11.6 says "No net is created, so no &STUB is required". Its node would
@@ -1772,6 +1785,53 @@ void Elaborator::buildNets(Design& design) {
     design.unannotatedBlocks = std::move(unannotatedBlocks_);
 }
 
+void Elaborator::collectBlockInstances(Design& design) {
+    // The local spelling of every named node, keyed by its handle. netNode()
+    // creates exactly one node per NetKey, so the reverse mapping is total over
+    // named nodes; iteration order is insertion order and thus deterministic.
+    FlatMap<std::uint32_t, std::string> spelling;
+    for (const auto& [key, node] : netNodes_) {
+        std::string name = key.indexed
+                               ? std::format("{}[{}]", interner_.text(key.name), key.index)
+                               : std::string(interner_.text(key.name));
+        spelling.insert(node, std::move(name));
+    }
+
+    auto netOf = [&](std::uint32_t node) -> std::int32_t {
+        std::uint32_t* slot = rootToNet_.find(uf_.find(node));
+        return slot ? static_cast<std::int32_t>(*slot) : -1;
+    };
+
+    for (const PendingBlock& pb : pendingBlocks_) {
+        BlockInstance instance;
+        instance.path = pb.path;
+        instance.block = pb.block;
+
+        // Declared ports, in declaration order. A port written with its arrow
+        // more than once is still one port, so only the first record counts.
+        FlatSet<std::uint32_t> seen;
+        for (const PendingPort& p : pendingPorts_) {
+            if (p.scope != pb.scope || seen.contains(p.node)) continue;
+            seen.insert(p.node);
+            const std::string* name = spelling.find(p.node);
+            if (!name) continue;  // a substitution failed to yield a name
+            instance.ports.push_back(BlockPort{*name, p.dir, netOf(p.node)});
+        }
+
+        // Every named net local to this instance, resolved to the design net
+        // it merged into. A node that reached no emitted net is skipped.
+        for (const auto& [key, node] : netNodes_) {
+            if (key.scope != pb.scope) continue;
+            std::int32_t net = netOf(node);
+            if (net < 0) continue;
+            instance.localNets.emplace_back(*spelling.find(node), net);
+        }
+        std::sort(instance.localNets.begin(), instance.localNets.end());
+
+        design.blocks.push_back(std::move(instance));
+    }
+}
+
 Design Elaborator::run(SymbolId topName, Span at) {
     Design design;
     design.top = std::string(interner_.text(topName));
@@ -1802,6 +1862,7 @@ Design Elaborator::run(SymbolId topName, Span at) {
     elaborateBlock(decl->item, root);
 
     buildNets(design);
+    collectBlockInstances(design);
     collectMatchGroups(design);
 
     for (const auto& [key, w] : weakFields_) {

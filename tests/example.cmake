@@ -127,6 +127,22 @@ else()
     message(STATUS "example: KiCad footprint libraries not installed, resolution not checked")
 endif()
 
+# The netlist records the two 'indicator' instances as block records with their
+# ports resolved (revision 1.3), and U1's 'NC = ?' pin -- which sits on no net
+# and so appears nowhere in the nets -- survives in U1's declared pin list.
+file(READ "${WORK}/blinky.mantaNets" blinky_nets)
+string(REGEX MATCHALL "\"block\": \"indicator\"" indicators "${blinky_nets}")
+list(LENGTH indicators indicator_count)
+if(NOT indicator_count EQUAL 2)
+    message(FATAL_ERROR "expected 2 'indicator' block records, got ${indicator_count}")
+endif()
+if(NOT blinky_nets MATCHES "\"name\": \"DRIVE\",[\r\n ]+\"direction\": \"in\",[\r\n ]+\"net\": [0-9]+")
+    message(FATAL_ERROR "the indicator's DRIVE port did not resolve to a net")
+endif()
+if(NOT blinky_nets MATCHES "\"pin\": \"4\",[\r\n ]+\"name\": \"NC\",[\r\n ]+\"type\": \"NC\"")
+    message(FATAL_ERROR "U1's NC pin is missing from its declared pin list")
+endif()
+
 # Rules must not perturb the netlist, and must be deterministic.
 run_manta(link --top blinky -L "${WORK}/build" --rules "${RULES}" -Werror
           -o "${WORK}/blinky2.mantaNets")

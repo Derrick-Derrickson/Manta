@@ -153,6 +153,38 @@ bool readNetlist(const JsonValue& root, DiagEngine& diags, Design& out) {
         }
     }
 
+    // Block instance records (revision 1.3). Optional: a flat netlist simply
+    // has no hierarchy to reconstruct.
+    if (const JsonValue* blocks = root.arr("blocks")) {
+        for (const JsonPtr& b : blocks->array) {
+            BlockInstance instance;
+            instance.block = std::string(b->str("block"));
+            instance.section = std::string(b->str("section"));
+            if (const JsonValue* path = b->arr("path")) {
+                for (const JsonPtr& p : path->array) instance.path.push_back(p->text);
+            }
+            if (const JsonValue* ports = b->arr("ports")) {
+                for (const JsonPtr& p : ports->array) {
+                    BlockPort port;
+                    port.name = std::string(p->str("name"));
+                    if (std::string_view dir = p->str("direction"); !dir.empty()) {
+                        PortDir parsed{};
+                        if (lookupPortDir(dir, parsed)) port.direction = parsed;
+                    }
+                    port.net = static_cast<std::int32_t>(p->integer("net", -1));
+                    instance.ports.push_back(std::move(port));
+                }
+            }
+            if (const JsonValue* locals = b->arr("localNets")) {
+                for (const JsonPtr& l : locals->array) {
+                    instance.localNets.emplace_back(std::string(l->str("name")),
+                                                    static_cast<std::int32_t>(l->integer("net")));
+                }
+            }
+            out.blocks.push_back(std::move(instance));
+        }
+    }
+
     if (const JsonValue* matches = root.arr("matches")) {
         for (const JsonPtr& m : matches->array) {
             MatchGroup group;

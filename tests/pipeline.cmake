@@ -106,11 +106,17 @@ endif()
 # how an un-annotated block once reached the netlist unreported.
 set(BLOCKSRC "${WORK}/blocks.manta")
 file(WRITE "${BLOCKSRC}" "\
-part BR-1k { @~footprint = R-0603; #value = 1kR; 1 = A &CASUAL; 2 = B &CASUAL; };
+part BR-1k { @~footprint = R-0603; #value = 1kR; 1 = A &CASUAL; 2 = B &CASUAL; 3 = SHIELD; };
+
+block clamp {
+    >TAP;
+    TAP = .{R9~BR-1k}. = CGND;
+};
 
 block leg {
     >IN;
-    IN = .{R1~BR-1k}. = BGND;
+    IN = .{R1~BR-1k: SHIELD = ?;}. = BGND;
+    {CL1~clamp: TAP = BGND;};
 };
 
 block blocktop {
@@ -137,6 +143,60 @@ endforeach()
 file(STRINGS "${WORK}/blocks.mantaNets" bad REGEX "BLK[?]")
 if(bad)
     message(FATAL_ERROR "a range-designated block was treated as unassigned: ${bad}")
+endif()
+
+# --- block instance records (revision 1.3) ---------------------------------
+# The netlist carries one record per child block instance -- 'leg' twice, and
+# the 'clamp' nested inside each copy -- so a renderer can rebuild the
+# hierarchy. In a CMake regex '.' matches newline, so a pattern can span the
+# pretty-printed JSON.
+file(READ "${WORK}/blocks.mantaNets" blocks_net)
+
+string(REGEX MATCHALL "\"block\": \"leg\"" legs "${blocks_net}")
+list(LENGTH legs leg_count)
+string(REGEX MATCHALL "\"block\": \"clamp\"" clamps "${blocks_net}")
+list(LENGTH clamps clamp_count)
+if(NOT leg_count EQUAL 2 OR NOT clamp_count EQUAL 2)
+    message(FATAL_ERROR "expected 2 'leg' and 2 'clamp' block records, "
+                        "got ${leg_count} and ${clamp_count}")
+endif()
+
+# A nested instance carries the full path from the top.
+if(NOT blocks_net MATCHES "\"BLK1\",[\r\n ]+\"CL1\"")
+    message(FATAL_ERROR "the nested clamp does not carry its full instance path")
+endif()
+
+# Every declared port resolved to a real net: nothing in this design leaves a
+# port dangling, so a '-1' means the resolution went wrong.
+string(REGEX MATCHALL "\"name\": \"IN\",[\r\n ]+\"direction\": \"in\",[\r\n ]+\"net\": [0-9]+"
+       in_ports "${blocks_net}")
+list(LENGTH in_ports in_port_count)
+if(NOT in_port_count EQUAL 2)
+    message(FATAL_ERROR "expected 2 resolved 'IN' ports, got ${in_port_count}")
+endif()
+if(blocks_net MATCHES "\"net\": -1")
+    message(FATAL_ERROR "a block port resolved to no net")
+endif()
+
+# The local spelling of each instance's nets survives, which is what lets a
+# renderer label a child page with 'BGND' rather than the parent-flat name.
+foreach(local BGND CGND TAP)
+    if(NOT blocks_net MATCHES "\"localNets\":[^]]*\"name\": \"${local}\"")
+        message(FATAL_ERROR "'${local}' is missing from a block's localNets")
+    endif()
+endforeach()
+
+# Per-component pin lists, in declaration order. R1's SHIELD is unbound with
+# '&NET=?', so it sits on no net at all and the component entry is the only
+# place it survives; R9's is merely unconnected and gets a one-pin net.
+if(NOT blocks_net MATCHES "\"pin\": \"1\",[\r\n ]+\"name\": \"A\"")
+    message(FATAL_ERROR "a component entry carries no declared pin list")
+endif()
+if(NOT blocks_net MATCHES "\"pin\": \"2\",[\r\n ]+\"name\": \"B\"[^]]*\"pin\": \"3\",[\r\n ]+\"name\": \"SHIELD\"")
+    message(FATAL_ERROR "the declared pin list is not in declaration order")
+endif()
+if(blocks_net MATCHES "R1.SHIELD")
+    message(FATAL_ERROR "an unbound pin surfaced as a net")
 endif()
 
 # The same design left un-annotated must fail the link.
