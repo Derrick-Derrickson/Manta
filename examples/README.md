@@ -19,6 +19,21 @@ manta export --format kicad --footprint-map examples/blinky/blinky.fpmap \
              -Werror -o build/blinky.net build/blinky.mantaNets
 ```
 
+The lead is a separate thing to build, and links on its own:
+
+```sh
+manta link --top usb-c-1m -L build/ -Werror --bom build/lead.csv \
+           -o build/lead.mantaNets
+```
+
+`--assembly` on the board does both at once, writing the lead's netlist and BOM
+beside the board's without ever merging them:
+
+```sh
+manta link --top blinky -L build/ --rules examples/blinky/blinky.mantaRules \
+           -Werror --assembly --bom build/bom.csv -o build/blinky.mantaNets
+```
+
 `blinky.fpmap` is what turns a package name into one KiCad can resolve:
 `@~footprint = R-0603` says what the part is, and the map says that KiCad calls
 it `Resistor_SMD:R_0603_1608Metric`. Keeping the two apart is what lets the same
@@ -47,6 +62,10 @@ doubles as a tour:
 | A deliberate single reference | `TP1 = U2.MISO &STUB;` |
 | An unconnected pin, deliberately | the regulator's `NC=?` |
 | Net class and per-net directives | `3V3 &CLASS=power`, `&CURRENT=600mA` |
+| A connector that says what plugs in | `CONN-USB-C`, `@type = boardconnector`, `@~mate` |
+| A cable, with wires and crimps | `cable usb-c-1m` |
+| A wire's cross-section as an area | `#csa = 205000um2` |
+| Project rules over `@type` | `every-connector-is-mated`, `conductors-are-thick-enough` |
 
 Designators are already assigned, so the un-annotated check passes. The two
 block instances each carry their own `R1` and `D1` — a designator is annotated

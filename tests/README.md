@@ -40,5 +40,9 @@ fix a false negative by strengthening one until `blinky` starts complaining.
 - `rules/` — one rules file, plus a design that violates it and one that does
   not. Both are needed: a rule that never fires is useless and one that always
   fires is worse.
+- `cable/` — a board, the loom that plugs into it, and one design per mating
+  error. These need the full link driver, because a mating check compiles a
+  *second* design and compares the two; `test_diagnostics` runs the pipeline
+  only as far as ERC, so `pipeline.cmake` drives these through the binary.
 - `pipeline.cmake`, `example.cmake` — driven through `cmake -P` so they run the
   same way on every platform.

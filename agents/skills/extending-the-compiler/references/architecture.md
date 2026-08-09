@@ -1,6 +1,6 @@
 # Architecture, the parts that are subtle
 
-`src/README.md` is the tour. This covers the five places where the design is
+`src/README.md` is the tour. This covers the places where the design is
 non-obvious and a naive change will break something.
 
 ---
@@ -131,3 +131,39 @@ everything around them.
 Idempotency is a test, not a hope — `fmt(fmt(x)) == fmt(x)` over the whole
 corpus, plus the stronger guarantee that formatting does not change the netlist
 a source produces.
+
+## A unit that is a length squared
+
+`m2` is the only unit whose SI prefix does not mean what it says. A prefix on a
+squared unit squares with it: `1mm2` is `(10⁻³ m)² = 10⁻⁶ m²`, not a
+milli-square-metre. `parseDimensioned` doubles the exponent for such a unit and
+`canonical()` steps its prefix ladder by `10⁶` rather than `10³`.
+
+Two consequences that look like bugs and are not:
+
+- **`2m2` is two square metres.** The prefix is only consumed when what follows
+  is not itself the whole unit — otherwise the leading `m` is eaten as milli and
+  there is no unit left. `5mm` is still five millimetres, because `mm` is not a
+  unit and the first `m` therefore is a prefix.
+- **A squared unit always writes an explicit point.** The substituted spellings
+  exist because `4k7R` reads at a glance; `1m5m2` does not.
+
+If you add another squared or cubed unit, `isSquaredUnit` is the one place that
+decides both behaviours. Test on the *exponent*, never the spelling: the spelling
+looked entirely right while the value was out by a thousand.
+
+## Mating needs two designs
+
+Every other check in the compiler looks at one elaborated design. A mating check
+cannot: it has to compile the cable named by `@mate` as well, and lay the two
+against each other.
+
+`MateChecker` therefore takes the elaboration function as a parameter rather than
+reaching for the linker's object list. That is what keeps `link/mating.cpp` free
+of `LinkedObject` and testable, and it is why the cable is elaborated by a
+*fresh* `Elaborator` — the counters and the union-find are per-instance, and
+sharing them would put the loom's nodes in the board's netlist.
+
+The conductor trace is a walk over the cable's own nets, hopping only through
+parts typed `wire` or `crimp`. It stops at the far housing. One hop is all it
+does, and `docs/assumptions.md` C11 says why.

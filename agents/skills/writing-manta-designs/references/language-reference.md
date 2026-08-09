@@ -16,7 +16,7 @@ BIAS == -5V;            the net named -5V
 #min-supply = -5V;      minus five volts
 ```
 
-Reserved, lowercase only: `block part harness netclass match static extern`.
+Reserved, lowercase only: `block part harness netclass match cable static extern`.
 `Block` and `PART` are ordinary identifiers.
 
 Every statement ends in `;`, including the closing brace of a definition.
@@ -40,6 +40,7 @@ tokenised. Every tool reproduces it byte for byte.
 | Power | `W` | `250mW` |
 | Frequency | `Hz` | `100MHz` `2G4Hz` |
 | Length | `m` | `5mm` `100um` |
+| Area | `m2` | `1mm2` `2m2` — a prefix squares with the unit |
 | Time | `s` | `10ns` `1ms` |
 | Temperature | `C` | `85C` `-40C` |
 
@@ -57,7 +58,7 @@ are `true`/`false` in user fields, `TRUE`/`FALSE` in system fields. Lists are
 ## Structure
 
 ```
-file = { block | part | harness | netclass | match }
+file = { block | part | harness | netclass | match | cable }
 ```
 
 No implicit file-level block, and a filename means nothing. Order of declaration
@@ -84,8 +85,49 @@ Import from global with the arrow toward the name, export with it away:
 `>#author = TJM;` and `#!>board-rev = C;`. Export requires locked strength, and
 a part may not export at all.
 
-System fields: `@footprint`, `@fitted`, `@bom`, `@VERSION`, `@FLATFORMAT`, and
-inside a match group `@src`, `@dest`, `@tolerance`, `@offset`.
+System fields: `@footprint`, `@fitted`, `@bom`, `@type`, `@VERSION`,
+`@FLATFORMAT`, the mating fields `@mate`, `@mates` and `@map`, and inside a match
+group `@src`, `@dest`, `@tolerance`, `@offset`.
+
+`@type` says what a part is. Unstated it is `board_part`. Five values are
+structural and the compiler interprets them — `board_part`, `boardconnector`,
+`cableconnector`, `wire`, `crimp` — and anything else is an ordinary
+classification carried to the BOM untouched. A near miss on a structural role is
+W-TYPE, because the set being open means a typo cannot be an error and its
+consequence is silent.
+
+## Cables
+
+A `cable` is a loom: its own deliverable, with its own netlist and BOM. Its body
+is a chain, exactly as a block's is, and it may hold only a cable connector, a
+wire or a crimp.
+
+```
+part JST-8-PLUG  { @type = cableconnector; @mates = BACKPLANE-OUT; [1:8] = P[1:8]<>; };
+part JST-8-CRIMP { @type = crimp;  1 = A &CASUAL; 2 = B &CASUAL; };
+part WIRE-22AWG  { @type = wire; #csa = 1mm2; 1 = A &CASUAL; 2 = B &CASUAL; };
+
+cable jumper-8way {
+    {J1~JST-8-PLUG}P[1:8]
+        = [[ .{C%[1:8]~JST-8-CRIMP}. = .{W%[1:8]~WIRE-22AWG}.
+           = .{C%[9:16]~JST-8-CRIMP}. ]]
+        = P[1:8]{J2~JST-8-PLUG};
+};
+```
+
+A board connector says which loom plugs in:
+
+```
+part BACKPLANE-OUT { @type = boardconnector; @~mate = jumper-8way; };
+```
+
+The pins go one to one unless `@map` says otherwise. A map is a list of pairs
+whose elements may be ranges, and a range may descend:
+
+```
+@map = [[2,3],[3,2]];      // a null modem
+@map = [[1:20],[20:1]];    // a reversed ribbon
+```
 
 ## Pins
 

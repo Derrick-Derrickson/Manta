@@ -13,7 +13,7 @@ are what every check on every net using it depends on.
 part LDO-3V3 {
     @~footprint = SOT-23-5;
     #value      = AP2112K-3.3;
-    #!type      = regulator;
+    @!type      = regulator;
     #~mpn       = "AP2112K-3.3TRG1";
 
     1 = VIN<  &TYPE=POWER;
@@ -89,7 +89,7 @@ E-23 protects against.
 part R-10kR-0603 {
     @~footprint = R-0603;
     #value      = 10kR;
-    #!type      = resistor;
+    @!type      = resistor;
     1 = A &CASUAL;
     2 = B &CASUAL;
 };
@@ -150,7 +150,7 @@ should name it `v-neg`, not `V-`.
 #value      = 10kR;
 #tolerance  = ±1%;
 #power      = 100mW;
-#!type      = resistor;      locked: never overridden
+@!type      = resistor;      locked: never overridden
 #~mpn       = "RC0603FR-0710KL";
 #~cost      = 0.002;
 #~supplier  = digikey;
@@ -161,9 +161,9 @@ should name it `v-neg`, not `V-`.
 `#` is an open namespace carried to the BOM untouched. Declaring `#mpn` weakly
 lets a second source be substituted at a call site without editing the part.
 
-Two conventions the checker relies on. `#type = capacitor` is how W-03 and W-04
+Two conventions the checker relies on. `@type = capacitor` is how W-03 and W-04
 recognise a capacitor — the language has no notion of one otherwise. And
-`#!type` locked is a good default for a part's identity, which is not something
+`@!type` locked is a good default for a part's identity, which is not something
 a call site should change.
 
 ## Linkage
@@ -184,4 +184,61 @@ by writing a design that uses every part, which is what `examples/blinky` does:
 ```sh
 manta compile -o build/ parts.manta board.manta
 manta check --top <block> -L build/ -Werror
+```
+
+## Connectors, wires and crimps
+
+`@type` is what tells the compiler a part is more than a lump on a board.
+
+```manta
+part BACKPLANE-OUT {
+    @type       = boardconnector;   // something plugs into it
+    @~mate      = jumper-8way;      // and this is what
+    @~footprint = "Connector_JST:JST_PH_S8B-PH-K_1x08_P2.00mm_Horizontal";
+
+    1 = VPOS< &TYPE=POWER;
+    2 = GNDP< &TYPE=POWER &~NET=GND;
+};
+
+part JST-8-PLUG {
+    @type  = cableconnector;        // it plugs into something
+    @mates = BACKPLANE-OUT;         // and this is what
+
+    [1:8] = P[1:8]<>;
+};
+```
+
+`@~mate` weak, so a call site may fit a different lead:
+
+```manta
+.{J3~BACKPLANE-OUT: @mate = short-jumper; }.
+```
+
+A wire and a crimp are ordinary parts. They need no footprint — E-20 does not
+apply to them — and everything about a wire beyond its `@type` is a `#` field,
+so a project's rules can check whatever it cares about:
+
+```manta
+part WIRE-22AWG-RED {
+    @type       = wire;
+    #csa        = 1mm2;        // an area, so a rule can compare it to a current
+    #strands    = 7;
+    #colour     = red;
+    #insulation = PVC;
+    #mpn        = "3257-RD-100";
+
+    1 = A &CASUAL;
+    2 = B &CASUAL;
+};
+```
+
+A multicore wire is the same thing with member pins, using the syntax parts
+already have for `USB.[+,-]`:
+
+```manta
+part CABLE-2P-SHIELDED {
+    @type = wire;
+    [1:3] = A.[WHITE,BLUE,SHIELD];
+    [4:6] = B.[WHITE,BLUE,SHIELD];
+};
 ```

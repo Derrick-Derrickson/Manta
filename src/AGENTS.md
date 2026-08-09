@@ -18,6 +18,7 @@ Put a check at the **earliest stage that can decide it**:
 | Link — resolve | `link/symbols.cpp` | E-30, E-31, E-36 |
 | Link — elaborate | `link/elaborate.cpp` | Needs the instantiated design: E-04..E-07, E-11, E-12, E-21..E-23, E-29, E-39..E-42 |
 | Link — ERC | `erc/erc.cpp` | Whole-design electrical properties: E-01, E-02, E-20, E-24..E-28, E-33, W-01..W-09 |
+| Link — mating | `link/mating.cpp` | Needs a second design, the cable: E-44..E-48 |
 
 A check that needs a part's pins needs the symbol table, so it cannot be at
 compile. A check that only compares text in one statement should not be at link.
@@ -25,6 +26,12 @@ compile. A check that only compares text in one statement should not be at link.
 `E-UNANNOTATED` is deliberately in `cli/driver_link.cpp` rather than in the ERC
 pass: it is a property of the build, not of the design, and must run even under
 `--no-erc`.
+
+Mating is its own stage rather than part of ERC because it needs something ERC
+does not have: a *second* elaborated design. A cable named by `@mate` is compiled
+on its own, and only then can the two be compared. `MateChecker` takes the
+elaboration function as a parameter rather than reaching for the linker's object
+list, which is what keeps it testable.
 
 ## Adding a diagnostic
 

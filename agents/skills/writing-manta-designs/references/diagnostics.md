@@ -205,7 +205,7 @@ build. If not intended, one of those `==` should be `=`.
 
 **W-03 — a capacitor is in series with two non-ground nets**
 Usually a decoupling cap whose second pin went to the wrong net. A capacitor is
-recognised by `#type = capacitor` or by being two-terminal with a farad `#value`.
+recognised by `@type = capacitor` or by being two-terminal with a farad `#value`.
 
 **W-04 — a `&TYPE=POWER<` pin has no capacitor within two nodes**
 Missing decoupling.
@@ -224,3 +224,42 @@ outputs.
 
 **W-09 — a `&TYPE=POWER>` net has no consumers**
 A regulator feeding nothing.
+
+## Connectors and cables
+
+**E-44 — a cable holds something that is not a cable part**
+A cable takes a cable connector, a wire or a crimp, and nothing else. If a
+resistor belongs in the loom, it is an inline part on a board, not a conductor.
+
+**E-45 — a `@mate` names a cable whose connectors do not fit**
+Either the name is not a cable, or none of its housings declares
+`@mates = <this connector's part>`. The message lists what the cable does have.
+
+**E-46 — the mating pins do not line up**
+A pin-count mismatch with no `@map`, or a `@map` naming a pin that does not
+exist on one side. Write the map, or check you have the right lead.
+
+**E-47 — two drivers meet through a cable**
+The loom's far end plugs back into this same board, and a conductor joins two
+pins that both drive. Almost always a straight-through lead where a crossover
+was wanted; `@map` is where the crossover goes.
+
+**E-48 — a supply meets a ground through a cable**
+The same trace, finding a supply pin connected to a ground pin. This one is a
+short, not a subtlety.
+
+**W-TYPE — a `@type` value is nearly a structural role**
+`boardconector` is not `boardconnector`, and the difference is silent: the part
+is simply not a connector and every mating check stops applying. The set is open
+so this cannot be an error, but it is worth a word.
+
+**W-FOOTPRINT — a footprint names no library** *(export only)*
+KiCad resolves `Library:Footprint`, and a bare package name will not place.
+`--footprint-map` or `--footprint-lib` supplies the library.
+
+## One thing the checker cannot see
+
+A net whose only driver is on the *next* card in a daisy chain reports **E-02**
+on this one: ERC sees a board, and the driver is not on it. That is honest — the
+board alone does have an undriven input — but a chained design carries
+`-Wno-E-02` or a `&STUB` on its uplink nets.

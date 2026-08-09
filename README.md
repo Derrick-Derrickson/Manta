@@ -3,8 +3,8 @@
 A compiler for the Manta Schematic Definition Language, specification revision 1.2.
 
 Manta is a plain-text language for describing electronic schematics: the
-components on one printed circuit board, their interconnections, and the
-electrical constraints on those interconnections.
+components on one printed circuit board, their interconnections, the electrical
+constraints on those interconnections, and the looms that plug into it.
 
 ```
 block power-and-signal {
@@ -58,7 +58,7 @@ The two-stage model of specification §15.1:
 | Command | Input | Output |
 |---|---|---|
 | `manta compile` | one `.manta` source | one `.mantaO` object |
-| `manta link` | many `.mantaO`, plus a top-level block | one `.mantaNets` |
+| `manta link` | many `.mantaO`, plus a top-level block or cable | one `.mantaNets` |
 | `manta check` | the same | nothing; runs every stage including ERC |
 | `manta annotate` | sources, plus a `.mantaNets` | rewritten sources |
 | `manta export` | one `.mantaNets` | a layout tool's netlist |
@@ -77,6 +77,22 @@ manta compile -o build/ src/*.manta
 manta link --top power-and-signal -L build/ --bom build/bom.csv -o build/board.mantaNets
 manta annotate -n build/board.mantaNets --swaps src/*.manta
 manta export --format kicad --footprint-map board.fpmap -o build/board.net build/board.mantaNets
+```
+
+A loom is a separate thing to build, and links on its own:
+
+```sh
+manta link --top usb-c-1m -L build/ --bom build/lead.csv -o build/lead.mantaNets
+```
+
+A board connector says which loom plugs into it with `@mate`, and the linker
+checks that the two fit — the pin counts, the map, and, when the far end plugs
+back into another copy of this same board, what each conductor meets when it
+gets there. `--assembly` additionally writes every mated loom's netlist and BOM
+beside the board's, as separate files:
+
+```sh
+manta link --top power-and-signal -L build/ --assembly --bom build/bom.csv
 ```
 
 And in continuous integration:
@@ -123,7 +139,7 @@ be enabled, silenced or re-graded by code or by mnemonic: `-Wno-W-03` and
 | `src/parse` | Recursive-descent parser for the §19 grammar |
 | `src/sema` | Per-file checks; the closed field and directive registries |
 | `src/obj` | `.mantaO` reading and writing |
-| `src/link` | Symbol table, field scopes, substitution, elaborator, netlist |
+| `src/link` | Symbol table, field scopes, substitution, elaborator, netlist, mating |
 | `src/erc` | The §16 rules |
 | `src/fmt`, `src/annotate`, `src/export` | The three source- and output-side tools |
 
@@ -153,9 +169,10 @@ Four decisions shape the implementation, and are documented where they live:
 ## Examples
 
 `examples/blinky` is a complete board — USB-C in, a 3V3 regulator, an eight-pin
-microcontroller, an I²C bus and two LEDs through a replicated block — that
-passes `fmt --check`, `check -Werror`, `link` and all four exports with nothing
-to report. The specification's own worked example is an excerpt that does not
+microcontroller, an I²C bus and two LEDs through a replicated block — plus the
+USB-C lead that plugs into it, with its own wires and crimps. It passes
+`fmt --check`, `check -Werror`, `link`, the mating checks and all four exports
+with nothing to report. The specification's own worked example is an excerpt that does not
 pass ERC, so this is what a clean build actually looks like. See
 `examples/README.md`.
 
@@ -169,8 +186,10 @@ ctest --preset linux-release
   conformance suite.
 - `tests/diag` — one fixture per diagnostic code. Specification §1.3 requires an
   implementation to "implement all diagnostics in section 16, reporting the code
-  given there"; `test_diagnostics` asserts each of the 39 errors and 8 warnings
-  fires on its own fixture.
+  given there"; `test_diagnostics` asserts each of the 39 numbered errors and 9
+  warnings fires on its own fixture. The five mating errors need the full link
+  driver, because a mating check compiles a *second* design, so they live in
+  `tests/cable` and are driven through the binary instead.
 - `tests/spec` — the worked examples of §20, with the four corrections listed in
   `docs/assumptions.md` §B and nothing else changed.
 - `tests/pipeline.cmake` — the §20.8 build sequence end to end through the real
@@ -198,6 +217,6 @@ declare, and an unquoted hyphenated field inside a substitution. In every one of
 those the rule is followed and the example is corrected in `tests/spec`.
 
 Two things are worth knowing before writing a design. A *capacitor* has no
-definition in the language, yet two warnings need one, so `#type = capacitor` is
+definition in the language, yet two warnings need one, so `@type = capacitor` is
 the convention adopted. And `$a-b$` is subtraction, never a reference to a field
 named `a-b` — that needs quoting, as `$"a-b"$`.

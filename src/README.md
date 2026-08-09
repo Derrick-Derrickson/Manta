@@ -63,6 +63,9 @@ and compares bytes, which is what keeps the two halves from drifting.
 - `part_info` — expanding a `part` declaration into concrete pins.
 - `elaborate` — the core. See below.
 - `netlist` — the elaborated design and the writers for netlist, BOM and map.
+- `mating` — connectors and cables (§12A). Resolves `@mate` to a cable, compiles
+  it on its own, and lays the two against each other. A cable is a separate
+  deliverable, so this never touches the board's netlist.
 
 **`erc/`** — the rules of specification §16, each a pass over the elaborated
 design.
@@ -75,7 +78,9 @@ needs no rules file to compile.
 
 **`fmt/`, `annotate/`, `export/`** — the three tools that consume the pipeline's
 output. The formatter rewrites whole files from the AST; the annotator makes
-surgical byte-range edits and never reformats.
+surgical byte-range edits and never reformats. `export/footprint_map` translates
+a package name into whatever a layout tool calls it, and `export/uuid` gives a
+component an identity that survives re-annotation, over the SHA-1 in `base/`.
 
 **`cli/`** — option parsing, one driver per subcommand, and the platform layer
 (console colour, wide argv on Windows, binary stdout).

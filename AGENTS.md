@@ -29,7 +29,7 @@ kept at zero warnings under `-Wall -Wextra -Wpedantic -Wshadow -Wconversion
 | `tests/` | Unit tests, conformance fixtures, end-to-end pipeline. See `tests/AGENTS.md`. |
 | `docs/spec.md` | The language specification, editorially corrected. **The authority.** |
 | `docs/assumptions.md` | Every point where the spec underdetermines behaviour, and what was decided. |
-| `examples/blinky/` | A complete board that must pass everything with no findings. |
+| `examples/blinky/` | A complete board, and the lead that plugs into it, which must pass everything with no findings. |
 | `schema/` | Published JSON Schemas for the two artifact formats. |
 | `agents/` | Skills for writing manta designs and for extending this compiler. |
 

@@ -361,13 +361,13 @@ A list is a comma-separated sequence in square brackets.
 
 ```ebnf
 file = { item } ;
-item = block_def | part_def | harness_def | netclass_def | match_def ;
+item = block_def | part_def | harness_def | netclass_def | match_def | cable_def ;
 ```
 
 A file has no identity. There is no implicit file-level block, and a filename means
 nothing to the language: a `.manta` file is a collection of named declarations. Every
-block, part, harness, netclass and match group is declared explicitly and referenced by
-that name.
+block, part, harness, netclass, match group and cable is declared explicitly and
+referenced by that name.
 
 Order of declaration is irrelevant. A name may be used before it is declared.
 
@@ -2267,6 +2267,8 @@ component exported as `BLK?7_R1` is no more shippable than a bare `?`.
 | W-07 | Two identifiers in one design differ only by `-` versus `_`. |
 | W-08 | A swap group's members carry incompatible directives, so the group is frozen. |
 | W-09 | A `&TYPE=POWER>` net has no consumers. |
+| W-TYPE | A `@type` value is not a structural role but is within one edit of one (§9.7). |
+| W-FOOTPRINT | A footprint reaches a layout tool with no library nickname. Export only. |
 
 Every warning above is enabled by default except **W-06**, which is enabled with
 `-WW-06` or `-Wweak-never-overridden`. A part library declares `@~footprint`

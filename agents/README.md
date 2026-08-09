@@ -24,8 +24,8 @@ relevant directory are the shorter, always-applicable version;
 
 ## The one thing to internalise
 
-**The compiler is the oracle, not your judgement.** Manta has 47 diagnostics
-precisely because a schematic has many ways to be quietly wrong. Do not reason
+**The compiler is the oracle, not your judgement.** Manta has over fifty
+diagnostics precisely because a schematic has many ways to be quietly wrong. Do not reason
 about whether a design is correct — run it:
 
 ```sh
