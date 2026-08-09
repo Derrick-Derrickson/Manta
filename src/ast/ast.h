@@ -407,11 +407,19 @@ struct MemberDecl {
     Span span;
 };
 
+// A render section marker (revision 1.3): "--- POWER SUPPLY" inside a block
+// body. Purely syntactic here: it names the render "room" the statements after
+// it belong to, until the next marker or the end of the block.
+struct SectionMarker {
+    SymbolId name = SymbolId::kInvalid;  // the title, trailing whitespace trimmed
+    Span span;                           // the whole marker, '---' included
+};
+
 enum class ItemKind : std::uint8_t { Block, Part, Harness, Netclass, Match, Cable };
 
 // One entry in a declaration body, tagged so that source order survives into
 // the formatter unchanged.
-enum class BodyKind : std::uint8_t { Item, Stmt, Field, PinMap, Member, Directive };
+enum class BodyKind : std::uint8_t { Item, Stmt, Field, PinMap, Member, Directive, Section };
 
 struct BodyEntry {
     BodyKind kind = BodyKind::Stmt;
@@ -421,6 +429,7 @@ struct BodyEntry {
     PinMap* pin = nullptr;
     MemberDecl* member = nullptr;
     Directive* directive = nullptr;
+    SectionMarker* section = nullptr;
 };
 
 struct Item {
