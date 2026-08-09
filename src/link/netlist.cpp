@@ -99,10 +99,28 @@ void writeNetlist(const Design& design, std::string& out) {
         w.field("bom", c.bom);
         w.field("footprint", c.footprint);
         w.field("type", c.type);
+        if (!c.section.empty()) w.field("section", c.section);
         w.key("fields");
         w.beginObject();
         for (const auto& [name, value] : c.fields) w.field(name, value);
         w.endObject();
+        // Every pin, in part-declaration order, connected or not. The net side
+        // below carries only connected pins, so this is the one place an NC or
+        // unconnected pin -- and the declared order a symbol is drawn in --
+        // survives into the netlist.
+        w.key("pins");
+        w.beginArray();
+        for (const ComponentPin& pin : c.pins) {
+            w.beginObject();
+            w.field("pin", pin.physical);
+            w.field("name", pin.logical);
+            if (pin.type != PinType::Passive) w.field("type", pinTypeName(pin.type));
+            if (pin.direction != PortDir::None) {
+                w.field("direction", portDirName(pin.direction));
+            }
+            w.endObject();
+        }
+        w.endArray();
         w.endObject();
     }
     w.endArray();

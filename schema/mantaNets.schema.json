@@ -47,10 +47,43 @@
             "description": "What the part is, from '@type' (section 9.5). Five values are structural -- board_part, boardconnector, cableconnector, wire, crimp -- and the rest are ordinary classifications carried through untouched. Absent means board_part.",
             "type": "string"
           },
+          "section": {
+            "description": "Schematic sheet section, for 'manta render'. Absent when unassigned.",
+            "type": "string"
+          },
           "fields": {
             "description": "User fields, carried through untouched (section 9.1). Values are rendered per section 14.7.",
             "type": "object",
             "additionalProperties": { "type": "string" }
+          },
+          "pins": {
+            "description": "Every declared pin in declaration order, connected or not (revision 1.3). The net side carries only connected pins, so this is where NC and unconnected pins survive. Optional: a netlist written before it existed has no such key.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["pin", "name"],
+              "additionalProperties": false,
+              "properties": {
+                "pin": {
+                  "description": "The physical package pin.",
+                  "type": "string"
+                },
+                "name": {
+                  "description": "The logical name the part declares.",
+                  "type": "string"
+                },
+                "type": {
+                  "description": "Absent when PASSIVE, the default.",
+                  "type": "string",
+                  "enum": ["SIGNAL", "POWER", "OPENDRAIN", "NC", "GROUND"]
+                },
+                "direction": {
+                  "description": "Absent when the pin carries no arrow.",
+                  "type": "string",
+                  "enum": ["in", "out", "bidir"]
+                }
+              }
+            }
           }
         }
       }

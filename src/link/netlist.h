@@ -89,6 +89,8 @@ struct Component {
     std::vector<std::string> mates;
     std::vector<std::pair<std::int64_t, std::int64_t>> pinMap;
     std::vector<std::pair<std::string, std::string>> fields;  // user fields, source order
+    // Schematic sheet section, for 'manta render'. Empty until assigned.
+    std::string section;
     std::vector<ComponentPin> pins;
     Span span;
 };
