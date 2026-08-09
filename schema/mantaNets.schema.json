@@ -9,7 +9,7 @@
   "properties": {
     "version": {
       "description": "The language revision this netlist targets.",
-      "enum": ["1.0", "1.1", "1.2"]
+      "enum": ["1.0", "1.1", "1.2", "1.3"]
     },
     "kind": { "const": "mantaNets" },
     "top": {

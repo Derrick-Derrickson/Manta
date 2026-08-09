@@ -6,6 +6,7 @@
 #include <format>
 
 #include "json/json.h"
+#include "obj/mantao.h"
 #include "sema/registry.h"
 
 namespace manta {
@@ -78,7 +79,9 @@ std::string componentName(const Component& c) {
 void writeNetlist(const Design& design, std::string& out) {
     JsonWriter w(out, /*pretty=*/true);
     w.beginObject();
-    w.field("version", "1.0");
+    // The single source of truth for the language revision, so the netlist can
+    // never claim a revision other than the one the toolchain implements.
+    w.field("version", kLanguageVersion);
     w.field("kind", "mantaNets");
     w.field("top", design.top);
 
