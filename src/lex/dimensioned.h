@@ -26,6 +26,7 @@ enum class Unit : std::uint8_t {
     Watt,      // W
     Hertz,     // Hz
     Metre,     // m
+    SquareMetre,  // m2 -- a wire's cross-section is an area
     Second,    // s
     Celsius,   // C
     Percent,   // %
@@ -36,6 +37,10 @@ enum class Unit : std::uint8_t {
 // The unit a quantity must have for a given directive to be well typed.
 [[nodiscard]] bool isTimeUnit(Unit u) noexcept;
 [[nodiscard]] bool isLengthUnit(Unit u) noexcept;
+
+// A unit that is a length squared. An SI prefix on one squares with it, and the
+// canonical form steps through prefixes by 10^6 rather than 10^3.
+[[nodiscard]] bool isSquaredUnit(Unit u) noexcept;
 
 struct Dimensioned {
     std::int64_t mantissa = 0;  // signed; value == mantissa * 10^exp10

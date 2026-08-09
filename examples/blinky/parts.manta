@@ -1,7 +1,7 @@
 // A small part library for the blinky example.
 //
 // Every part carries a weak '@~footprint' so a call site may substitute a
-// different package without editing the part (spec 9.2), and a locked '#!type'
+// different package without editing the part (spec 9.2), and a locked '@!type'
 // so the checker can recognise what it is.
 //
 // None of these is 'static': internal linkage would make them invisible to the
@@ -16,7 +16,7 @@ part R-1kR-0603 {
     #value      = 1kR;
     #tolerance  = ±1%;
     #power      = 100mW;
-    #!type      = resistor;
+    @!type      = resistor;
     #~mpn       = "RC0603FR-071KL";
 
     1 = A &CASUAL;
@@ -28,7 +28,7 @@ part R-10kR-0603 {
     #value      = 10kR;
     #tolerance  = ±1%;
     #power      = 100mW;
-    #!type      = resistor;
+    @!type      = resistor;
     #~mpn       = "RC0603FR-0710KL";
 
     1 = A &CASUAL;
@@ -39,7 +39,7 @@ part C-100nF-0603 {
     @~footprint = C-0603;
     #value      = 100nF;
     #voltage    = 16V;
-    #!type      = capacitor;
+    @!type      = capacitor;
 
     1 = A &CASUAL;
     2 = B &CASUAL;
@@ -49,7 +49,7 @@ part C-10uF-0805 {
     @~footprint = C-0805;
     #value      = 10uF;
     #voltage    = 16V;
-    #!type      = capacitor;
+    @!type      = capacitor;
 
     1 = A &CASUAL;
     2 = B &CASUAL;
@@ -62,7 +62,7 @@ part C-10uF-0805 {
 part LDO-3V3 {
     @~footprint = SOT-23-5;
     #value      = AP2112K-3.3;
-    #!type      = regulator;
+    @!type      = regulator;
     #~mpn       = "AP2112K-3.3TRG1";
 
     1 = VIN< &TYPE=POWER;
@@ -90,7 +90,7 @@ part MCU-8PIN {
 part LED-0603 {
     @~footprint = LED-0603;
     #value      = green;
-    #!type      = led;
+    @!type      = led;
     #~current   = 5mA;
 
     1 = A;
@@ -100,7 +100,7 @@ part LED-0603 {
 part CONN-USB-C {
     @~footprint = USB-C-16;
     #value      = USB-C;
-    #!type      = connector;
+    @!type      = connector;
 
     1 = VBUS> &TYPE=POWER #SUPPLY=500mA;
     2 = GND< &TYPE=POWER &~NET=GND;

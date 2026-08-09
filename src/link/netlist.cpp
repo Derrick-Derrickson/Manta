@@ -93,6 +93,7 @@ void writeNetlist(const Design& design, std::string& out) {
         w.field("fitted", c.fitted);
         w.field("bom", c.bom);
         w.field("footprint", c.footprint);
+        w.field("type", c.type);
         w.key("fields");
         w.beginObject();
         for (const auto& [name, value] : c.fields) w.field(name, value);
@@ -221,7 +222,7 @@ void writeBom(const Design& design, std::string& out) {
         }
     }
 
-    out += "designator,part,footprint,fitted,quantity";
+    out += "designator,part,type,footprint,fitted,quantity";
     for (const std::string& col : columns) {
         out += ',';
         csvField(out, col);
@@ -233,6 +234,8 @@ void writeBom(const Design& design, std::string& out) {
         csvField(out, componentName(c));
         out += ',';
         csvField(out, c.partName);
+        out += ',';
+        csvField(out, c.type);
         out += ',';
         csvField(out, c.footprint);
         out += ',';

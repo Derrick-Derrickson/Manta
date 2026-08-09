@@ -91,7 +91,7 @@ rules_def   = "rules" identifier "{" { field_decl | check_def } "}" ";" ;
 field_decl  = "#" identifier ":" quantity ";" ;
 quantity    = "voltage" | "current" | "resistance" | "capacitance"
             | "inductance" | "power" | "frequency" | "time" | "length"
-            | "temperature" | "number" | "boolean" | "text" ;
+            | "area" | "temperature" | "number" | "boolean" | "text" ;
 
 check_def   = "check" identifier "for" domain "{" { clause } "}" ";" ;
 domain      = "part" | "net" | "component"

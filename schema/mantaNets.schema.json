@@ -43,6 +43,10 @@
             "type": "boolean"
           },
           "footprint": { "type": "string" },
+          "type": {
+            "description": "What the part is, from '@type' (section 9.5). Five values are structural -- board_part, boardconnector, cableconnector, wire, crimp -- and the rest are ordinary classifications carried through untouched. Absent means board_part.",
+            "type": "string"
+          },
           "fields": {
             "description": "User fields, carried through untouched (section 9.1). Values are rendered per section 14.7.",
             "type": "object",

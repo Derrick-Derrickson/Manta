@@ -73,6 +73,13 @@ struct Component {
     bool fitted = true;
     bool bom = true;
     std::string footprint;
+    // What the part is, from '@type'. A first-class member rather than a user
+    // field because the compiler interprets the structural roles -- what may go
+    // in a cable, what takes part in mating -- and because a system field is
+    // excluded from `fields`, which would otherwise drop it from the BOM and
+    // hide it from user rules.
+    std::string type;
+    PartType partType = PartType::BoardPart;
     std::vector<std::pair<std::string, std::string>> fields;  // user fields, source order
     std::vector<ComponentPin> pins;
     Span span;

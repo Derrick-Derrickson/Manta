@@ -525,6 +525,22 @@ std::uint32_t Elaborator::instantiatePart(const Instance* inst, const PartInfo& 
         c.footprint = renderValue(subst_.resolveValue(s->value, env, arena_), interner_);
     }
 
+    // What the part is. Unstated means an ordinary part on the board, which is
+    // what almost everything is; the structural roles are what a cable and the
+    // mating checks are built on.
+    FieldKey typeKey{interner_.intern("type"), FieldNamespace::System};
+    c.type = "board_part";
+    c.partType = PartType::BoardPart;
+    if (const FieldSlot* s = env.lookup(typeKey); s && s->value) {
+        c.type = renderValue(subst_.resolveValue(s->value, env, arena_), interner_);
+        bool nearMiss = false;
+        std::string_view suggestion;
+        c.partType = lookupPartType(c.type, nearMiss, suggestion);
+        if (nearMiss) {
+            diags_.report(DiagId::PartTypeNearMiss, s->declaredAt, c.type, suggestion);
+        }
+    }
+
     // User fields travel to the BOM untouched (spec 9.1).
     FlatMap<FieldKey, FieldSlot> visible;
     env.collectVisible(visible);

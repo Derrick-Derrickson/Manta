@@ -59,6 +59,31 @@ struct SystemFieldInfo {
 // Returns nullptr when the name is not a known system field (error E-10).
 [[nodiscard]] const SystemFieldInfo* lookupSystemField(std::string_view name) noexcept;
 
+// What a part is, as declared by '@type'.
+//
+// The value set is deliberately open: '@type' also carries ordinary
+// classifications -- resistor, regulator, connector -- that the compiler has no
+// business enumerating, and which travel to the BOM untouched. These five are
+// the ones it *interprets*, because they decide what may appear in a cable and
+// which parts take part in mating.
+enum class PartType : std::uint8_t {
+    BoardPart,       // "board_part", and the default when '@type' is unstated
+    BoardConnector,  // something plugs into it
+    CableConnector,  // it plugs into something
+    Wire,            // a conductor; its pins are its cores
+    Crimp,           // a terminal on a wire end
+    Other,           // any other classification, carried through untouched
+};
+
+// Recognises a structural role. `nearMiss` is set when the spelling did not
+// match but is close enough to one that it was probably meant: '@type' is an
+// open set, so a typo would otherwise silently produce a part that takes no
+// part in any mating check. That is W-10.
+[[nodiscard]] PartType lookupPartType(std::string_view value, bool& nearMiss,
+                                      std::string_view& suggestion) noexcept;
+
+[[nodiscard]] std::string_view partTypeName(PartType t) noexcept;
+
 // Spec 11.6: the fixed set of pin types. Values are upper case (spec 2.6), and
 // a lower-case spelling is error E-34.
 enum class PinType : std::uint8_t { Passive, Signal, Power, OpenDrain, NC, Ground };

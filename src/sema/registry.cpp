@@ -36,10 +36,11 @@ constexpr std::array<DirectiveInfo, 16> kDirectives{{
 }};
 
 // Spec 9.5, plus @FLATFORMAT from 13.4 and the match-group fields of 11.4.
-constexpr std::array<SystemFieldInfo, 9> kSystemFields{{
+constexpr std::array<SystemFieldInfo, 10> kSystemFields{{
     {"footprint",  ValueType::Identifier, false},
     {"fitted",     ValueType::Boolean,    false},
     {"bom",        ValueType::Boolean,    false},
+    {"type",       ValueType::Identifier, false},
     {"VERSION",    ValueType::Version,    false},
     {"FLATFORMAT", ValueType::Identifier, false},
 
@@ -144,6 +145,58 @@ bool lookupPinType(std::string_view value, PinType& out, bool& caseError) noexce
         }
     }
     return false;
+}
+
+namespace {
+
+struct PartTypeEntry {
+    std::string_view name;
+    PartType type;
+};
+
+constexpr std::array<PartTypeEntry, 5> kPartTypes{{
+    {"board_part", PartType::BoardPart},
+    {"boardconnector", PartType::BoardConnector},
+    {"cableconnector", PartType::CableConnector},
+    {"wire", PartType::Wire},
+    {"crimp", PartType::Crimp},
+}};
+
+}  // namespace
+
+PartType lookupPartType(std::string_view value, bool& nearMiss,
+                        std::string_view& suggestion) noexcept {
+    nearMiss = false;
+    suggestion = {};
+    if (value.empty()) return PartType::BoardPart;
+
+    for (const auto& e : kPartTypes) {
+        if (e.name == value) return e.type;
+    }
+
+    // Not a structural role. It may be an ordinary classification -- 'resistor',
+    // 'regulator' -- which is perfectly legal and means nothing to the compiler.
+    // But a near miss on a structural role is almost certainly a typo, and the
+    // consequence is silent: every mating check simply stops applying.
+    std::string_view near = nearest(kPartTypes, [](const PartTypeEntry& e) { return e.name; },
+                                    value);
+    if (!near.empty()) {
+        nearMiss = true;
+        suggestion = near;
+    }
+    return PartType::Other;
+}
+
+std::string_view partTypeName(PartType t) noexcept {
+    switch (t) {
+        case PartType::BoardPart: return "board_part";
+        case PartType::BoardConnector: return "boardconnector";
+        case PartType::CableConnector: return "cableconnector";
+        case PartType::Wire: return "wire";
+        case PartType::Crimp: return "crimp";
+        case PartType::Other: return "";
+    }
+    return "board_part";
 }
 
 std::string_view pinTypeName(PinType t) noexcept {

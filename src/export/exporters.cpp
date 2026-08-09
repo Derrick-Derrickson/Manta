@@ -41,6 +41,11 @@ bool readNetlist(const JsonValue& root, DiagEngine& diags, Design& out) {
             component.fitted = c->boolean_("fitted", true);
             component.bom = c->boolean_("bom", true);
             component.footprint = std::string(c->str("footprint"));
+            component.type = std::string(c->str("type"));
+            if (component.type.empty()) component.type = "board_part";
+            bool typeNearMiss = false;
+            std::string_view typeSuggestion;
+            component.partType = lookupPartType(component.type, typeNearMiss, typeSuggestion);
             if (const JsonValue* path = c->arr("path")) {
                 for (const JsonPtr& p : path->array) component.path.push_back(p->text);
             }

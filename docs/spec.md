@@ -256,6 +256,7 @@ intervening space.
 | Power | `W` | `250mW` |
 | Frequency | `Hz` | `100MHz`, `2G4Hz` |
 | Length | `m` | `5mm`, `100um` |
+| Area | `m2` | `0.35mm2`, `2m2` |
 | Time | `s` | `10ns`, `1ms` |
 | Temperature | `C` | `85C`, `-40C` |
 
@@ -269,6 +270,20 @@ forms are accepted and the formatter emits the substituted form.
 3V3     ==  3.3V
 2u2H    ==  2.2uH
 2G4Hz   ==  2.4GHz
+```
+
+A suffix that is itself two characters ending in a digit gains nothing from the
+substituted form — `1.5mm2` would become `1m5m2`, which reads as nothing at all
+— so a squared unit always writes an explicit point.
+
+`m2` is a length squared, and an SI prefix on it squares with it: `1mm2` is a
+square millimetre, `(10⁻³ m)² = 10⁻⁶ m²`, and not a milli-square-metre. The
+canonical form therefore steps through prefixes by `10⁶`.
+
+```
+1mm2      ==  0.000001m2
+1000mm2   ==  0.001m2
+2m2                            // the leading 'm' is the unit, not a prefix
 ```
 
 ### 3.3 Tolerance
@@ -1060,6 +1075,7 @@ part definition is error **E-43**.
 | `@footprint` | identifier | — | Physical footprint name. Required for any fitted part. |
 | `@fitted` | boolean | `TRUE` | Whether the part is populated. `FALSE` is equivalent to a `!` prefix. |
 | `@bom` | boolean | `TRUE` | Whether the part appears on the BOM. |
+| `@type` | identifier | `board_part` | What the part is (§9.7). |
 | `@VERSION` | constraint | — | Language revision required (§4.3). |
 
 `@fitted` and `@bom` are independent.
@@ -1082,7 +1098,7 @@ part R-10k-1pct-0603 {
     #value      = 10kR;
     #tolerance  = ±1%;
     #power      = 100mW;
-    #!type      = resistor;
+    @!type      = resistor;
     #~mpn       = "RC0603FR-0710KL";
     #~cost      = 0.002;
     #~supplier  = digikey;
@@ -1098,6 +1114,31 @@ editing the part.
 ```
 .{R1~R-10k-1pct-0603: #mpn = "ERJ-3EKF1002V"; }.
 ```
+
+### 9.7 What a part is
+
+`@type` says what a part is. Its value set is open: a design is free to write
+`@type = regulator` or `@type = ferrite`, and such a value means nothing to the
+compiler and travels to the BOM untouched.
+
+Five values are **structural**, and the compiler does interpret them.
+
+| Value | Meaning |
+|---|---|
+| `board_part` | Something on the board. The default when `@type` is unstated. |
+| `boardconnector` | Something plugs into it. May carry `@mate`. |
+| `cableconnector` | It plugs into something. May carry `@mates` and `@map`. |
+| `wire` | A conductor. Its pins are its cores. |
+| `crimp` | A terminal on a wire end. |
+
+Because the set is open, a misspelt structural role cannot be an error — but its
+consequence is silent, since `@type = boardconector` is simply not a connector
+and every check that depends on one stops applying without a word. A value that
+is not a structural role but is within one edit of one, or matches one after
+case folding, is therefore warning **W-TYPE**.
+
+`@type` is carried in the netlist and given a BOM column, and a rule may read it
+as `component.type`.
 
 ---
 
@@ -2127,8 +2168,8 @@ findings that matter. `-W<name>` in §15.5 exists for exactly this.
 W-03 and W-04 both require recognising a capacitor, which is not a language
 construct: parts are opaque and nothing marks one as capacitive. An
 implementation shall document how it identifies one. The reference
-implementation treats a part as a capacitor when it carries `#type = capacitor`
-— the convention §9.6 establishes when it writes `#!type = resistor` — or when
+implementation treats a part as a capacitor when it carries `@type = capacitor`
+— the convention §9.7 establishes — or when
 it is two-terminal with a `#value` dimensioned in farads. Neither warning fires
 on a part it cannot classify.
 
@@ -2284,7 +2325,7 @@ static part R-10k-1pct-0603 {
     #value      = 10kR;
     #tolerance  = ±1%;
     #power      = 100mW;
-    #!type      = resistor;
+    @!type      = resistor;
     #~mpn       = "RC0603FR-0710KL";
     #~cost      = 0.002;
 

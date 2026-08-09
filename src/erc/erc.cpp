@@ -51,6 +51,9 @@ std::string_view ErcChecker::nameOf(const Component& c) const {
 bool ErcChecker::isCapacitor(const Component& c) const {
     // See docs/assumptions.md, B1. The specification never says how a capacitor
     // is identified, yet W-03 and W-04 both depend on it.
+    if (c.type == "capacitor") return true;
+    // A '#type' user field is still honoured, because a design written before
+    // 'type' moved to the system namespace is still a valid design.
     for (const auto& [name, value] : c.fields) {
         if (name == "type" && value == "capacitor") return true;
     }

@@ -108,8 +108,8 @@ Nothing in the language marks a part as capacitive; parts are opaque.
 
 **Resolution.** A part is treated as a capacitor when either holds:
 
-1. it carries a `#type` field whose value is `capacitor` — the convention the
-   specification itself establishes when it writes `#!type = resistor`; or
+1. it carries a `@type` field whose value is `capacitor` — the convention the
+   specification itself establishes when it writes `@!type = resistor`; or
 2. it is two-terminal and carries a `#value` dimensioned in farads.
 
 Both warnings are individually suppressible (`-Wno-W-03`, `-Wno-cap-in-series`).
