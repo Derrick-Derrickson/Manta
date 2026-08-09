@@ -25,6 +25,7 @@ int runLink(const Options& opts);
 int runAnnotate(const Options& opts);
 int runFormat(const Options& opts);
 int runExport(const Options& opts);
+int runRender(const Options& opts);
 
 // Resolves an input name against the -I search path, returning the first
 // existing candidate or the name unchanged.
