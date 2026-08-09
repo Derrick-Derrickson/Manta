@@ -172,6 +172,9 @@ private:
 
     // ---- naming and finishing -------------------------------------------------
     void buildNets(Design& design);
+    // Resolves the block instances recorded during elaboration against the
+    // root-to-net mapping buildNets leaves behind. Must run after it.
+    void collectBlockInstances(Design& design);
     void applyStatementDirectives(const Stmt* stmt, std::span<const std::uint32_t> nodes,
                                   Scope& scope);
     void collectMatchGroups(Design& design);
@@ -193,6 +196,10 @@ private:
     UnionFind uf_;
     std::vector<NodeInfo> nodeInfo_;
     FlatMap<NetKey, std::uint32_t> netNodes_;
+    // Union-find root -> Design::nets index, filled by buildNets so that data
+    // recorded against node handles during elaboration can be resolved after
+    // the merge is done.
+    FlatMap<std::uint32_t, std::uint32_t> rootToNet_;
 
     std::vector<Component> components_;
     // Block instances written with '?'. A block is not a component, so it has no
@@ -232,6 +239,26 @@ private:
         Span at;
     };
     std::vector<PendingMatchUse> pendingMatches_;
+
+    // A port declaration seen during elaboration: the arrow-carrying net of
+    // spec 4.4, recorded where the arrow is applied. Node handles are resolved
+    // to net indices after buildNets.
+    struct PendingPort {
+        std::uint32_t scope;
+        std::uint32_t node;
+        PortDir dir;
+    };
+    std::vector<PendingPort> pendingPorts_;
+
+    // A child block instance, recorded as instantiation begins so the order is
+    // the order instances are encountered. The ports and local nets belonging
+    // to it are found later by scope id.
+    struct PendingBlock {
+        std::uint32_t scope;
+        std::vector<std::string> path;
+        std::string block;
+    };
+    std::vector<PendingBlock> pendingBlocks_;
 
     // Netclass name -> its directives (spec 11.9).
     FlatMap<SymbolId, std::vector<const Directive*>> netclasses_;
