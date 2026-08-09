@@ -507,6 +507,13 @@ private:
         w_.endObject();
     }
 
+    void writeSection(const SectionMarker* s) {
+        w_.beginObject();
+        w_.field("name", in_.text(s->name));
+        span(s->span);
+        w_.endObject();
+    }
+
     void writeItem(const Item* item) {
         w_.beginObject();
         w_.field("kind", itemKindName(item->kind));
@@ -540,6 +547,10 @@ private:
                 case BodyKind::Directive:
                     w_.key("directive");
                     writeDirective(e.directive);
+                    break;
+                case BodyKind::Section:
+                    w_.key("section");
+                    writeSection(e.section);
                     break;
             }
             w_.endObject();
@@ -1230,6 +1241,14 @@ private:
         return m;
     }
 
+    SectionMarker* readSection(const JsonValue* o) {
+        if (!o) return nullptr;
+        auto* s = arena_.make<SectionMarker>();
+        s->name = in_.intern(o->str("name"));
+        s->span = readSpan(*o);
+        return s;
+    }
+
     Item* readItem(const JsonValue& o) {
         auto* item = arena_.make<Item>();
         std::string_view k = o.str("kind");
@@ -1265,6 +1284,9 @@ private:
                 } else if (const JsonValue* v6 = e->find("directive")) {
                     entry.kind = BodyKind::Directive;
                     entry.directive = readDirective(v6);
+                } else if (const JsonValue* v7 = e->find("section")) {
+                    entry.kind = BodyKind::Section;
+                    entry.section = readSection(v7);
                 } else {
                     fail("unknown body entry in object");
                     continue;
