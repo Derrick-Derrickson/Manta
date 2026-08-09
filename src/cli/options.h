@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Tom
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Command-line parsing for the six subcommands of spec 15.5.
+// Command-line parsing for the six subcommands of spec 15.5, plus 'render'.
 #pragma once
 
 #include <string>
@@ -10,7 +10,7 @@
 
 namespace manta {
 
-enum class Command { None, Compile, Link, Check, Annotate, Format, Export };
+enum class Command { None, Compile, Link, Check, Annotate, Format, Export, Render };
 
 // Exit codes, fixed by spec 15.7.
 enum ExitCode : int {
@@ -72,6 +72,10 @@ struct Options {
     std::string flatFormat;
     std::string footprintMapPath;
     std::string footprintLib;
+
+    // render
+    std::string title;
+    std::string pdfPath;
 };
 
 struct ParseOutcome {
