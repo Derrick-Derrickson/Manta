@@ -68,6 +68,13 @@ enum class TokenKind : std::uint8_t {
     Ge,     // >=
     BangEq, // !=
 
+    // A render section marker (revision 1.3): a line inside a block body whose
+    // first non-whitespace is "---", optionally followed by whitespace and a
+    // free-text title. The token covers the trimmed title text; `flags` holds
+    // the byte distance back to the '-' that starts the marker, so a
+    // diagnostic can span the whole line.
+    SectionMarker,
+
     Invalid,
 };
 
@@ -94,7 +101,7 @@ inline constexpr std::uint16_t VersionSpec   = 1u << 12; // "1.2", "1.2+", "0.2-
 
 struct Token {
     TokenKind kind = TokenKind::Eof;
-    std::uint16_t flags = 0;  // WordFlags, meaningful only for Word
+    std::uint16_t flags = 0;  // WordFlags for Word; marker distance for SectionMarker
     std::uint32_t offset = 0;
     std::uint32_t length = 0;
 

@@ -714,7 +714,8 @@ private:
     }
 
     void genericBody(const Item* it) {
-        for (const BodyEntry& e : it->body) {
+        for (std::size_t i = 0; i < it->body.size(); ++i) {
+            const BodyEntry& e = it->body[i];
             switch (e.kind) {
                 case BodyKind::Item:
                     flushCommentsBefore(e.item->span.offset);
@@ -738,6 +739,17 @@ private:
                     indent();
                     emit(directive(e.directive));
                     emit(";");
+                    endLine();
+                    break;
+                case BodyKind::Section:
+                    // A marker opens a paragraph: a blank line above it unless
+                    // it opens the body. The blank precedes any comment sitting
+                    // on the marker, so the comment stays attached to it.
+                    if (i > 0) blankLine();
+                    flushCommentsBefore(e.section->span.offset);
+                    indent();
+                    emit("--- ");
+                    emit(text(e.section->name));
                     endLine();
                     break;
                 case BodyKind::PinMap:

@@ -450,13 +450,14 @@ TEST_CASE("spec 2.8: the marker must be a line of its own") {
     CHECK_EQ(contentEndOf("part p { 1 = A &CASUAL; };  ---\n"), TokenStream::kNoContentEnd);
 }
 
-TEST_CASE("spec 2.8: '---' inside a declaration is a syntax error, not a truncation") {
+TEST_CASE("spec 2.8: '---' inside a declaration is never a truncation") {
     // Silently discarding the rest of the file would be far worse than an error,
-    // so the marker is recognised only where a declaration could begin.
+    // so the end-of-content marker is recognised only where a declaration could
+    // begin. Inside a block the same shape is a *section* marker (revision
+    // 1.3), and a bare one has no title, which the parser rejects.
     CHECK_EQ(contentEndOf("block b {\n    A == B;\n---\n    C == D;\n};\n"),
              TokenStream::kNoContentEnd);
 
-    // The lexer tokenises it as hyphens; the parser is what rejects them.
     auto r = parse("block b {\n    A == B;\n---\n    C == D;\n};\n");
     CHECK(r->diags->errorCount() > 0);
 }
@@ -465,6 +466,80 @@ TEST_CASE("spec 2.8: a file that is nothing but a marker") {
     auto r = parse("---\neverything here is documentation\n");
     expectClean(r, "marker-only file");
     CHECK_EQ(r->unit.items.size(), std::size_t{0});
+}
+
+// ---------------------------------------------------------------------------
+// Revision 1.3 -- render section markers
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// The interned title of a Section body entry, or "" when it is not one.
+std::string sectionTitle(const std::shared_ptr<ParseResult>& r, const BodyEntry& e) {
+    if (e.kind != BodyKind::Section) return {};
+    return std::string(r->interner.text(e.section->name));
+}
+
+}  // namespace
+
+TEST_CASE("rev 1.3: section markers parse inside a block body, nested included") {
+    auto r = parse(readFixture("sections.manta"));
+    expectClean(r, "sections.manta");
+
+    const Item* demo = r->unit.items[1];
+    CHECK(demo->kind == ItemKind::Block);
+    CHECK_EQ(sectionTitle(r, demo->body[0]), std::string("POWER SUPPLY"));
+    // A title is raw text: spaces and punctuation included, '//' not a comment.
+    CHECK_EQ(sectionTitle(r, demo->body[3]), std::string("INPUTS / OUTPUTS"));
+    CHECK_EQ(sectionTitle(r, demo->body[6]),
+             std::string("HOUSEKEEPING // not a comment: a title runs to the end of the line"));
+
+    const Item* inner = demo->body[5].item;
+    CHECK(inner->kind == ItemKind::Block);
+    CHECK_EQ(sectionTitle(r, inner->body[0]), std::string("ANALOG FRONT END"));
+    CHECK_EQ(sectionTitle(r, inner->body[2]), std::string("DIGITAL"));
+
+    // A block with no markers has none.
+    for (const BodyEntry& e : r->unit.items[2]->body) CHECK(e.kind != BodyKind::Section);
+}
+
+TEST_CASE("rev 1.3: a section title is trimmed of trailing whitespace only") {
+    auto r = parse("block b {\n    ---   twin  spaced title   \n    A == B;\n};");
+    expectClean(r, "trimmed title");
+    CHECK_EQ(sectionTitle(r, r->unit.items[0]->body[0]), std::string("twin  spaced title"));
+}
+
+TEST_CASE("rev 1.3: a bare '---' inside a block needs a title") {
+    auto r = parse("block b {\n    ---\n    A == B;\n};");
+    CHECK(r->report.find("needs a title") != std::string::npos);
+    // The parser recovers past the marker; the statement after it survives.
+    CHECK_EQ(r->unit.items[0]->body.size(), std::size_t{1});
+    CHECK(r->unit.items[0]->body[0].kind == BodyKind::Stmt);
+}
+
+TEST_CASE("rev 1.3: a section marker is legal only in a block body") {
+    const char* offenders[] = {
+        "part p {\n    --- PINS\n    1 = A &CASUAL;\n};",
+        "harness h {\n    --- WIRES\n    SCL;\n};",
+        "netclass n {\n    --- RULES\n    &LENGTH = 5mm;\n};",
+        "match m {\n    --- LANES\n    #len = 5mm;\n};",
+        "cable c {\n    --- CORES\n    A == B;\n};",
+    };
+    for (const char* text : offenders) {
+        auto r = parse(text);
+        CHECK(r->report.find("only legal in a block body") != std::string::npos);
+    }
+}
+
+TEST_CASE("rev 1.3: '----' and a mid-line '---' are not section markers") {
+    // The separator after '---' is required, and the marker must be the first
+    // non-whitespace on its line.
+    auto quad = parse("block b {\n    ----\n};");
+    CHECK(quad->diags->errorCount() > 0);
+    auto glued = parse("block b {\n    ---GLUED\n};");
+    CHECK(glued->diags->errorCount() > 0);
+    auto mid = parse("block b { A == B; --- MID\n};");
+    CHECK(mid->diags->errorCount() > 0);
 }
 
 TEST_MAIN()
