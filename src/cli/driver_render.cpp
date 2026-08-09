@@ -112,6 +112,16 @@ int runRender(const Options& opts) {
         } else if (!printToPdf(browser, outputPath, opts.pdfPath)) {
             diags.report(DiagId::Io, Span{},
                          std::format("--pdf: {} failed to print {}", browser, outputPath));
+        } else if (std::error_code ec;
+                   !std::filesystem::exists(std::filesystem::path(opts.pdfPath), ec)) {
+            // A snap-confined browser exits 0 having written into its own
+            // private filesystem when the path is one its confinement blocks
+            // (a dot-directory, /tmp). Only the file's existence proves it
+            // printed.
+            diags.report(DiagId::Io, Span{},
+                         std::format("--pdf: {} reported success but '{}' was not written; a "
+                                     "sandboxed browser may be unable to write there",
+                                     browser, opts.pdfPath));
         } else if (opts.verbose && !opts.quiet) {
             writeStderr(std::format("  {} -> {}\n", outputPath, opts.pdfPath));
         }

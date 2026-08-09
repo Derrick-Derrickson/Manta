@@ -3,3 +3,4 @@ build/
 .manta-pdf/
 *.mantaO
 *.mantaNets
+.claude/
