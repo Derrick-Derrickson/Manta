@@ -239,6 +239,32 @@ if(map_code EQUAL 0)
     message(FATAL_ERROR "a map entry with no library was accepted")
 endif()
 
+# --- render ----------------------------------------------------------------
+# The HTML schematic is inside the determinism guarantee (spec 15.8); --pdf is
+# not exercised here because it needs a browser on PATH.
+run_manta(render -o "${WORK}/board.html" "${WORK}/ann.mantaNets")
+run_manta(render -o "${WORK}/board2.html" "${WORK}/ann.mantaNets")
+file(SHA256 "${WORK}/board.html" a)
+file(SHA256 "${WORK}/board2.html" b)
+if(NOT a STREQUAL b)
+    message(FATAL_ERROR "render is not deterministic")
+endif()
+
+# The interactivity contract: nets carry data-net, symbols data-c, and each
+# sheet is a section a sidebar anchor can reach.
+file(STRINGS "${WORK}/board.html" rendered_nets REGEX "data-net=")
+if(NOT rendered_nets)
+    message(FATAL_ERROR "the rendered schematic has no data-net elements")
+endif()
+file(STRINGS "${WORK}/board.html" rendered_syms REGEX "data-c=")
+if(NOT rendered_syms)
+    message(FATAL_ERROR "the rendered schematic has no data-c symbols")
+endif()
+file(STRINGS "${WORK}/board.html" rendered_pages REGEX "id=\"page-")
+if(NOT rendered_pages)
+    message(FATAL_ERROR "the rendered schematic has no page sections")
+endif()
+
 # --- the end-of-content marker (spec 2.8) ----------------------------------
 # 'manta fmt' rewrites whole files from the AST, so without deliberate care it
 # would delete everything after the marker. This is the check that it does not.
@@ -280,6 +306,10 @@ file(SHA256 "${WORK}/loom2.mantaNets" b)
 if(NOT a STREQUAL b)
     message(FATAL_ERROR "linking a cable is not deterministic")
 endif()
+
+# A cable renders too: a loom has no footprints and its parts are wires and
+# crimps, which must not trip the schematic renderer.
+run_manta(render -o "${WORK}/loom.html" "${WORK}/loom.mantaNets")
 
 # A loom's BOM carries its wires and crimps, which is the whole reason a cable
 # is a first-class thing rather than a comment.
