@@ -1,0 +1,18 @@
+part PLUG2 {
+    @type  = cableconnector;
+    @mates = BOARD2;
+
+    [1:2] = P[1:2]<>;
+};
+
+part RES {
+    @~footprint = F;
+    @type       = resistor;
+
+    1 = A &CASUAL;
+    2 = B &CASUAL;
+};
+
+cable bad-loom {
+    {K1~PLUG2}P[1:2] = [[.{R%[1:2]~RES}.]] = P[1:2]{K2~PLUG2};
+};

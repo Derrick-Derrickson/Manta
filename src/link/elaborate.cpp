@@ -9,6 +9,61 @@ namespace manta {
 
 namespace {
 
+// Expands '@map' into ordered pin pairs.
+//
+// Written as a list of two-element lists, each element either a number or a
+// range: [[2,3],[3,2]] swaps two pins, [[1:20],[20:1]] reverses twenty. A range
+// pairs element-wise with its opposite, and may descend -- which is exactly what
+// a reversed ribbon is -- so the order of the endpoints carries meaning.
+void expandPinMap(const Value* v, std::vector<std::pair<std::int64_t, std::int64_t>>& out,
+                  Span at, DiagEngine& diags) {
+    if (!v || v->kind != ValueKind::List) {
+        diags.report(DiagId::E46, at,
+                     std::string("'@map' takes a list of pairs, as in '[[2,3],[3,2]]'"));
+        return;
+    }
+    auto sides = [](const Value* side, std::vector<std::int64_t>& into) {
+        if (!side) return false;
+        if (side->kind == ValueKind::Integer) {
+            into.push_back(side->num.mantissa);
+            return true;
+        }
+        if (side->kind == ValueKind::Range) {
+            std::int64_t step = side->rangeLo <= side->rangeHi ? 1 : -1;
+            for (std::int64_t n = side->rangeLo;; n += step) {
+                into.push_back(n);
+                if (n == side->rangeHi) break;
+            }
+            return true;
+        }
+        return false;
+    };
+
+    for (const Value* pair : v->list) {
+        if (!pair || pair->kind != ValueKind::List || pair->list.size() != 2) {
+            diags.report(DiagId::E46, pair ? pair->span : at,
+                         std::string("each '@map' entry is a pair, as in '[2,3]'"));
+            continue;
+        }
+        std::vector<std::int64_t> from, to;
+        if (!sides(pair->list[0], from) || !sides(pair->list[1], to)) {
+            diags.report(DiagId::E46, pair->span,
+                         std::string("a '@map' pin is a whole number or a range"));
+            continue;
+        }
+        if (from.size() != to.size()) {
+            diags.report(DiagId::E46, pair->span,
+                         std::format("'@map' pairs {} pin(s) with {}", from.size(), to.size()));
+            continue;
+        }
+        for (std::size_t i = 0; i < from.size(); ++i) out.emplace_back(from[i], to[i]);
+    }
+}
+
+}  // namespace
+
+namespace {
+
 constexpr int kMaxInstantiationDepth = 64;
 
 }  // namespace
@@ -539,6 +594,27 @@ std::uint32_t Elaborator::instantiatePart(const Instance* inst, const PartInfo& 
         if (nearMiss) {
             diags_.report(DiagId::PartTypeNearMiss, s->declaredAt, c.type, suggestion);
         }
+    }
+
+    // Mating (spec 12A). One field per side: a board connector says which loom
+    // is fitted, a cable connector says what it plugs into.
+    FieldKey mateKey{interner_.intern("mate"), FieldNamespace::System};
+    if (const FieldSlot* s = env.lookup(mateKey); s && s->value) {
+        c.mate = renderValue(subst_.resolveValue(s->value, env, arena_), interner_);
+    }
+    FieldKey matesKey{interner_.intern("mates"), FieldNamespace::System};
+    if (const FieldSlot* s = env.lookup(matesKey); s && s->value) {
+        const Value* v = subst_.resolveValue(s->value, env, arena_);
+        if (v->kind == ValueKind::List) {
+            for (const Value* item : v->list) c.mates.push_back(renderValue(item, interner_));
+        } else {
+            c.mates.push_back(renderValue(v, interner_));
+        }
+    }
+    FieldKey mapKey{interner_.intern("map"), FieldNamespace::System};
+    if (const FieldSlot* s = env.lookup(mapKey); s && s->value) {
+        expandPinMap(subst_.resolveValue(s->value, env, arena_), c.pinMap, s->declaredAt,
+                     diags_);
     }
 
     // User fields travel to the BOM untouched (spec 9.1).
@@ -1703,9 +1779,14 @@ Design Elaborator::run(SymbolId topName, Span at) {
         diags_.report(DiagId::E31, at, interner_.text(topName));
         return design;
     }
-    if (decl->item->kind != ItemKind::Block) {
+    // A cable elaborates exactly as a block does -- its body is a chain -- but
+    // it is its own deliverable, with its own netlist and BOM, so the design
+    // records which it is.
+    if (decl->item->kind == ItemKind::Cable) {
+        design.kind = "cable";
+    } else if (decl->item->kind != ItemKind::Block) {
         diags_.report(DiagId::Type, at,
-                      std::format("'{}' is not a block", interner_.text(topName)));
+                      std::format("'{}' is not a block or a cable", interner_.text(topName)));
         return design;
     }
 

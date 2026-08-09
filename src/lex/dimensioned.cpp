@@ -361,7 +361,7 @@ std::string Dimensioned::canonical() const {
 
 bool isReservedWord(std::string_view t) noexcept {
     return t == "block" || t == "part" || t == "harness" || t == "netclass" || t == "match" ||
-           t == "static" || t == "extern";
+           t == "cable" || t == "static" || t == "extern";
 }
 
 std::string_view imperialSuffix(std::string_view text) noexcept {

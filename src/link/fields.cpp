@@ -16,6 +16,8 @@ bool valuesEqual(const Value* a, const Value* b, const StringInterner& interner)
         case ValueKind::Percentage:
         case ValueKind::Tolerance:
             return a->num == b->num;
+        case ValueKind::Range:
+            return a->rangeLo == b->rangeLo && a->rangeHi == b->rangeHi;
         case ValueKind::String:
         case ValueKind::Identifier:
             return a->text == b->text;
@@ -62,6 +64,10 @@ std::string renderValue(const Value* v, const StringInterner& interner) {
             // field. The spelling written is what round-trips.
             return v->upperCaseSpelling ? (v->boolean ? "TRUE" : "FALSE")
                                         : (v->boolean ? "true" : "false");
+        case ValueKind::Range:
+            // Rendered as written, descending included: a reversed pin map is
+            // "20:1" and reordering it would change what it means.
+            return std::format("{}:{}", v->rangeLo, v->rangeHi);
         case ValueKind::List: {
             // Spec 14.7: a list renders comma-separated, without brackets, so
             // it can drop straight into a %[...] or @dest position.

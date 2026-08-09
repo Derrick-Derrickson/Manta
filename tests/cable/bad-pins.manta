@@ -1,0 +1,33 @@
+part PLUG4 {
+    @type  = cableconnector;
+    @mates = HDR2;
+
+    [1:4] = P[1:4]<>;
+};
+
+part WIRE {
+    @type = wire;
+
+    1 = A &CASUAL;
+    2 = B &CASUAL;
+};
+
+cable wide-loom {
+    {K1~PLUG4}P[1:4] = [[.{W%[1:4]~WIRE}.]] = P[1:4]{K2~PLUG4};
+};
+
+part HDR2 {
+    @type       = boardconnector;
+    @mate       = wide-loom;
+    @~footprint = F;
+
+    1 = A< &TYPE=POWER;
+    2 = B<;
+};
+
+block bd {
+    GND &TYPE=GROUND;
+    X = A{J1~HDR2};
+    X &STUB;
+    B{J1} == GND;
+};

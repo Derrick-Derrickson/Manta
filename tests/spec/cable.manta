@@ -1,0 +1,40 @@
+// A loom: two connectors, a wire per conductor, and a crimp on every wire end.
+//
+// A cable body is a chain, so replication and ranged designators work in one
+// exactly as they do in a block. That is what keeps an eight-way loom to a
+// single statement rather than twenty-four.
+part JST-PH-8-PLUG {
+    @type  = cableconnector;
+    @mates = BACKPLANE-OUT;
+
+    [1:8] = P[1:8]<>;
+};
+
+part JST-PH-8-CRIMP {
+    @type = crimp;
+    #mpn  = "SPH-002T-P0.5S";
+
+    1 = A &CASUAL;
+    2 = B &CASUAL;
+};
+
+part WIRE-22AWG-RED {
+    @type       = wire;
+    #csa        = 1mm2;
+    #strands    = 7;
+    #colour     = red;
+    #insulation = PVC;
+
+    1 = A &CASUAL;
+    2 = B &CASUAL;
+};
+
+cable jumper-8way {
+    #length = 300mm;
+
+    // Out of the first housing, through a crimp, a wire and a crimp, into the
+    // second. Eight conductors, one statement.
+    {J1~JST-PH-8-PLUG}P[1:8]
+         = [[.{C%[1:8]~JST-PH-8-CRIMP}. = .{W%[1:8]~WIRE-22AWG-RED}. = .{C%[9:16]~JST-PH-8-CRIMP}.]]
+         = P[1:8]{J2~JST-PH-8-PLUG};
+};

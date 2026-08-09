@@ -49,6 +49,7 @@ struct Options {
     std::string bomPath;
     std::string mapPath;
     bool noErc = false;
+    bool assembly = false;
     bool noEmit = false;
 
     // annotate

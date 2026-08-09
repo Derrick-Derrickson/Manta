@@ -92,7 +92,8 @@ bool Parser::atItemStart() const {
     if (!at(TokenKind::Word)) return false;
     std::string_view t = curText();
     if (t == "static") return true;
-    return t == "block" || t == "part" || t == "harness" || t == "netclass" || t == "match";
+    return t == "block" || t == "part" || t == "harness" || t == "netclass" ||
+           t == "match" || t == "cable";
 }
 
 // "[[ ... ]]" or "[N[ ... ]M]" (spec 8.3).
@@ -242,7 +243,25 @@ Value* Parser::parseListValue() {
     std::vector<Value*> items;
     if (!at(TokenKind::RBracket)) {
         do {
-            items.push_back(parseValue());
+            Value* item = parseValue();
+            // "1:20" inside a list is a range, so a twenty-way pin map is one
+            // pair rather than twenty. Only inside a list: elsewhere ':' is the
+            // binding separator and has nothing to do with values.
+            if (item && item->kind == ValueKind::Integer && at(TokenKind::Colon)) {
+                advance();
+                Value* hi = parseValue();
+                if (hi && hi->kind == ValueKind::Integer) {
+                    auto* range = arena_.make<Value>();
+                    range->kind = ValueKind::Range;
+                    range->rangeLo = item->num.mantissa;
+                    range->rangeHi = hi->num.mantissa;
+                    range->span = item->span.merge(hi->span);
+                    item = range;
+                } else {
+                    error(hi ? hi->span : here(), "expected a whole number ending a range");
+                }
+            }
+            items.push_back(item);
         } while (accept(TokenKind::Comma));
     }
     expect(TokenKind::RBracket, "closing a list");
@@ -1443,6 +1462,32 @@ Item* Parser::parseBlock(bool isStatic, Span startSpan) {
     return item;
 }
 
+// A cable is a chain of devices, so its body is a block body: replication,
+// groups, ranges and bindings all work in a cable for free, and they are exactly
+// what a twenty-way loom needs. What may be *instantiated* in one is narrower
+// than a block, but that is a semantic rule and belongs in the local checker,
+// where it can say which part offended and what its type is.
+Item* Parser::parseCable(bool isStatic, Span startSpan) {
+    auto* item = arena_.make<Item>();
+    item->kind = ItemKind::Cable;
+    item->isStatic = isStatic;
+    item->span = startSpan;
+    item->name = parseName(true);
+    item->nameSpan = item->name.span;
+
+    if (!expect(TokenKind::LBrace, "opening a cable body")) {
+        recoverToDeclEnd();
+        return item;
+    }
+    std::vector<BodyEntry> body;
+    parseBlockBody(body);
+    item->body = commit(body);
+    expect(TokenKind::RBrace, "closing a cable body");
+    expect(TokenKind::Semi, "after a cable declaration");
+    item->span = item->span.merge(toks_.at(pos_ - 1).span(file_.id()));
+    return item;
+}
+
 Item* Parser::parsePart(bool isStatic, Span startSpan) {
     auto* item = arena_.make<Item>();
     item->kind = ItemKind::Part;
@@ -1558,9 +1603,13 @@ Item* Parser::parseItem() {
         if (isStatic) error(start, "'static' applies to blocks and parts only");
         return parseMatch(start);
     }
+    if (kw == "cable") {
+        advance();
+        return parseCable(isStatic, start);
+    }
 
     error(here(), std::format(
-        "expected 'block', 'part', 'harness', 'netclass' or 'match', found '{}'", kw));
+        "expected 'block', 'part', 'harness', 'netclass', 'match' or 'cable', found '{}'", kw));
     recoverToDeclEnd();
     return nullptr;
 }

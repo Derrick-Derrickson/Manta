@@ -223,6 +223,7 @@ ParseOutcome parseOptions(const std::vector<std::string>& args, Options& out) {
                 if (takeValue(c, "--map", "", value, err)) { out.mapPath = value; continue; }
                 if (!err.empty()) break;
                 if (a == "--no-erc") { out.noErc = true; continue; }
+                if (a == "--assembly") { out.assembly = true; continue; }
                 if (a == "--no-emit") { out.noEmit = true; continue; }
                 break;
 
@@ -420,6 +421,9 @@ Run 'manta <command> --help' for the options of one command.
   -t, --top <block>     Name of the top-level block. Required.
   -o, --output <file>   Netlist path. Default: <top>.mantaNets
   -L, --library <dir>   Directory of objects to resolve against. Repeatable.
+      --assembly        Also write a netlist and BOM for every cable a
+                        connector on this board mates with. Separate files;
+                        the board's own outputs are unchanged.
   --bom <file>          Also emit a BOM as CSV.
   --no-erc              Skip ERC and emit regardless.
   --no-emit             Run every stage including ERC, emit nothing.

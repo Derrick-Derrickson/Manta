@@ -12,6 +12,7 @@
 #include "erc/erc.h"
 #include "json/json.h"
 #include "link/elaborate.h"
+#include "link/mating.h"
 #include "obj/mantao.h"
 
 namespace manta {
@@ -152,6 +153,27 @@ int runLink(const Options& opts) {
         erc.run();
     }
 
+    // 5a. Connectors and cables (spec 12A). A cable named by '@mate' is
+    // compiled on its own -- it is its own deliverable -- and the two are then
+    // laid against each other. The board's netlist is not touched.
+    struct MateContext {
+        SymbolTable& symbols;
+        StringInterner& interner;
+        DiagEngine& diags;
+        const std::vector<LinkedObject>& objects;
+        const ElaborateOptions& options;
+    } mateContext{symbols, interner, diags, objects, elabOptions};
+
+    MateChecker mates(design, symbols, interner, diags);
+    mates.checkCableContents();
+    mates.run(
+        [](void* ctx, SymbolId name, Span at) {
+            auto& mc = *static_cast<MateContext*>(ctx);
+            Elaborator sub(mc.symbols, mc.interner, mc.diags, mc.objects, mc.options);
+            return sub.run(name, at);
+        },
+        &mateContext);
+
     // 5b. User rules. These are a project's own checks over the same design,
     // and they run whether or not --no-erc was given: the built-in rules and a
     // project's rules answer different questions.
@@ -217,6 +239,32 @@ int runLink(const Options& opts) {
         writeBom(design, bom);
         if (!writeFileBinary(opts.bomPath, bom, error)) {
             diags.report(DiagId::Io, Span{}, std::format("{}: {}", opts.bomPath, error));
+        }
+    }
+
+    // Every mated cable, written beside the board and never merged into it: a
+    // loom is a separate thing to build, with its own bill of materials, and a
+    // KiCad netlist has nowhere to put a wire anyway.
+    if (opts.assembly) {
+        for (const MatedCable& m : mates.mated()) {
+            std::string cableNetlist;
+            writeNetlist(m.design, cableNetlist);
+            std::string path = m.cableName + ".mantaNets";
+            if (!writeFileBinary(path, cableNetlist, error)) {
+                diags.report(DiagId::Io, Span{}, std::format("{}: {}", path, error));
+                continue;
+            }
+            if (!opts.bomPath.empty()) {
+                std::string cableBom;
+                writeBom(m.design, cableBom);
+                std::string bomPath = m.cableName + ".bom.csv";
+                if (!writeFileBinary(bomPath, cableBom, error)) {
+                    diags.report(DiagId::Io, Span{}, std::format("{}: {}", bomPath, error));
+                }
+            }
+            if (opts.verbose && !opts.quiet) {
+                writeStderr(std::format("  cable {} -> {}\n", m.cableName, path));
+            }
         }
     }
 

@@ -61,6 +61,18 @@ MANTA_DIAG(PartTypeNearMiss, "W-TYPE", "part-type", Severity::Warning,
            "'@type = {}' is not a structural role; did you mean '{}'?")
 
 // ---------------------------------------------------------------------------
+// Connectors, cables and mating (spec 12A). Numbered, because these are
+// properties of the design rather than of the build.
+// ---------------------------------------------------------------------------
+MANTA_DIAG(E44, "E-44", "cable-contents", Severity::Error,
+           "'{}' is a {} and cannot go in a cable; a cable holds cable "
+           "connectors, wires and crimps")
+MANTA_DIAG(E45, "E-45", "no-mate", Severity::Error, "{}")
+MANTA_DIAG(E46, "E-46", "mate-pins", Severity::Error, "{}")
+MANTA_DIAG(E47, "E-47", "mate-drivers", Severity::Error, "{}")
+MANTA_DIAG(E48, "E-48", "mate-power", Severity::Error, "{}")
+
+// ---------------------------------------------------------------------------
 // Section 16.1 — errors
 // ---------------------------------------------------------------------------
 MANTA_DIAG(E01, "E-01", "multiple-drivers", Severity::Error,

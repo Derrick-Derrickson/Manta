@@ -263,3 +263,74 @@ if(NOT tail_before STREQUAL tail_after)
 endif()
 
 message(STATUS "pipeline: compile, link, fmt, annotate and export all verified")
+
+# --- connectors, cables and mating (spec 12A) -------------------------------
+# A cable is its own deliverable: it links on its own, with its own netlist and
+# its own BOM, and a board's netlist never absorbs one.
+set(CABLEDIR "${CMAKE_CURRENT_LIST_DIR}/cable")
+run_manta(compile -o "${WORK}/cable/" "${CABLEDIR}/card.manta" "${CABLEDIR}/loom.manta")
+
+run_manta(link --top jumper-8way -L "${WORK}/cable" -Werror
+          -o "${WORK}/loom.mantaNets" --bom "${WORK}/loom.csv")
+
+# Determinism, as every other stage is held to.
+run_manta(link --top jumper-8way -L "${WORK}/cable" -Werror -o "${WORK}/loom2.mantaNets")
+file(SHA256 "${WORK}/loom.mantaNets" a)
+file(SHA256 "${WORK}/loom2.mantaNets" b)
+if(NOT a STREQUAL b)
+    message(FATAL_ERROR "linking a cable is not deterministic")
+endif()
+
+# A loom's BOM carries its wires and crimps, which is the whole reason a cable
+# is a first-class thing rather than a comment.
+file(STRINGS "${WORK}/loom.csv" wires REGEX ",wire,")
+file(STRINGS "${WORK}/loom.csv" crimps REGEX ",crimp,")
+if(NOT wires OR NOT crimps)
+    message(FATAL_ERROR "a cable BOM lists no wires or no crimps")
+endif()
+
+# The board alone: the mating is checked, the cable is not emitted.
+set(QUIET -Wno-W-04 -Wno-W-09 -Wno-E-02)
+run_manta(link --top sensor-card -L "${WORK}/cable" ${QUIET} -o "${WORK}/card.mantaNets")
+
+# '--assembly' writes the loom beside the board and never merges the two.
+file(REMOVE "${WORK}/jumper-8way.mantaNets")
+execute_process(COMMAND "${MANTA}" link --top sensor-card -L "${WORK}/cable" ${QUIET}
+                        --assembly -o "${WORK}/card2.mantaNets" --bom "${WORK}/card.csv"
+                WORKING_DIRECTORY "${WORK}" RESULT_VARIABLE asm_code)
+if(NOT asm_code EQUAL 0)
+    message(FATAL_ERROR "--assembly failed")
+endif()
+if(NOT EXISTS "${WORK}/jumper-8way.mantaNets")
+    message(FATAL_ERROR "--assembly wrote no netlist for the mated cable")
+endif()
+file(SHA256 "${WORK}/card.mantaNets" a)
+file(SHA256 "${WORK}/card2.mantaNets" b)
+if(NOT a STREQUAL b)
+    message(FATAL_ERROR "--assembly changed the board's own netlist")
+endif()
+
+# Each check must be shown to fire. A check that cannot fail is worth nothing,
+# and every one of these was written only after watching it fail.
+function(expect_mating_error name top code)
+    file(REMOVE_RECURSE "${WORK}/bad-${name}")
+    execute_process(COMMAND "${MANTA}" compile -o "${WORK}/bad-${name}/"
+                            "${CABLEDIR}/bad-${name}.manta" "${CABLEDIR}/loom.manta"
+                    OUTPUT_QUIET ERROR_QUIET)
+    execute_process(COMMAND "${MANTA}" link --top ${top} -L "${WORK}/bad-${name}"
+                            -Wno-W-01 -Wno-W-04 -Wno-W-09 -Wno-E-01 -Wno-E-02
+                            -Wno-E-24 -Wno-E-27 -Wno-E-28 -o "${WORK}/bad-${name}.mantaNets"
+                    ERROR_VARIABLE err RESULT_VARIABLE code_out)
+    if(code_out EQUAL 0)
+        message(FATAL_ERROR "${code} did not fire on bad-${name}.manta")
+    endif()
+    if(NOT err MATCHES "${code}")
+        message(FATAL_ERROR "expected ${code} on bad-${name}.manta, got: ${err}")
+    endif()
+endfunction()
+
+expect_mating_error(contents bad-loom    "E-44")
+expect_mating_error(fit      bd          "E-45")
+expect_mating_error(pins     bd          "E-46")
+expect_mating_error(drivers  sensor-card "E-47")
+expect_mating_error(power    sensor-card "E-48")

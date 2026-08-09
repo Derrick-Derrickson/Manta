@@ -36,11 +36,17 @@ constexpr std::array<DirectiveInfo, 16> kDirectives{{
 }};
 
 // Spec 9.5, plus @FLATFORMAT from 13.4 and the match-group fields of 11.4.
-constexpr std::array<SystemFieldInfo, 10> kSystemFields{{
+constexpr std::array<SystemFieldInfo, 13> kSystemFields{{
     {"footprint",  ValueType::Identifier, false},
     {"fitted",     ValueType::Boolean,    false},
     {"bom",        ValueType::Boolean,    false},
     {"type",       ValueType::Identifier, false},
+
+    // Mating (spec 12A). One field per side, so the two never appear on the
+    // same declaration and cannot be confused for one another.
+    {"mate",       ValueType::Identifier, false},  // board connector -> cable
+    {"mates",      ValueType::DesigList,  false},  // cable connector -> board part
+    {"map",        ValueType::DesigList,  false},  // the pin correspondence
     {"VERSION",    ValueType::Version,    false},
     {"FLATFORMAT", ValueType::Identifier, false},
 

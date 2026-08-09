@@ -1,6 +1,6 @@
 # The Manta Schematic Definition Language
 
-**Specification, revision 1.1**
+**Specification, revision 1.2**
 
 > **Corrected against a reference implementation.**
 >
@@ -159,7 +159,7 @@ SW == SW-NODE   // the switching node
 ### 2.6 Reserved words
 
 ```
-block   part   harness   netclass   match   static   extern
+block   part   harness   netclass   match   cable   static   extern
 ```
 
 Reserved words are lowercase. `Block` and `PART` are legal identifiers.
@@ -1589,6 +1589,109 @@ usb-dev  &HARNESS=usb2;
 
 ---
 
+## 12A. Connectors, cables and mating
+
+A board describes what is on it. A loom is not on it: it is a separate thing to
+build, with its own bill of materials, and the question of whether the two fit is
+one nobody can answer from either alone.
+
+### 12A.1 A cable is a declaration
+
+```
+cable jumper-8way {
+    #length = 300mm;
+
+    {J1~JST-PH-8-PLUG}P[1:8]
+        = [[ .{C%[1:8]~JST-PH-8-CRIMP}. = .{W%[1:8]~WIRE-22AWG-RED}.
+           = .{C%[9:16]~JST-PH-8-CRIMP}. ]]
+        = P[1:8]{J2~JST-PH-8-PLUG};
+};
+```
+
+A cable body is a chain, exactly as a block body is, so replication, groups,
+ranges and bindings all work in one. That is what keeps an eight-way loom to a
+single statement.
+
+A cable may hold only a cable connector, a wire or a crimp (§9.7). Anything else
+is error **E-44**. Wires and crimps are ordinary parts, so each carries an MPN
+and appears on a BOM: a loom is bought as much as a board is.
+
+A cable is a top in its own right. `manta link --top jumper-8way` produces the
+loom's netlist and BOM, and never the board's. Two rules that are right for a
+board are wrong for a loom and do not apply to one: **E-24**, which requires a
+ground net, and **E-20**, which requires a footprint of every fitted part.
+
+### 12A.2 Mating
+
+One field per side, so the two never appear on the same declaration:
+
+| Field | Written on | Meaning |
+|---|---|---|
+| `@mate` | a `boardconnector` | which cable is fitted here |
+| `@mates` | a `cableconnector` | which board connector it plugs into |
+| `@map` | either | how the pins line up; absent means one to one |
+
+`@mate` takes the strength ladder like any field, so a part may carry a weak
+default and a call site override it:
+
+```
+part BACKPLANE-OUT { @type = boardconnector; @~mate = jumper-8way; };
+
+.{J3~BACKPLANE-OUT: @mate = short-jumper; }.
+```
+
+A `@map` is a list of pairs. Each element is a pin number or a range, and a range
+pairs element-wise with its opposite — descending included, which is how a
+reversed ribbon is written.
+
+```
+@map = [[2,3],[3,2],[7,8],[8,7]];    // a null modem
+@map = [[1:20],[20:1]];              // a reversed ribbon
+```
+
+### 12A.3 What is checked
+
+Structural fit, always:
+
+- the cable named by `@mate` exists and is a cable;
+- one of its connectors declares `@mates` naming this board connector's part —
+  otherwise **E-45**;
+- the pins line up: a count mismatch with no `@map`, or a `@map` naming a pin
+  that does not exist, is **E-46**.
+
+And electrically, when the loom's far end plugs back into a connector on this
+same board — a board plugged into another copy of itself, which one board's
+source is enough to describe. Each conductor is followed from the near board
+pin, through the loom's wires and crimps, to the far board pin, and the result
+is judged as though the two had been wired together directly, because once the
+loom is fitted they have been:
+
+- two pins that both drive are **E-47**;
+- a supply meeting a ground is **E-48**.
+
+Wire ampacity, insulation voltage and "every connector must be mated" are
+deliberately not built in. They are one-line checks in a `.mantaRules` file,
+because the derating a project accepts is a project's decision and not a
+language's:
+
+```
+check unmated for component {
+    when    component.type == boardconnector;
+    require has(component.mate);
+    error   "{component} is a connector with nothing plugged into it";
+};
+```
+
+### 12A.4 Assembly output
+
+`manta link --assembly` additionally writes a netlist, and with `--bom` a bill of
+materials, for every cable a connector on the board mates with. They are separate
+files named for the cable. The board's own outputs are byte-identical with and
+without the flag: a loom is not part of a board, and a layout tool has nowhere to
+put a wire.
+
+---
+
 ## 13. Designators and annotation
 
 ### 13.1 Annotation is a separate command
@@ -1979,6 +2082,7 @@ manta link [options] --top <block> <object.mantaO>...
 | `-L`, `--library <dir>` | Directory of objects to resolve against. Repeatable. |
 | `--bom <file>` | Also emit a BOM as CSV. |
 | `--no-erc` | Skip ERC and emit regardless. |
+| `--assembly` | Also write a netlist and BOM for every mated cable, as separate files. |
 | `--no-emit` | Run every stage including ERC, emit nothing. |
 | `--map <file>` | Write the elaboration map: instance path to designator. |
 
@@ -2119,6 +2223,11 @@ from mistakes.
 | E-41 | A dimensioned value, string or list used as an arithmetic operand. |
 | E-42 | A negative exponent. |
 | E-43 | A `part` declaration exports a field. |
+| E-44 | A cable holds a part that is not a cable connector, a wire or a crimp. |
+| E-45 | A `@mate` names a cable whose connectors do not fit this one. |
+| E-46 | Mating pins do not line up: a count mismatch, or a `@map` naming a pin that does not exist. |
+| E-47 | Two pins that both drive are joined through a cable. |
+| E-48 | A supply and a ground are joined through a cable. |
 | E-UNANNOTATED | An instance still carries `?` when the netlist is built. |
 
 `E-UNANNOTATED` is the one diagnostic outside the numbered space, because it is
@@ -2237,13 +2346,15 @@ pads exist, and the copper is routed.
 
 ```ebnf
 file            = { item } ;
-item            = block_def | part_def | harness_def | netclass_def | match_def ;
+item            = block_def | part_def | harness_def | netclass_def | match_def
+                | cable_def ;
 
 block_def       = [ linkage ] "block" identifier "{" { item | statement } "}" ";" ;
 part_def        = [ linkage ] "part" identifier "{" { field_decl | pin_map } "}" ";" ;
 harness_def     = "harness" identifier "{" { member_decl | directive } "}" ";" ;
 netclass_def    = "netclass" identifier "{" { directive } "}" ";" ;
 match_def       = "match" identifier "{" { field_decl | match_def } "}" ";" ;
+cable_def       = [ linkage ] "cable" identifier "{" { item | statement } "}" ";" ;
 linkage         = "static" ;
 
 pin_map         = pin_spec "=" pin_name [ arrow ] { directive | field_decl } ";" ;

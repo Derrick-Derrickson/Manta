@@ -80,6 +80,12 @@ struct Component {
     // hide it from user rules.
     std::string type;
     PartType partType = PartType::BoardPart;
+    // Mating (spec 12A). '@mate' names the cable fitted to a board connector;
+    // '@mates' names what a cable connector plugs into; '@map' is the pin
+    // correspondence, already expanded from its ranges, empty meaning 1:1.
+    std::string mate;
+    std::vector<std::string> mates;
+    std::vector<std::pair<std::int64_t, std::int64_t>> pinMap;
     std::vector<std::pair<std::string, std::string>> fields;  // user fields, source order
     std::vector<ComponentPin> pins;
     Span span;
@@ -152,6 +158,9 @@ struct UnannotatedBlock {
 
 struct Design {
     std::string top;
+    // "block" or "cable". A loom has no ground net and its parts have no
+    // footprints, so two ERC rules that are right for a board are wrong for it.
+    std::string kind = "block";
     std::vector<Component> components;
     std::vector<Net> nets;
     std::vector<MatchGroup> matches;

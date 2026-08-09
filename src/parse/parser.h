@@ -69,6 +69,7 @@ private:
     Item* parseHarness(Span startSpan);
     Item* parseNetclass(Span startSpan);
     Item* parseMatch(Span startSpan);
+    Item* parseCable(bool isStatic, Span startSpan);
 
     // ---- bodies -----------------------------------------------------------
     void parseBlockBody(std::vector<BodyEntry>& out);

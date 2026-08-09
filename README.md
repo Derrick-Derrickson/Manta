@@ -1,6 +1,6 @@
 # manta
 
-A compiler for the Manta Schematic Definition Language, specification revision 1.1.
+A compiler for the Manta Schematic Definition Language, specification revision 1.2.
 
 Manta is a plain-text language for describing electronic schematics: the
 components on one printed circuit board, their interconnections, and the

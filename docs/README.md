@@ -1,10 +1,12 @@
 # Documentation
 
-**`spec.md`** — the Manta Schematic Definition Language, revision 1.1. This is
+**`spec.md`** — the Manta Schematic Definition Language, revision 1.2. This is
 the authority: when the implementation and this document disagree, the document
 is right and the implementation has a bug.
 
-Revision 1.1 adds one construct, the end-of-content marker of §2.8: a line of
+Revision 1.2 adds the `cable` declaration and mating of §12A, the `@type` system
+field of §9.7 and the area unit of §3.2. Revision 1.1 added one construct, the
+end-of-content marker of §2.8: a line of
 exactly `---` ends the manta content of a file, so a part can carry its datasheet
 below its declaration. A 1.0 source is a valid 1.1 source.
 

@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+### Language, revision 1.2
+
+- **`cable`** is a declaration kind. Its body is a chain, exactly as a block's
+  is, so replication and ranged designators keep an eight-way loom to a single
+  statement. It may hold only a cable connector, a wire or a crimp (E-44).
+- **A cable is its own deliverable.** `manta link --top <cable>` produces its
+  netlist and its BOM, with wires and crimps as real line items. E-24 (a ground
+  net) and E-20 (a footprint per part) do not apply to one.
+- **`@type`** says what a part is: `board_part` by default, and the structural
+  roles `boardconnector`, `cableconnector`, `wire` and `crimp`. The set stays
+  open, so `@type = regulator` is ordinary and travels to the BOM untouched.
+- **Mating.** A board connector declares `@mate = <cable>`; a cable connector
+  declares `@mates = <part>`, with an optional `@map`. The compiler checks the
+  fit (E-45, E-46) and, when the loom's far end plugs back into this same board,
+  follows each conductor through it and applies the rules that would apply had
+  the two been wired together directly (E-47, E-48) — which is how a board that
+  plugs into another copy of itself is checked from one board's source.
+- **`--assembly`** additionally writes a netlist and BOM for every mated cable,
+  as separate files. The board's own outputs are byte-identical with and without
+  it.
+- **An area unit**, `m2`, so a wire's cross-section is a quantity a rule can
+  check rather than a bare number.
+- **Range values**, `1:20` inside a list, so a twenty-way `@map` is one pair.
+
+Wire ampacity and "every connector must be mated" are deliberately not built in;
+`examples/blinky/blinky.mantaRules` shows both as project rules.
+
 ### A KiCad netlist a board can be laid out from
 
 `manta export --format kicad` produced a valid S-expression netlist that KiCad

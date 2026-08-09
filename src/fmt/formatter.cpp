@@ -206,6 +206,8 @@ private:
             case ValueKind::Boolean:
                 return v->upperCaseSpelling ? (v->boolean ? "TRUE" : "FALSE")
                                             : (v->boolean ? "true" : "false");
+            case ValueKind::Range:
+                return std::format("{}:{}", v->rangeLo, v->rangeHi);
             case ValueKind::List: {
                 std::string out = "[";
                 for (std::size_t i = 0; i < v->list.size(); ++i) {
@@ -641,6 +643,7 @@ private:
             case ItemKind::Harness: emit("harness "); break;
             case ItemKind::Netclass: emit("netclass "); break;
             case ItemKind::Match: emit("match "); break;
+            case ItemKind::Cable: emit("cable "); break;
         }
         emit(name(it->name));
         emit(" {");

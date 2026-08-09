@@ -222,6 +222,11 @@ RuleValue RuleEvaluator::evalMember(const RuleValue& base, SymbolId name, RuleSc
             // ones. Exposed by name because a project's own rules are exactly
             // where "every connector must be mated" belongs.
             if (field == "type") return RuleValue::ofText(c.type);
+            // Absent rather than empty when unstated, so 'has(component.mate)'
+            // reads as "something is recorded as plugging in here".
+            if (field == "mate") {
+                return c.mate.empty() ? RuleValue::absent() : RuleValue::ofText(c.mate);
+            }
             if (field == "pins") {
                 RuleValue out;
                 out.kind = RuleValueKind::Collection;
@@ -751,6 +756,7 @@ void RuleEvaluator::runOnPart(const PartInfo& part, std::string_view partName) {
             else if (name == "fitted") component.fitted = rendered != "FALSE";
             else if (name == "bom") component.bom = rendered != "FALSE";
             else if (name == "type") component.type = rendered;
+            else if (name == "mate") component.mate = rendered;
             continue;
         }
         component.fields.emplace_back(std::string(interner_.text(key.name)),

@@ -9,7 +9,7 @@
   "properties": {
     "version": {
       "description": "The language revision this object targets. A toolchain reads any revision no newer than its own.",
-      "enum": ["1.0", "1.1"]
+      "enum": ["1.0", "1.1", "1.2"]
     },
     "kind": { "const": "mantaO" },
     "source": {
@@ -83,8 +83,8 @@
       "type": ["object", "null"],
       "properties": {
         "v": {
-          "enum": ["int", "dec", "dim", "pct", "tol", "str", "bool", "id", "list", "repeat",
-                   "interp", "version", "unbind"]
+          "enum": ["int", "dec", "dim", "pct", "tol", "str", "bool", "id", "list", "range",
+                   "repeat", "interp", "version", "unbind"]
         },
         "num": {
           "description": "The canonical SI-substituted text of a numeric value (section 3.2), exact and never a float.",
@@ -99,6 +99,11 @@
           "description": "TRUE/FALSE as spelled, which E-34 checks (section 2.6).",
           "type": "boolean"
         },
+        "lo": {
+          "description": "The first index of a range value such as '1:20'. A range may descend, which is how a reversed pin map is written, so 'hi' may be less than 'lo'.",
+          "type": "integer"
+        },
+        "hi": { "type": "integer" },
         "items": { "type": "array", "items": { "$ref": "#/$defs/value" } },
         "inner": { "$ref": "#/$defs/value" },
         "count": { "type": "integer" },
@@ -387,7 +392,7 @@
       "type": "object",
       "required": ["kind", "name", "static", "body"],
       "properties": {
-        "kind": { "enum": ["block", "part", "harness", "netclass", "match"] },
+        "kind": { "enum": ["block", "part", "harness", "netclass", "match", "cable"] },
         "name": { "$ref": "#/$defs/name" },
         "static": {
           "description": "Internal linkage: visible only within its own object, and exempt from E-30 (section 4.2).",

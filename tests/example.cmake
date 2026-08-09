@@ -136,4 +136,31 @@ if(NOT a STREQUAL b)
     message(FATAL_ERROR "linking with rules is not deterministic")
 endif()
 
-message(STATUS "example: blinky passes check, link, rules and export with no findings")
+# The lead is its own deliverable: it links on its own, and '--assembly' writes
+# it beside the board without ever merging the two.
+run_manta(link --top usb-c-1m -L "${WORK}/build" -Werror
+          -o "${WORK}/lead.mantaNets" --bom "${WORK}/lead.csv")
+file(STRINGS "${WORK}/lead.csv" wires REGEX ",wire,")
+file(STRINGS "${WORK}/lead.csv" crimps REGEX ",crimp,")
+if(NOT wires OR NOT crimps)
+    message(FATAL_ERROR "the lead's BOM lists no wires or no crimps")
+endif()
+
+file(REMOVE "${WORK}/usb-c-1m.mantaNets")
+execute_process(COMMAND "${MANTA}" link --top blinky -L "${WORK}/build" --rules "${RULES}"
+                        -Werror --assembly -o "${WORK}/blinky3.mantaNets"
+                        --bom "${WORK}/blinky3.csv"
+                WORKING_DIRECTORY "${WORK}" RESULT_VARIABLE asm_code)
+if(NOT asm_code EQUAL 0)
+    message(FATAL_ERROR "--assembly failed on blinky")
+endif()
+if(NOT EXISTS "${WORK}/usb-c-1m.mantaNets")
+    message(FATAL_ERROR "--assembly wrote no netlist for the mated lead")
+endif()
+file(SHA256 "${WORK}/blinky.mantaNets" f)
+file(SHA256 "${WORK}/blinky3.mantaNets" g)
+if(NOT f STREQUAL g)
+    message(FATAL_ERROR "--assembly changed the board's own netlist")
+endif()
+
+message(STATUS "example: blinky passes check, link, rules, mating and export with no findings")
