@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The conformance suite (spec 1.3).
 //
 // Every fixture in tests/diag is named for the diagnostic code it must provoke.

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The single source of truth for every diagnostic manta can emit.
 //
 // Spec 1.3 requires a conforming implementation to "implement all diagnostics in

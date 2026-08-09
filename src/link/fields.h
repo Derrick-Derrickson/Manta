@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Field and directive values, the strength ladder, and scoped environments.
 //
 // Spec 9.2: "Every field takes a strength modifier ... The strongest declaration

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Loading .mantaRules files for the commands that accept --rules.
 //
 // Rules run at link, where the whole design is in hand and there is one

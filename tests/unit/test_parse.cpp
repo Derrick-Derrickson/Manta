@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The parser against the grammar of spec 19 and the worked examples of spec 20.
 //
 // Every example in the specification must parse with no diagnostics: spec 1.3

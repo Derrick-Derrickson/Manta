@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Loading and addressing source text.
 //
 // Spec 1.4: files are UTF-8, a BOM is permitted and ignored, line endings may be

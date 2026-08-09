@@ -220,3 +220,21 @@ Two things are worth knowing before writing a design. A *capacitor* has no
 definition in the language, yet two warnings need one, so `@type = capacitor` is
 the convention adopted. And `$a-b$` is subtraction, never a reference to a field
 named `a-b` — that needs quoting, as `$"a-b"$`.
+
+## Licence
+
+Copyright (C) 2026 Tom.
+
+manta is free software: you can redistribute it and/or modify it under the terms
+of the GNU General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE. See the [GNU General Public License](LICENSE) for more details.
+
+**Your designs are yours.** Output produced by running manta — netlists, BOMs,
+exported files — is your design data, not a derived work of the compiler. This
+licence places no conditions on it whatsoever. manta embeds none of its own code
+in what it emits, so no runtime exception is needed to say so; it is said here
+only to save anyone the trouble of working it out.

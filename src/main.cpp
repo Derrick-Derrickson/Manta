@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // manta -- the Manta Schematic Definition Language compiler.
 //
 // Exit codes are fixed by spec 15.7: 0 success, 1 errors, 2 usage, 3 internal.

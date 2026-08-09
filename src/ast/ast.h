@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The manta abstract syntax tree.
 //
 // Every node is arena-allocated and trivially destructible, so child lists are

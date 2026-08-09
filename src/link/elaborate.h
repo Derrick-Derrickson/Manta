@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Elaboration: turning declarations into a netlist (spec 15.3).
 //
 // The linker "elaborates the top-level block, instantiating recursively and

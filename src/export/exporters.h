@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // 'manta export' (spec 15.5).
 //
 // The specification names four targets -- kicad, altium, orcad, allegro -- but

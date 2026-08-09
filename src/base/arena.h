@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Bump allocator for AST and IR nodes.
 //
 // The compiler allocates a great many small, permanent nodes and frees them all

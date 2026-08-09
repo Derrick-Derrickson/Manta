@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Building a concrete pin list from a 'part' declaration (spec 4.5, 8.2, 11.6).
 //
 // A pin map line expands to one pin per physical pin:

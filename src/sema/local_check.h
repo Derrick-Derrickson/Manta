@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Per-file semantic checks, run at compile.
 //
 // Spec 15.2 splits validation in two: compile does "well-formedness, and every

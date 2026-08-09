@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // 'manta link' and 'manta check' (spec 15.3, 15.5).
 //
 // The linker is given a set of objects and the name of the top-level block. It

@@ -4,8 +4,21 @@
 
 > **Corrected against a reference implementation.**
 >
-> **1.1 adds one construct**: the end-of-content marker of §2.8, which lets a
-> file carry documentation after its declarations. A 1.0 source is a valid 1.1
+> **1.2 describes what plugs into a board.** A `cable` (§12A) is a loom: its own
+> declaration and its own deliverable, with its own netlist and bill of
+> materials. A connector says which loom is fitted to it and what that loom
+> plugs into, and the compiler checks that the two fit — including the case
+> where a board plugs into another copy of itself. `@type` (§9.7) says what a
+> part is, and is what makes a connector, a wire and a crimp distinguishable
+> from anything else on the board. Two smaller additions serve those: an area
+> unit (§3.2), so a conductor's cross-section is a quantity a rule can check,
+> and a range inside a value list (§12A.2), so a twenty-way pin map is one pair
+> rather than twenty.
+>
+> **1.1 added one construct**: the end-of-content marker of §2.8, which lets a
+> file carry documentation after its declarations.
+>
+> Each revision is a superset of the one before. A 1.0 source is a valid 1.2
 > source, and a toolchain reads any object whose revision is no newer than its
 > own.
 >

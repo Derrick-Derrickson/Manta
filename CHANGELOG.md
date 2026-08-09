@@ -1,6 +1,21 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 — 2026-08-09
+
+### Licence: GPL-3.0-or-later
+
+manta is now free software. The evaluation licence 1.1.0 shipped under always
+said this was the intent; this is following through on it.
+
+What that means in practice: you may use, study, modify and redistribute manta
+freely, and anyone who distributes a modified version has to offer its source on
+the same terms. It does not reach someone who runs a modified manta behind a
+network service without ever distributing a binary — that would need AGPL, and
+remains available as a later choice.
+
+**Your designs are not covered.** A netlist, a BOM or an exported file is your
+design data, not a derived work of the compiler. manta embeds none of its own
+code in what it emits.
 
 ### Language, revision 1.2
 

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The closed sets of system field names (spec 9.5) and directive names
 // (spec 11.3, 11.5-11.7), and the value type each one takes.
 //

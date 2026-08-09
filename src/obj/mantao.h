@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The .mantaO object format (spec 15.2, 15.4).
 //
 // Spec 15.2: "A .mantaO object carries declarations, their interfaces, and

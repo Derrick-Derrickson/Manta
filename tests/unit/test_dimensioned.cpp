@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Spec 3.2 (dimensioned values), 3.4 (metric only), 2.3 (identifiers) and the
 // canonical SI-substituted rendering the formatter emits (spec 17).
 #include "lex/dimensioned.h"

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The elaborated design, and the .mantaNets format of spec 15.4.
 #pragma once
 

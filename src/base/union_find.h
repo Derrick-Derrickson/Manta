@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Disjoint-set forest, used to merge nodes into nets.
 //
 // Chain evaluation (spec 6) is almost entirely a sequence of "these two things

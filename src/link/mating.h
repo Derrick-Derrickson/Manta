@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Connectors, cables and what happens where they meet (spec 12A).
 //
 // A board says where a loom plugs in; a loom says what it plugs into. Neither

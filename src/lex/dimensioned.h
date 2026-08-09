@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Dimensioned values (spec 3.2) and their canonical rendering (spec 17).
 //
 // A value is stored as an exact scaled integer -- mantissa x 10^exp10 -- and

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // RFC 4122 section 4.3 name-based UUIDs, version 5 (SHA-1).
 //
 // A layout tool matches a netlist component to a footprint already placed on a

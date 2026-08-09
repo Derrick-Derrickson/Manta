@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // SHA-1 (FIPS 180-4).
 //
 // Present for exactly one reason: RFC 4122 name-based UUIDs are defined in terms

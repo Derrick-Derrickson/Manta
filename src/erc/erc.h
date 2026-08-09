@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Electrical rule checking (spec 16).
 //
 // Spec 16 opens by explaining why these rules can be checked at all: "Manta's

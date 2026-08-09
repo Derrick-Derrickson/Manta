@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Deterministic hashing.
 //
 // Spec 15.8 requires byte-identical output for identical input, so every hash

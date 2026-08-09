@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Export: footprint resolution, component identity and the KiCad emitter.
 //
 // The UUID and hash tests check against published vectors rather than against

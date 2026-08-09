@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The .mantaO round trip (spec 15.2, 15.4) and its determinism (spec 15.8).
 //
 // Writing, reading and writing again must produce byte-identical JSON. That one

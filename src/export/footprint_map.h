@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Mapping a manta footprint name to the name a layout tool knows it by.
 //
 // A part library says '@~footprint = R-0603' because that is what the package

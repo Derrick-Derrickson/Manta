@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Tom
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Command-line parsing for the six subcommands of spec 15.5.
 #pragma once
 
