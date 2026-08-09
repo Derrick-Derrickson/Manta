@@ -142,6 +142,10 @@ TEST_CASE("spec 15.2: the complete board round-trips") {
     checkRoundTrip("cable.manta");
 }
 
+TEST_CASE("rev 1.3: section markers round-trip through .mantaO") {
+    checkRoundTrip("sections.manta");
+}
+
 TEST_CASE("a range value survives the object round trip") {
     // '1:20' inside a list is what keeps a twenty-way pin map to one pair. A
     // range may descend -- that is how a reversed map is written -- so the

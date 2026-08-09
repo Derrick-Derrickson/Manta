@@ -160,6 +160,10 @@ TEST_CASE("E-41 non-arithmetic operand") { expectFires("E-41"); }
 TEST_CASE("E-42 negative exponent") { expectFires("E-42"); }
 TEST_CASE("E-43 a part exports a field") { expectFires("E-43"); }
 
+// Not in the numbered table: the general syntax error, provoked here by a
+// section marker with no title (revision 1.3).
+TEST_CASE("E-SYNTAX an untitled section marker") { expectFires("E-SYNTAX"); }
+
 // ---------------------------------------------------------------------------
 // Section 16.2 -- warnings
 // ---------------------------------------------------------------------------

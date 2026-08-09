@@ -1,0 +1,33 @@
+// Render section markers (revision 1.3). A '---' line inside a block body
+// names the render section the statements after it belong to, until the next
+// marker or the end of the block.
+static part SECT-R {
+    @~footprint = R-0603;
+
+    1 = A &CASUAL;
+    2 = B &CASUAL;
+};
+
+block section-demo {
+    --- POWER SUPPLY
+    VBUS == VIN;
+    VIN = .{R1~SECT-R}. = 3V3;
+
+    --- INPUTS / OUTPUTS
+    3V3 = .{R2~SECT-R}. = SENSE;
+    block section-inner {
+        --- ANALOG FRONT END
+        AIN == AFE-IN;
+
+        --- DIGITAL
+        D0 == D1;
+    };
+
+    --- HOUSEKEEPING // not a comment: a title runs to the end of the line
+    SENSE == MCU-SENSE;
+};
+
+// A block with no markers stays exactly as it always was.
+block section-free {
+    P == Q;
+};
