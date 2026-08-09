@@ -1,6 +1,6 @@
 # Agent skills
 
-Instructions for an AI working with manta. Three skills, for three different
+Instructions for an AI working with manta. Four skills, for four different
 jobs.
 
 | Skill | For |
