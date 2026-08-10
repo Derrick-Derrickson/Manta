@@ -226,6 +226,62 @@ endif()
 assert_same_net(blinky_nets J1 2 BLK1_D1 2)
 assert_same_net(blinky_nets J1 2 BLK2_D1 2)
 
+# --- render: the two 'indicator' copies share one page -----------------------
+# The schematic is blinky's top page plus ONE page for the 'indicator'
+# definition: BLK1 and BLK2 draw as green sheet symbols on the top page, both
+# linking to that single page, which holds the R-LED chain once under its
+# block-local net spellings.
+run_manta(render -o "${WORK}/blinky.html" "${WORK}/blinky.mantaNets")
+file(READ "${WORK}/blinky.html" blinky_html)
+
+foreach(page "id=\"page-blinky\"" "id=\"page-indicator\"")
+    string(REGEX MATCHALL "${page}" pages "${blinky_html}")
+    list(LENGTH pages page_count)
+    if(NOT page_count EQUAL 1)
+        message(FATAL_ERROR "expected exactly one ${page}, got ${page_count}")
+    endif()
+endforeach()
+
+# Two sheet symbols; three links to the indicator page (the third is the
+# sidebar's own entry).
+string(REGEX MATCHALL "class=\"sbody\"" sheets "${blinky_html}")
+list(LENGTH sheets sheet_count)
+if(NOT sheet_count EQUAL 2)
+    message(FATAL_ERROR "expected sheet symbols for BLK1 and BLK2, got ${sheet_count}")
+endif()
+string(REGEX MATCHALL "href=\"#page-indicator\"" links "${blinky_html}")
+list(LENGTH links link_count)
+if(NOT link_count EQUAL 3)
+    message(FATAL_ERROR "expected 3 links to page-indicator, got ${link_count}")
+endif()
+
+# The representative's parts render once; the second instance's not at all.
+foreach(des BLK1_R1 BLK1_D1)
+    string(REGEX MATCHALL "data-c=\"${des}\"" syms "${blinky_html}")
+    list(LENGTH syms sym_count)
+    if(NOT sym_count EQUAL 1)
+        message(FATAL_ERROR "expected ${des} drawn exactly once, got ${sym_count}")
+    endif()
+endforeach()
+if(blinky_html MATCHES "data-c=\"BLK2_R1\"")
+    message(FATAL_ERROR "BLK2's copy rendered: the 2nd instance must draw no page")
+endif()
+
+# Local spellings on the indicator page: the DRIVE port flag, with data-net
+# still the flat design-wide name so a click highlights it on the top page too.
+if(NOT blinky_html MATCHES "class=\"portflag\" data-net=\"LED-DRIVE\\[0\\]\"")
+    message(FATAL_ERROR "the indicator page has no DRIVE port flag on LED-DRIVE[0]")
+endif()
+if(NOT blinky_html MATCHES ">DRIVE<")
+    message(FATAL_ERROR "the local port spelling DRIVE is drawn nowhere")
+endif()
+if(NOT blinky_html MATCHES "data-net=\"BLK1.LED-ANODE\"")
+    message(FATAL_ERROR "the indicator's chain wire does not carry the flat net name")
+endif()
+if(NOT blinky_html MATCHES ">instances: BLK1, BLK2<")
+    message(FATAL_ERROR "the indicator page does not list its instances")
+endif()
+
 # Rules must not perturb the netlist, and must be deterministic.
 run_manta(link --top blinky -L "${WORK}/build" --rules "${RULES}" -Werror
           -o "${WORK}/blinky2.mantaNets")

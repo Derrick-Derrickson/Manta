@@ -21,7 +21,8 @@ std::string renderSchematic(const Design& design, const RenderOptions& options) 
     sheets.reserve(model.pages.size());
     for (std::size_t i = 0; i < model.pages.size(); ++i) {
         SheetLayout sheet = layoutPage(model, model.pages[i]);
-        sheet.tb.title = title;
+        // A definition page is titled by its block; the top page by the design.
+        sheet.tb.title = model.pages[i].definition ? model.pages[i].title : title;
         sheet.tb.sheet = std::format("Sheet {} of {}", i + 1, model.pages.size());
         sheets.push_back(std::move(sheet));
     }

@@ -25,6 +25,8 @@ constexpr std::string_view kStyle = R"__(
   --label: #A00000;        /* net labels */
   --nc: #9a9a9a;
   --hl: #FF7F00;           /* highlight */
+  --sheet-fill: #C6ECB8;   /* sheet-symbol body */
+  --sheet-stroke: #1F6B2A; /* sheet-symbol border, instance designator */
 }
 * { box-sizing: border-box; }
 body { margin: 0; display: flex; height: 100vh; background: #3c3c3a;
@@ -86,6 +88,21 @@ rect.room { fill: none; stroke: var(--wire); stroke-width: 1; }
 .roomtitle { font-size: 12px; fill: var(--wire); letter-spacing: 2px;
              font-family: Georgia, serif; }
 text.nc { fill: var(--nc); }
+.sheetnote { font-size: 10px; font-style: italic; fill: var(--frame);
+             font-family: Georgia, serif; }
+
+/* sheet symbols: child block instances, linking to the definition's page */
+.sheetsym { cursor: pointer; }
+.sheetsym .sbody { fill: var(--sheet-fill); stroke: var(--sheet-stroke); stroke-width: 1; }
+.sheetsym .sheetref { font-size: 11px; font-weight: bold; fill: var(--sheet-stroke);
+                      font-family: 'Courier New', monospace; }
+.sheetsym .sheetname { font-size: 10px; font-weight: bold; fill: #1c1c1c;
+                       font-family: 'Courier New', monospace; }
+.sheetsym .sheettag { font-size: 7px; font-style: italic; fill: var(--sheet-stroke);
+                      font-family: Georgia, serif; }
+.sheetsym .sheetrule { stroke: var(--sheet-stroke); stroke-width: 1; }
+.sheetsym .ptab { fill: var(--body-fill); stroke: var(--body-stroke); stroke-width: 1; }
+.sheetsym g.hl .ptab { stroke: var(--hl); stroke-width: 2; }
 
 /* interactivity */
 [data-net], .sym { cursor: pointer; }
@@ -294,7 +311,7 @@ void emitDocument(std::string& out, const RenderModel& model,
     out += "<main id=\"sheets\">\n";
     for (std::size_t i = 0; i < model.pages.size() && i < sheets.size(); ++i) {
         out += std::format("<section class=\"page\" id=\"{}\">\n", esc(model.pages[i].id));
-        emitSheetSvg(out, model, sheets[i]);
+        emitSheetSvg(out, model, model.pages[i], sheets[i]);
         out += "</section>\n";
     }
     out += "</main>\n";

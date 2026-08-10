@@ -105,32 +105,32 @@ Rot verticalRot(const SymbolGeom& g, std::uint32_t compPin) {
 // Net classes as the idioms see them.
 // ---------------------------------------------------------------------------
 
-bool isGround(const RenderModel& m, std::int32_t net) {
-    return net >= 0 && m.nets[static_cast<std::size_t>(net)].mark == NetMark::Ground;
+bool isGround(const RenderPage& p, std::int32_t net) {
+    return net >= 0 && p.nets[static_cast<std::size_t>(net)].mark == NetMark::Ground;
 }
 
-bool isRail(const RenderModel& m, std::int32_t net) {
-    return net >= 0 && m.nets[static_cast<std::size_t>(net)].mark == NetMark::Rail;
+bool isRail(const RenderPage& p, std::int32_t net) {
+    return net >= 0 && p.nets[static_cast<std::size_t>(net)].mark == NetMark::Rail;
 }
 
-MarkKind markKindFor(const RenderModel& m, std::int32_t net) {
-    const RenderNet& rn = m.nets[static_cast<std::size_t>(net)];
+MarkKind markKindFor(const RenderPage& p, std::int32_t net) {
+    const RenderNet& rn = p.nets[static_cast<std::size_t>(net)];
     if (rn.mark == NetMark::Ground) return MarkKind::Ground;
     if (rn.mark == NetMark::Rail) return MarkKind::RailFlag;
     if (rn.crossing || rn.direction != PortDir::None) return MarkKind::PortFlag;
     return MarkKind::Label;
 }
 
-const std::string& netName(const RenderModel& m, std::int32_t net) {
-    return m.nets[static_cast<std::size_t>(net)].display;
+const std::string& netName(const RenderPage& p, std::int32_t net) {
+    return p.nets[static_cast<std::size_t>(net)].display;
 }
 
 // How far a pin's stub and its mark reach beyond the body edge.
-int markExtent(const RenderModel& m, std::int32_t net, Side side) {
+int markExtent(const RenderPage& p, std::int32_t net, Side side) {
     if (net < 0) return kStubLen + 4;
     bool vertical = side == Side::Top || side == Side::Bottom;
-    int nameW = textW(netName(m, net));
-    switch (markKindFor(m, net)) {
+    int nameW = textW(netName(p, net));
+    switch (markKindFor(p, net)) {
         case MarkKind::Ground: return vertical ? kStubLen + 10 : kStubLen + 14;
         case MarkKind::RailFlag: return vertical ? kStubLen + 18 : kStubLen + nameW + 10;
         case MarkKind::PortFlag: return vertical ? kStubLen + 22 : kStubLen + nameW + 18;
@@ -178,6 +178,7 @@ struct Run {
 // run through a solid.
 struct RoomBuf {
     std::vector<PlacedSymbol> symbols;
+    std::vector<SheetSymItem> children;
     std::vector<WireItem> wires;
     std::vector<DotItem> dots;
     std::vector<MarkItem> marks;
@@ -254,6 +255,7 @@ bool anchorKind(SymbolKind k, const Component& c) {
 // One room's layout state, built then placed.
 struct RoomLayout {
     const RenderModel& m;
+    const RenderPage& pg;
     const Design& d;
     RoomBuf buf;
 
@@ -261,17 +263,19 @@ struct RoomLayout {
     std::vector<Cand> cands;
     std::vector<std::int32_t> candOf;     // component index -> cands index, -1
     std::vector<std::uint32_t> leftovers; // wires, crimps, test points...
+    std::vector<std::uint32_t> children;  // Design::blocks indices, room order
     std::vector<Run> runs;                // anchor runs then floating runs
 
-    explicit RoomLayout(const RenderModel& model)
-        : m(model), d(*model.design), candOf(model.design->components.size(), -1) {}
+    RoomLayout(const RenderModel& model, const RenderPage& page)
+        : m(model), pg(page), d(*model.design),
+          candOf(model.design->components.size(), -1) {}
 
     // A private net can carry a drawn chain wire: exactly two pins, no class,
     // not crossing, not a port.
     [[nodiscard]] bool isPrivate(std::int32_t net) const {
         if (net < 0) return false;
         const Net& n = d.nets[static_cast<std::size_t>(net)];
-        const RenderNet& rn = m.nets[static_cast<std::size_t>(net)];
+        const RenderNet& rn = pg.nets[static_cast<std::size_t>(net)];
         return n.pins.size() == 2 && rn.mark == NetMark::Label && !rn.crossing &&
                rn.direction == PortDir::None;
     }
@@ -302,6 +306,7 @@ private:
     void walkForward(Run& run, std::int32_t net, std::uint32_t fromComp, std::uint32_t fromPin);
     int placeBand0(int y);
     int placeBand1(int y);
+    int placeChildren(int y);
     void placeBand2(int y);
     void placeVertical(std::uint32_t comp, int cx, int topY, std::uint32_t topPin,
                        std::int32_t topNet, std::int32_t botNet);
@@ -312,6 +317,7 @@ private:
 };
 
 void RoomLayout::classify(const RenderRoom& room) {
+    children = room.children;
     for (std::uint32_t idx : room.components) {
         const Component& c = d.components[idx];
         SymbolKind k = m.kinds[idx];
@@ -327,8 +333,8 @@ void RoomLayout::classify(const RenderRoom& room) {
         cand.comp = idx;
         std::int32_t a = c.pins[0].net;
         std::int32_t b = c.pins[1].net;
-        bool railA = isRail(m, a), railB = isRail(m, b);
-        bool gndA = isGround(m, a), gndB = isGround(m, b);
+        bool railA = isRail(pg, a), railB = isRail(pg, b);
+        bool gndA = isGround(pg, a), gndB = isGround(pg, b);
         if ((railA && gndB) || (railB && gndA)) {
             cand.role = Role::Ladder;
             cand.railNet = railA ? a : b;
@@ -373,7 +379,7 @@ void RoomLayout::walkForward(Run& run, std::int32_t net, std::uint32_t fromComp,
         fromComp = other.component;
         fromPin = exit;
         net = d.components[other.component].pins[exit].net;
-        if (isGround(m, net) || isRail(m, net)) break;
+        if (isGround(pg, net) || isRail(pg, net)) break;
     }
     run.endNet = net;
 }
@@ -427,7 +433,7 @@ void RoomLayout::walkChains() {
         run.elems.push_back(RunElem{static_cast<std::size_t>(candOf[head]), headEntry});
         std::uint32_t exit = headEntry == 0 ? 1 : 0;
         std::int32_t net = d.components[head].pins[exit].net;
-        if (!isGround(m, net) && !isRail(m, net)) walkForward(run, net, head, exit);
+        if (!isGround(pg, net) && !isRail(pg, net)) walkForward(run, net, head, exit);
         else run.endNet = net;
         runs.push_back(std::move(run));
     }
@@ -442,8 +448,8 @@ void RoomLayout::walkChains() {
 int RoomLayout::verticalCellW(std::uint32_t comp, std::int32_t topNet,
                               std::int32_t botNet) const {
     int w = 3 * P;
-    if (topNet >= 0) w = std::max(w, textW(netName(m, topNet)) + 4);
-    if (botNet >= 0) w = std::max(w, textW(netName(m, botNet)) + 4);
+    if (topNet >= 0) w = std::max(w, textW(netName(pg, topNet)) + 4);
+    if (botNet >= 0) w = std::max(w, textW(netName(pg, botNet)) + 4);
     (void)comp;
     return w;
 }
@@ -467,11 +473,11 @@ void RoomLayout::placeVertical(std::uint32_t comp, int cx, int topY, std::uint32
 
     if (topNet >= 0) {
         buf.wire({cx, attachY, cx, bodyTop}, topNet);
-        buf.mark(markKindFor(m, topNet), cx, attachY, Side::Top, topNet);
+        buf.mark(markKindFor(pg, topNet), cx, attachY, Side::Top, topNet);
     }
     if (botNet >= 0) {
         buf.wire({cx, bodyBot, cx, bodyBot + P}, botNet);
-        buf.mark(markKindFor(m, botNet), cx, bodyBot + P, Side::Bottom, botNet);
+        buf.mark(markKindFor(pg, botNet), cx, bodyBot + P, Side::Bottom, botNet);
     }
     buf.symbols.push_back(std::move(s));
 }
@@ -495,11 +501,11 @@ int RoomLayout::innerLength(const Run& run) const {
     len -= P;  // the last gap is replaced by the terminal below
     std::int32_t end = run.endNet;
     if (end < 0) return len + P;
-    switch (markKindFor(m, end)) {
+    switch (markKindFor(pg, end)) {
         case MarkKind::Ground:
         case MarkKind::RailFlag: return len + P + 10;
-        case MarkKind::Label: return len + P + textW(netName(m, end)) + 6;
-        case MarkKind::PortFlag: return len + P + textW(netName(m, end)) + 18;
+        case MarkKind::Label: return len + P + textW(netName(pg, end)) + 6;
+        case MarkKind::PortFlag: return len + P + textW(netName(pg, end)) + 18;
     }
     return len + P;
 }
@@ -601,7 +607,7 @@ bool RoomLayout::placeRun(const Run& run, int px, int py, bool rightward, int mi
         buf.wire({cursor, stripY, cursor + dir * P, stripY}, -1);
         return true;
     }
-    switch (markKindFor(m, end)) {
+    switch (markKindFor(pg, end)) {
         case MarkKind::Ground:
             buf.wire({cursor, stripY, cursor + dir * P, stripY, cursor + dir * P, stripY + P},
                      end);
@@ -615,7 +621,7 @@ bool RoomLayout::placeRun(const Run& run, int px, int py, bool rightward, int mi
         case MarkKind::Label:
         case MarkKind::PortFlag:
             buf.wire({cursor, stripY, cursor + dir * P, stripY}, end);
-            buf.mark(markKindFor(m, end), cursor + dir * P, stripY,
+            buf.mark(markKindFor(pg, end), cursor + dir * P, stripY,
                      rightward ? Side::Right : Side::Left, end);
             break;
     }
@@ -777,7 +783,7 @@ int RoomLayout::placeBand1(int y) {
         int extL = 0, extR = 0, extT = 14, extB = 14;
         for (const SymPin& p : g.pins) {
             if (pinConsumed[p.pin]) continue;
-            int e = markExtent(m, p.net, p.side);
+            int e = markExtent(pg, p.net, p.side);
             switch (p.side) {
                 case Side::Left: extL = std::max(extL, e); break;
                 case Side::Right: extR = std::max(extR, e); break;
@@ -845,7 +851,7 @@ int RoomLayout::placeBand1(int y) {
             int px = 0, py = 0;
             Side side = Side::Left;
             pinPos(placed, gp, px, py, side);
-            int e = markExtent(m, p.net, side);
+            int e = markExtent(pg, p.net, side);
             int sx = px, sy = py;
             switch (side) {
                 case Side::Left:
@@ -866,7 +872,7 @@ int RoomLayout::placeBand1(int y) {
                     break;
             }
             buf.wire({px, py, sx, sy}, p.net);
-            if (p.net >= 0) buf.mark(markKindFor(m, p.net), sx, sy, side, p.net);
+            if (p.net >= 0) buf.mark(markKindFor(pg, p.net), sx, sy, side, p.net);
         }
 
         // Pull-ups stand over the anchor, rail flag up, signal joining BY
@@ -925,10 +931,10 @@ int RoomLayout::placeBand1(int y) {
                 if (!placeRun(*r, px, py, rightward, midX)) {
                     r->downgraded = true;
                     int sx = px + (rightward ? kStubLen : -kStubLen);
-                    int e = markExtent(m, r->startNet, side);
+                    int e = markExtent(pg, r->startNet, side);
                     buf.wire({px, py, sx, py}, r->startNet);
                     if (r->startNet >= 0) {
-                        buf.mark(markKindFor(m, r->startNet), sx, py, side, r->startNet);
+                        buf.mark(markKindFor(pg, r->startNet), sx, py, side, r->startNet);
                     }
                     buf.reserve(rightward ? Rect{px, py - 6, px + e, py + 6}
                                           : Rect{px - e, py - 6, px, py + 6});
@@ -938,6 +944,63 @@ int RoomLayout::placeBand1(int y) {
 
         buf.symbols.push_back(std::move(placed));
         cursorX = std::max({bodyX + g.w + std::max(extR, chainR), px2, dx2}) + 4 * P;
+    }
+    return buf.maxY + 2 * P;
+}
+
+// ---------------------------------------------------------------------------
+// Child sheet symbols: one green box per direct child block instance, its
+// ports pins on the LEFT edge in declaration order, each with the ordinary
+// stub and mark. The box is an anchor-class solid; the marks are what wire it
+// into the page, connecting by name like any other stub.
+// ---------------------------------------------------------------------------
+
+int RoomLayout::placeChildren(int y) {
+    if (children.empty()) return y;
+    int x = 0, rowH = 0;
+    for (std::uint32_t bi : children) {
+        const BlockInstance& b = d.blocks[bi];
+        int n = static_cast<int>(b.ports.size());
+        int w = std::max(textW(b.block) + 16, 6 * P);
+        for (const BlockPort& p : b.ports) w = std::max(w, 16 + textW(p.name) + 8);
+        int h = kSheetSymHeader + (n + 1) * P;
+
+        int extL = kStubLen + 4;
+        for (const BlockPort& p : b.ports) {
+            if (p.net >= 0) extL = std::max(extL, markExtent(pg, p.net, Side::Left));
+        }
+        const int topPad = 14;  // the instance designator above the box
+        int cellW = extL + w + 2 * P;
+        int cellH = topPad + h + P;
+        if (x > 0 && x + cellW > kBandWrap) {
+            x = 0;
+            y = buf.maxY + P;
+            rowH = 0;
+        }
+        Rect cell{x, y, x + cellW, y + cellH};
+        while (buf.collidesAny(cell)) {
+            cell.y0 += P;
+            cell.y1 += P;
+        }
+        buf.reserve(cell);
+
+        SheetSymItem item;
+        item.x = x + extL;
+        item.y = cell.y0 + topPad;
+        item.w = w;
+        item.h = h;
+        item.block = bi;
+        for (int i = 0; i < n; ++i) {
+            const BlockPort& p = b.ports[static_cast<std::size_t>(i)];
+            int py = item.y + kSheetSymHeader + (i + 1) * P;
+            buf.wire({item.x, py, item.x - kStubLen, py}, p.net);
+            if (p.net >= 0) {
+                buf.mark(markKindFor(pg, p.net), item.x - kStubLen, py, Side::Left, p.net);
+            }
+        }
+        buf.children.push_back(item);
+        x += cellW + 2 * P;
+        rowH = std::max(rowH, cellH);
     }
     return buf.maxY + 2 * P;
 }
@@ -955,7 +1018,7 @@ void RoomLayout::placeLeftoverCell(std::uint32_t comp, int& x, int& y, int& rowH
 
     int extL = 0, extR = 0, extT = 14, extB = 16;
     for (const SymPin& p : s.geom.pins) {
-        int e = markExtent(m, p.net, p.side);
+        int e = markExtent(pg, p.net, p.side);
         switch (p.side) {
             case Side::Left: extL = std::max(extL, e); break;
             case Side::Right: extR = std::max(extR, e); break;
@@ -993,7 +1056,7 @@ void RoomLayout::placeLeftoverCell(std::uint32_t comp, int& x, int& y, int& rowH
             case Side::Bottom: sy += kStubLen; break;
         }
         buf.wire({px, py, sx, sy}, p.net);
-        if (p.net >= 0) buf.mark(markKindFor(m, p.net), sx, sy, side, p.net);
+        if (p.net >= 0) buf.mark(markKindFor(pg, p.net), sx, sy, side, p.net);
     }
     x += cellW + 2 * P;
     rowH = std::max(rowH, cellH);
@@ -1007,7 +1070,7 @@ void RoomLayout::placeBand2(int y) {
     // Runs an anchor had to give up on land here too, connected by name.
     for (const Run& r : runs) {
         if (r.fromAnchor && !r.downgraded) continue;
-        int entryExt = r.startNet >= 0 ? markExtent(m, r.startNet, Side::Left) : P;
+        int entryExt = r.startNet >= 0 ? markExtent(pg, r.startNet, Side::Left) : P;
         int cellW = entryExt + P + innerLength(r) + P;
         int cellH = 6 * P;
         if (x > 0 && x + cellW > kBandWrap) {
@@ -1019,7 +1082,7 @@ void RoomLayout::placeBand2(int y) {
         int px = x + entryExt;
         if (placeRun(r, px, py, true, px + P)) {
             if (r.startNet >= 0) {
-                buf.mark(markKindFor(m, r.startNet), px, py, Side::Left, r.startNet);
+                buf.mark(markKindFor(pg, r.startNet), px, py, Side::Left, r.startNet);
             }
             x += cellW + 2 * P;
             rowH = std::max(rowH, cellH);
@@ -1044,6 +1107,7 @@ void RoomLayout::placeBand2(int y) {
 void RoomLayout::placeAll() {
     int y = placeBand0(0);
     y = placeBand1(y);
+    y = placeChildren(y);
     placeBand2(y);
 }
 
@@ -1068,6 +1132,10 @@ void translate(RoomBuf& b, int ox, int oy) {
     for (PlacedSymbol& s : b.symbols) {
         s.x += ox;
         s.y += oy;
+    }
+    for (SheetSymItem& c : b.children) {
+        c.x += ox;
+        c.y += oy;
     }
     for (WireItem& w : b.wires) {
         for (std::size_t i = 0; i + 1 < w.pts.size(); i += 2) {
@@ -1101,13 +1169,14 @@ std::string upperCopy(std::string_view s) {
 
 SheetLayout layoutPage(const RenderModel& model, const RenderPage& page) {
     SheetLayout sheet;
+    sheet.note = page.note;
 
     // Lay every room out in its own coordinates first.
     std::vector<RoomBuf> bufs;
     std::vector<int> roomW, roomH, stripH;
     bufs.reserve(page.rooms.size());
     for (const RenderRoom& room : page.rooms) {
-        RoomLayout rl(model);
+        RoomLayout rl(model, page);
         rl.classify(room);
         rl.walkChains();
         rl.placeAll();
@@ -1151,6 +1220,7 @@ SheetLayout layoutPage(const RenderModel& model, const RenderPage& page) {
         translate(bufs[i], rx + kRoomPad, ry + stripH[i] + kRoomPad);
         auto& b = bufs[i];
         sheet.symbols.insert(sheet.symbols.end(), b.symbols.begin(), b.symbols.end());
+        sheet.children.insert(sheet.children.end(), b.children.begin(), b.children.end());
         sheet.wires.insert(sheet.wires.end(), b.wires.begin(), b.wires.end());
         sheet.dots.insert(sheet.dots.end(), b.dots.begin(), b.dots.end());
         sheet.marks.insert(sheet.marks.end(), b.marks.begin(), b.marks.end());

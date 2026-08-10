@@ -72,6 +72,18 @@ struct RoomItem {
     bool framed = true;  // false only for the single sectionless region
 };
 
+// A child block instance drawn on its parent's page: the green sheet-symbol
+// rectangle whose left-edge port entries connect like pins, wrapped in a link
+// to the definition's page. The port rows are geometry both the layout and the
+// SVG emitter derive from the same constants: port i sits at
+// (x, y + kSheetSymHeader + (i + 1) * kPinPitch).
+struct SheetSymItem {
+    int x = 0, y = 0, w = 0, h = 0;
+    std::uint32_t block = 0;  // index into Design::blocks
+};
+
+inline constexpr int kSheetSymHeader = 26;  // name strip inside the top edge
+
 // The title block never carries a timestamp or a version string: the HTML is
 // inside the determinism guarantee of spec 15.8.
 struct TitleBlock {
@@ -83,11 +95,13 @@ struct SheetLayout {
     int w = 0, h = 0;  // whole sheet, frame included
     std::vector<RoomItem> rooms;
     std::vector<PlacedSymbol> symbols;
+    std::vector<SheetSymItem> children;
     std::vector<WireItem> wires;
     std::vector<DotItem> dots;
     std::vector<MarkItem> marks;
     std::vector<RailBarItem> bars;
-    TitleBlock tb;  // filled by the orchestrator
+    std::string note;  // "instances: ..." under the frame's top edge
+    TitleBlock tb;     // filled by the orchestrator
 };
 
 [[nodiscard]] SheetLayout layoutPage(const RenderModel& model, const RenderPage& page);
