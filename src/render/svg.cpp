@@ -51,6 +51,8 @@ void groundGlyphSideways(std::string& out, int x, int y, int dx) {
 
 void emitPin(std::string& out, const RenderModel& m, const PlacedSymbol& s, const SymPin& p) {
     const int x = s.x, y = s.y, w = s.geom.w, h = s.geom.h;
+    // A classic symbol is its own pin annotation: an anode is drawn, not named.
+    const bool classic = !s.geom.prims.empty();
     std::string_view net;
     NetMark mark = NetMark::Label;
     if (p.net >= 0) {
@@ -65,8 +67,10 @@ void emitPin(std::string& out, const RenderModel& m, const PlacedSymbol& s, cons
         case Side::Left: {
             int py = y + p.offset;
             line(out, "wire", x - kStubLen, py, x, py, net);
-            text(out, numCls, x - 2, py - 2, "end", p.number);
-            text(out, nameCls, x + 3, py + 3, {}, p.name);
+            if (!classic) {
+                text(out, numCls, x - 2, py - 2, "end", p.number);
+                text(out, nameCls, x + 3, py + 3, {}, p.name);
+            }
             if (net.empty()) break;
             if (mark == NetMark::Ground) {
                 out += std::format("<g class=\"gnd\" data-net=\"{}\">\n", esc(net));
@@ -86,8 +90,10 @@ void emitPin(std::string& out, const RenderModel& m, const PlacedSymbol& s, cons
             int py = y + p.offset;
             int px = x + w;
             line(out, "wire", px, py, px + kStubLen, py, net);
-            text(out, numCls, px + 2, py - 2, {}, p.number);
-            text(out, nameCls, px - 3, py + 3, "end", p.name);
+            if (!classic) {
+                text(out, numCls, px + 2, py - 2, {}, p.number);
+                text(out, nameCls, px - 3, py + 3, "end", p.name);
+            }
             if (net.empty()) break;
             if (mark == NetMark::Ground) {
                 out += std::format("<g class=\"gnd\" data-net=\"{}\">\n", esc(net));
@@ -106,10 +112,12 @@ void emitPin(std::string& out, const RenderModel& m, const PlacedSymbol& s, cons
         case Side::Top: {
             int px = x + p.offset;
             line(out, "wire", px, y - kStubLen, px, y, net);
-            text(out, numCls, px + 2, y - 3, {}, p.number);
-            out += std::format(
-                "<text class=\"{}\" transform=\"translate({} {}) rotate(90)\">{}</text>\n",
-                nameCls, px, y + 4, esc(p.name));
+            if (!classic) {
+                text(out, numCls, px + 2, y - 3, {}, p.number);
+                out += std::format(
+                    "<text class=\"{}\" transform=\"translate({} {}) rotate(90)\">{}</text>\n",
+                    nameCls, px, y + 4, esc(p.name));
+            }
             if (net.empty()) break;
             if (mark == NetMark::Ground) {
                 out += std::format("<g class=\"gnd\" data-net=\"{}\">\n", esc(net));
@@ -129,10 +137,12 @@ void emitPin(std::string& out, const RenderModel& m, const PlacedSymbol& s, cons
             int px = x + p.offset;
             int by = y + h;
             line(out, "wire", px, by, px, by + kStubLen, net);
-            text(out, numCls, px + 2, by + 8, {}, p.number);
-            out += std::format(
-                "<text class=\"{}\" transform=\"translate({} {}) rotate(-90)\">{}</text>\n",
-                nameCls, px, by - 4, esc(p.name));
+            if (!classic) {
+                text(out, numCls, px + 2, by + 8, {}, p.number);
+                out += std::format(
+                    "<text class=\"{}\" transform=\"translate({} {}) rotate(-90)\">{}</text>\n",
+                    nameCls, px, by - 4, esc(p.name));
+            }
             if (net.empty()) break;
             if (mark == NetMark::Ground) {
                 out += std::format("<g class=\"gnd\" data-net=\"{}\">\n", esc(net));
@@ -151,15 +161,75 @@ void emitPin(std::string& out, const RenderModel& m, const PlacedSymbol& s, cons
     }
 }
 
+// Classic artwork, translated from body-local to sheet coordinates.
+void emitPrims(std::string& out, const PlacedSymbol& s) {
+    for (const Prim& p : s.geom.prims) {
+        switch (p.kind) {
+            case Prim::Kind::Line:
+                line(out, "glyph", s.x + p.pts[0], s.y + p.pts[1], s.x + p.pts[2],
+                     s.y + p.pts[3]);
+                break;
+            case Prim::Kind::Polyline:
+            case Prim::Kind::Polygon: {
+                std::string_view tag = p.kind == Prim::Kind::Polygon ? "polygon" : "polyline";
+                std::string_view cls = p.fill ? "glyph fill" : "glyph";
+                out += std::format("<{} class=\"{}\" points=\"", tag, cls);
+                for (std::size_t i = 0; i + 1 < p.pts.size(); i += 2) {
+                    if (i) out += ' ';
+                    out += std::format("{},{}", s.x + p.pts[i], s.y + p.pts[i + 1]);
+                }
+                out += std::format("\"/>\n");
+                break;
+            }
+            case Prim::Kind::Circle:
+                out += std::format("<circle class=\"{}\" cx=\"{}\" cy=\"{}\" r=\"{}\"/>\n",
+                                   p.fill ? "glyph fill" : "glyph", s.x + p.pts[0],
+                                   s.y + p.pts[1], p.pts[2]);
+                break;
+            case Prim::Kind::Arc:
+                out += std::format(
+                    "<path class=\"glyph\" d=\"M {} {} A {} {} 0 0 {} {} {}\"/>\n",
+                    s.x + p.pts[0], s.y + p.pts[1], p.pts[4], p.pts[4], p.pts[5],
+                    s.x + p.pts[2], s.y + p.pts[3]);
+                break;
+            case Prim::Kind::Text:
+                text(out, "mark", s.x + p.pts[0], s.y + p.pts[1], "middle", p.text);
+                break;
+        }
+    }
+}
+
 void emitSymbol(std::string& out, const RenderModel& m, const PlacedSymbol& s) {
     const Component& c = m.design->components[s.component];
+    const bool classic = !s.geom.prims.empty();
     out += std::format("<g class=\"sym\" data-c=\"{}\">\n", esc(c.designator));
-    out += std::format("<rect class=\"body\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/>\n",
-                       s.x, s.y, s.geom.w, s.geom.h);
-    text(out, "refdes", s.x, s.y - 4, {}, c.designator);
+
     std::string partLine = c.partName;
+    if (classic) {
+        emitPrims(out, s);
+        // The value ("10kR") is what a schematic prints under a passive; the
+        // part name stays a click away in the info pane.
+        for (const auto& [name, value] : c.fields) {
+            if (name == "value") partLine = value;
+        }
+    } else {
+        out += std::format("<rect class=\"body\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/>\n",
+                           s.x, s.y, s.geom.w, s.geom.h);
+    }
     if (!c.fitted) partLine += " (DNF)";
-    text(out, "partname", s.x, s.y + s.geom.h + 11, {}, partLine);
+
+    if (classic) {
+        auto anchor = [](std::uint8_t a) -> std::string_view {
+            return a == 0 ? "middle" : a == 1 ? "end" : std::string_view{};
+        };
+        const auto& rd = s.geom.refdesAt;
+        const auto& vl = s.geom.valueAt;
+        text(out, "refdes", s.x + rd.x, s.y + rd.y, anchor(rd.anchor), c.designator);
+        text(out, "partname", s.x + vl.x, s.y + vl.y, anchor(vl.anchor), partLine);
+    } else {
+        text(out, "refdes", s.x, s.y - 4, {}, c.designator);
+        text(out, "partname", s.x, s.y + s.geom.h + 11, {}, partLine);
+    }
     for (const SymPin& p : s.geom.pins) emitPin(out, m, s, p);
     out += "</g>\n";
 }

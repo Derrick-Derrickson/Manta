@@ -63,6 +63,12 @@ svg.sheet { display: block; width: 100%; height: auto; background: var(--sheet);
          letter-spacing: 1px; }
 .tbval { font-size: 10px; fill: #1c1c1c; font-family: 'Courier New', monospace; }
 .sym .body { fill: var(--body-fill); stroke: var(--body-stroke); stroke-width: 1; }
+/* classic symbol artwork: blue strokes on the bare paper, like the wires */
+.sym .glyph { fill: none; stroke: var(--wire); stroke-width: 1;
+              stroke-linecap: round; stroke-linejoin: round; }
+.sym .glyph.fill { fill: var(--wire); }
+.sym .mark { font-size: 10px; font-weight: bold; fill: var(--wire);
+             font-family: 'Courier New', monospace; }
 .refdes { font-size: 11px; font-weight: bold; fill: var(--body-stroke);
           font-family: 'Courier New', monospace; }
 .partname { font-size: 9px; fill: #1c1c1c; font-family: 'Courier New', monospace; }
@@ -77,7 +83,8 @@ text.nc { fill: var(--nc); }
 [data-net], .sym { cursor: pointer; }
 line.hl, .hl line { stroke: var(--hl); stroke-width: 2; }
 text.hl, .hl text { fill: var(--hl); }
-.sym.sel .body { stroke: var(--hl); stroke-width: 2; }
+.sym.sel .body, .sym.sel .glyph { stroke: var(--hl); stroke-width: 2; }
+.sym.sel .glyph.fill { fill: var(--hl); }
 
 /* print: one sheet per A3 landscape page, chrome stripped */
 @page { size: A3 landscape; margin: 0; }

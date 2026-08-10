@@ -32,12 +32,38 @@ struct SymPin {
     std::int32_t net = -1;   // index into Design::nets, -1 when unconnected
 };
 
+// One stroke of a classic symbol, in body-local integer coordinates (the
+// renderer translates by the placed position). Keeping the artwork relative
+// to the body -- whose two terminals sit on the grid at (0, cy) and (w, cy) --
+// is what lets a later layout stage rotate a symbol without touching this.
+struct Prim {
+    enum class Kind : std::uint8_t { Line, Polyline, Polygon, Circle, Arc, Text };
+    Kind kind = Kind::Line;
+    // Line/Polyline/Polygon: x,y pairs. Circle: {cx, cy, r}.
+    // Arc: {x1, y1, x2, y2, r, sweep}. Text: {x, y}, anchored middle.
+    std::vector<int> pts;
+    bool fill = false;  // Polygon/Circle: filled with the wire colour
+    std::string text;   // Text only
+};
+
 struct SymbolGeom {
     int w = 0, h = 0;  // body rectangle
     std::vector<SymPin> pins;
     // Reserved widths at the left end of the top and bottom edges, kept clear
     // of pins so the designator (top) and part name (bottom) have room.
     int topReserve = 0, botReserve = 0;
+    // Non-empty for a classic symbol: drawn instead of the body rectangle,
+    // with pin name/number text suppressed and the designator and value
+    // placed at the spots below.
+    std::vector<Prim> prims;
+    // Classic only. Each builder knows which corners its stubs and net marks
+    // leave free, so the text anchors are geometry, not renderer guesswork.
+    // anchor: 0 = middle, 1 = end, 2 = start.
+    struct LabelSpot {
+        int x = 0, y = 0;
+        std::uint8_t anchor = 0;
+    };
+    LabelSpot refdesAt, valueAt;
 };
 
 // "2" < "10", "A2" < "A10". Ties fall back to plain byte order.
