@@ -48,8 +48,15 @@ void groundGlyphSideways(std::string& out, int x, int y, int dx) {
     line(out, "wire", x + 6 * dx, y - 2, x + 6 * dx, y + 2);
 }
 
-std::string_view netOf(const RenderModel& m, std::int32_t net) {
-    return net < 0 ? std::string_view{} : m.nets[static_cast<std::size_t>(net)].display;
+// The name drawn on this page: the page-local spelling.
+std::string_view dispOf(const RenderPage& p, std::int32_t net) {
+    return net < 0 ? std::string_view{} : p.nets[static_cast<std::size_t>(net)].display;
+}
+
+// The name data-net carries: the flat design-wide one, identical on every
+// page, so a click highlights the conductor across pages.
+std::string_view flatOf(const RenderModel& m, std::int32_t net) {
+    return net < 0 ? std::string_view{} : m.design->nets[static_cast<std::size_t>(net)].name;
 }
 
 // ---------------------------------------------------------------------------
@@ -57,7 +64,7 @@ std::string_view netOf(const RenderModel& m, std::int32_t net) {
 // ---------------------------------------------------------------------------
 
 void emitWire(std::string& out, const RenderModel& m, const WireItem& w) {
-    std::string_view net = netOf(m, w.net);
+    std::string_view net = flatOf(m, w.net);
     if (w.pts.size() == 4) {
         line(out, "wire", w.pts[0], w.pts[1], w.pts[2], w.pts[3], net);
         return;
@@ -118,11 +125,12 @@ void emitPortFlag(std::string& out, const MarkItem& mk, std::string_view name, P
     if (mk.dir == Side::Bottom) line(out, "wire", mk.x, mk.y, mk.x, y - 6);
 }
 
-void emitMark(std::string& out, const RenderModel& m, const MarkItem& mk) {
-    std::string_view net = netOf(m, mk.net);
+void emitMark(std::string& out, const RenderModel& m, const RenderPage& p, const MarkItem& mk) {
+    std::string_view net = dispOf(p, mk.net);
+    std::string_view flat = flatOf(m, mk.net);
     switch (mk.kind) {
         case MarkKind::Ground:
-            out += std::format("<g class=\"gnd\" data-net=\"{}\">\n", esc(net));
+            out += std::format("<g class=\"gnd\" data-net=\"{}\">\n", esc(flat));
             switch (mk.dir) {
                 case Side::Bottom: groundGlyph(out, mk.x, mk.y, 1); break;
                 case Side::Top: groundGlyph(out, mk.x, mk.y, -1); break;
@@ -132,7 +140,7 @@ void emitMark(std::string& out, const RenderModel& m, const MarkItem& mk) {
             out += "</g>\n";
             break;
         case MarkKind::RailFlag:
-            out += std::format("<g class=\"rail\" data-net=\"{}\">\n", esc(net));
+            out += std::format("<g class=\"rail\" data-net=\"{}\">\n", esc(flat));
             switch (mk.dir) {
                 case Side::Top:
                     line(out, "wire", mk.x - 6, mk.y, mk.x + 6, mk.y);
@@ -155,17 +163,19 @@ void emitMark(std::string& out, const RenderModel& m, const MarkItem& mk) {
             break;
         case MarkKind::Label:
             switch (mk.dir) {
-                case Side::Left: text(out, "netlabel", mk.x - 3, mk.y + 3, "end", net, net); break;
-                case Side::Right: text(out, "netlabel", mk.x + 3, mk.y + 3, {}, net, net); break;
-                case Side::Top: text(out, "netlabel", mk.x, mk.y - 4, "middle", net, net); break;
+                case Side::Left:
+                    text(out, "netlabel", mk.x - 3, mk.y + 3, "end", net, flat);
+                    break;
+                case Side::Right: text(out, "netlabel", mk.x + 3, mk.y + 3, {}, net, flat); break;
+                case Side::Top: text(out, "netlabel", mk.x, mk.y - 4, "middle", net, flat); break;
                 case Side::Bottom:
-                    text(out, "netlabel", mk.x, mk.y + 10, "middle", net, net);
+                    text(out, "netlabel", mk.x, mk.y + 10, "middle", net, flat);
                     break;
             }
             break;
         case MarkKind::PortFlag: {
-            const RenderNet& rn = m.nets[static_cast<std::size_t>(mk.net)];
-            out += std::format("<g class=\"portflag\" data-net=\"{}\">\n", esc(net));
+            const RenderNet& rn = p.nets[static_cast<std::size_t>(mk.net)];
+            out += std::format("<g class=\"portflag\" data-net=\"{}\">\n", esc(flat));
             emitPortFlag(out, mk, net, rn.direction);
             out += "</g>\n";
             break;
@@ -261,9 +271,14 @@ void emitBoxPinText(std::string& out, const PlacedSymbol& s) {
     }
 }
 
-void emitSymbol(std::string& out, const RenderModel& m, const PlacedSymbol& s) {
+void emitSymbol(std::string& out, const RenderModel& m, const RenderPage& p,
+                const PlacedSymbol& s) {
     const Component& c = m.design->components[s.component];
     const bool classic = !s.geom.prims.empty();
+    // On a definition page the drawn designator is the block-local leaf ("R1")
+    // -- the flat name ("BLK1_R1") stays on data-c and in the info panel.
+    std::string_view refdes = p.definition && !c.path.empty() ? std::string_view(c.path.back())
+                                                              : std::string_view(c.designator);
     out += std::format("<g class=\"sym\" data-c=\"{}\">\n", esc(c.designator));
 
     std::string partLine = c.partName;
@@ -286,7 +301,7 @@ void emitSymbol(std::string& out, const RenderModel& m, const PlacedSymbol& s) {
         // and value stacked to the right of the body.
         int tx = s.x + rotatedW(s.geom, s.rot) + 3;
         int cy = s.y + rotatedH(s.geom, s.rot) / 2;
-        text(out, "refdes", tx, cy - 2, {}, c.designator);
+        text(out, "refdes", tx, cy - 2, {}, refdes);
         text(out, "partname", tx, cy + 10, {}, partLine);
     } else if (classic) {
         auto anchor = [](std::uint8_t a) -> std::string_view {
@@ -294,10 +309,10 @@ void emitSymbol(std::string& out, const RenderModel& m, const PlacedSymbol& s) {
         };
         const auto& rd = s.geom.refdesAt;
         const auto& vl = s.geom.valueAt;
-        text(out, "refdes", s.x + rd.x, s.y + rd.y, anchor(rd.anchor), c.designator);
+        text(out, "refdes", s.x + rd.x, s.y + rd.y, anchor(rd.anchor), refdes);
         text(out, "partname", s.x + vl.x, s.y + vl.y, anchor(vl.anchor), partLine);
     } else {
-        text(out, "refdes", s.x, s.y - 4, {}, c.designator);
+        text(out, "refdes", s.x, s.y - 4, {}, refdes);
         text(out, "partname", s.x, s.y + s.geom.h + 11, {}, partLine);
     }
     out += "</g>\n";
@@ -308,6 +323,43 @@ void emitRoom(std::string& out, const RoomItem& r) {
     out += std::format("<rect class=\"room\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/>\n",
                        r.x, r.y, r.w, r.h);
     if (!r.title.empty()) text(out, "roomtitle", r.x + 8, r.y + 13, {}, r.title);
+}
+
+// A child block instance as a sheet symbol: the green box with the instance
+// designator bold above, the definition name and a small "sheet" affordance
+// inside the top, and one yellow arrow-tab entry per port down the left edge.
+// The body links to the definition's page; the port entries stay outside the
+// link so a click on one traces its net instead of navigating.
+void emitSheetSym(std::string& out, const RenderModel& m, const SheetSymItem& c) {
+    const BlockInstance& b = m.design->blocks[c.block];
+    out += "<g class=\"sheetsym\">\n";
+    out += std::format("<a href=\"#{}\">\n", esc(pageId(b.block)));
+    out += std::format("<rect class=\"sbody\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/>\n",
+                       c.x, c.y, c.w, c.h);
+    text(out, "sheetref", c.x, c.y - 4, {}, b.path.empty() ? b.block : b.path.back());
+    text(out, "sheetname", c.x + 6, c.y + 12, {}, b.block);
+    text(out, "sheettag", c.x + 6, c.y + 22, {}, "sheet");
+    line(out, "sheetrule", c.x, c.y + kSheetSymHeader, c.x + c.w, c.y + kSheetSymHeader);
+    out += "</a>\n";
+    for (std::size_t i = 0; i < b.ports.size(); ++i) {
+        const BlockPort& p = b.ports[i];
+        int py = c.y + kSheetSymHeader + (static_cast<int>(i) + 1) * kPinPitch;
+        out += std::format("<g data-net=\"{}\">\n", esc(flatOf(m, p.net)));
+        out += "<polygon class=\"ptab\" points=\"";
+        if (p.direction == PortDir::Out) {
+            // pointing out of the sheet, through the left edge
+            out += std::format("{0},{2} {1},{2} {3},{4} {1},{5} {0},{5}", c.x + 11, c.x + 5,
+                               py - 3, c.x + 2, py, py + 3);
+        } else {
+            // in (and inout, both-ended in spirit): pointing into the sheet
+            out += std::format("{0},{2} {1},{2} {3},{4} {1},{5} {0},{5}", c.x + 2, c.x + 8,
+                               py - 3, c.x + 11, py, py + 3);
+        }
+        out += "\"/>\n";
+        text(out, "pinname", c.x + 14, py + 3, {}, p.name);
+        out += "</g>\n";
+    }
+    out += "</g>\n";
 }
 
 // The double border with zone ticks: letters down the sides, numbers across
@@ -380,26 +432,30 @@ void xmlEscape(std::string& out, std::string_view s) {
     }
 }
 
-void emitSheetSvg(std::string& out, const RenderModel& model, const SheetLayout& sheet) {
+void emitSheetSvg(std::string& out, const RenderModel& model, const RenderPage& page,
+                  const SheetLayout& sheet) {
     out += std::format(
         "<svg class=\"sheet\" viewBox=\"0 0 {} {}\" xmlns=\"http://www.w3.org/2000/svg\">\n",
         sheet.w, sheet.h);
     emitFrame(out, sheet);
+    if (!sheet.note.empty()) text(out, "sheetnote", 28, 36, {}, sheet.note);
     for (const RoomItem& r : sheet.rooms) emitRoom(out, r);
     for (const RailBarItem& b : sheet.bars) {
-        std::string_view net = netOf(model, b.net);
+        std::string_view net = dispOf(page, b.net);
+        std::string_view flat = flatOf(model, b.net);
         out += std::format(
             "<line class=\"railbar\" x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" data-net=\"{}\"/>\n",
-            b.x1, b.y, b.x2, b.y, esc(net));
-        text(out, "netlabel", b.x1, b.y - 4, {}, net, net);
+            b.x1, b.y, b.x2, b.y, esc(flat));
+        text(out, "netlabel", b.x1, b.y - 4, {}, net, flat);
     }
     for (const WireItem& w : sheet.wires) emitWire(out, model, w);
-    for (const PlacedSymbol& s : sheet.symbols) emitSymbol(out, model, s);
+    for (const PlacedSymbol& s : sheet.symbols) emitSymbol(out, model, page, s);
+    for (const SheetSymItem& c : sheet.children) emitSheetSym(out, model, c);
     for (const DotItem& d : sheet.dots) {
         out += std::format("<circle class=\"dot\" cx=\"{}\" cy=\"{}\" r=\"2\" data-net=\"{}\"/>\n",
-                           d.x, d.y, esc(netOf(model, d.net)));
+                           d.x, d.y, esc(flatOf(model, d.net)));
     }
-    for (const MarkItem& mk : sheet.marks) emitMark(out, model, mk);
+    for (const MarkItem& mk : sheet.marks) emitMark(out, model, page, mk);
     out += "</svg>\n";
 }
 
