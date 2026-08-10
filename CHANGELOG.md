@@ -1,5 +1,81 @@
 # Changelog
 
+## 1.3.0 — 2026-08-10
+
+### Language, revision 1.3
+
+- **`--- TITLE` names a render section.** Inside a block body, the statements
+  after a marker belong to the section it titles, until the next marker or the
+  end of the block. The title is free text to the end of the line — `//` is not
+  special in it — and a section is purely presentational: connectivity, ERC and
+  the netlist's electrical content are untouched. At the top level a bare `---`
+  is still the §2.8 end-of-content marker; inside a block it is an error, since
+  a section needs a title. `manta fmt` writes a marker at body indentation with
+  a blank line above.
+
+### `manta render`: the netlist on a page
+
+`manta render [-o out.html] [--title T] [--pdf out.pdf] <netlist.mantaNets>`
+draws a clickable schematic: one self-contained HTML file, one SVG sheet per
+block *definition*. A block instantiated N times draws once; the green sheet
+symbols on the parent page all link to that one page, which lists its
+instances and shows the first one's parameter values. Section markers become
+titled rooms. Classic symbols — resistor, capacitor, inductor, diode, LED,
+MOSFET, BJT, op-amp, crystal and more, chosen from `@type`, the legacy
+`#type`, or the unit of `#value`, and only where the pin names can back the
+symbol up — plus rail bars with their decoupling ladders, pull-ups and
+pull-downs, chain runs, dark-red net labels, yellow port flags and ground
+glyphs. Click a net to highlight it across pages, a component for its fields,
+a sheet symbol to open its block's page.
+
+The HTML is byte-deterministic, inside the §15.8 guarantee. `--pdf` prints it
+through a headless Chromium found on PATH and is explicitly outside that
+guarantee: the PDF is whatever the browser makes of the page.
+
+The choices the drawing depends on — symbol classification, what counts as a
+rail, representative instances, the no-router label fallback — are recorded in
+`docs/assumptions.md` §E.
+
+### Netlist additions, schema 1.3
+
+All optional, so an older netlist still validates:
+
+- **Per-component `pins` arrays**, in declaration order — a pin on no net,
+  including `NC` pins, now survives into the interchange.
+- **`section`** on components and block records, from the render sections.
+- **A top-level `blocks` array** — path, block, section, resolved ports and
+  block-local net spellings: the hierarchy a renderer rebuilds from.
+- **`version` tells the truth.** It now names the language revision the
+  toolchain implements, where it always wrote `1.0`.
+
+### The linker connects what it always claimed to
+
+Three shipped defects, each producing a quietly wrong netlist:
+
+- **A chain terminal on a block or part reference united nothing.**
+  `FEED = {B1~inner}IN` and `TX{U2} == TXD{J1}` both looked for the empty side
+  of the join and silently connected nothing, so every port bound that way was
+  left floating — in blinky, the entire indicator fan-out. The join is now
+  real: a pin and its net are one (§5.2), and block port terminals also accept
+  ranges and whole arrays as part terminals always did. Netlists gain
+  connections that were always claimed in source.
+- **`>>` never crossed a scope.** §10.3 says a global export is visible
+  design-wide, but no cross-scope connection existed at all: a child block's
+  `>>GND` still made a private one-pin net, and blinky's LED cathodes floated
+  straight through `-Werror`. Every `>>NAME` in a design now unites on one
+  representative per spelling. Blinky has exactly one GND, cathodes on it.
+- **Two instances of one block emitted duplicate net names.** An importer that
+  merges nets by name — KiCad does — would have shorted the two LED channels
+  on the real board. A net's flat name is now its outermost spelling, and a
+  block-local net flattens under its instance path as `BLK1.LED-ANODE`,
+  the same pattern §13.4 requires of designators. Expect net names in
+  netlists and exports to change accordingly.
+
+`examples/blinky` now carries section markers, so `manta render` on it shows
+the board as rooms — USB-C power in, regulator, MCU, I2C, indicators — and
+`tests/example.cmake` asserts the cross-boundary connectivity that the first
+two fixes restore.
+
 ## 1.2.0 — 2026-08-09
 
 ### Licence: GPL-3.0-or-later
