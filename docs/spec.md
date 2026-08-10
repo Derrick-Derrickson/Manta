@@ -1,8 +1,17 @@
 # The Manta Schematic Definition Language
 
-**Specification, revision 1.2**
+**Specification, revision 1.3**
 
 > **Corrected against a reference implementation.**
+>
+> **1.3 puts the design on a page.** A `--- TITLE` line inside a block body
+> (§4.7) names a render section: a purely presentational grouping of the
+> statements after it, with no effect on connectivity or checking. `manta
+> render` (§15.5) draws a netlist as a clickable schematic — one sheet per
+> block definition, sections as titled rooms. The netlist carries what a
+> renderer needs (§15.4): each component's declared pin list, its section, and
+> a `blocks` array recording the instance hierarchy with its ports and local
+> net spellings.
 >
 > **1.2 describes what plugs into a board.** A `cable` (§12A) is a loom: its own
 > declaration and its own deliverable, with its own netlist and bill of
@@ -18,7 +27,7 @@
 > **1.1 added one construct**: the end-of-content marker of §2.8, which lets a
 > file carry documentation after its declarations.
 >
-> Each revision is a superset of the one before. A 1.0 source is a valid 1.2
+> Each revision is a superset of the one before. A 1.0 source is a valid 1.3
 > source, and a toolchain reads any object whose revision is no newer than its
 > own.
 >
@@ -230,10 +239,11 @@ part STM32F0QA5 {
 
 This is what lets one file hold a part and its datasheet.
 
-The marker shall begin a line and be followed by nothing but whitespace. It is
-recognised only where a declaration could begin, so a `---` inside a `block` or a `part`
-is the syntax error it would otherwise be, rather than silently discarding the rest of
-the file.
+The marker shall begin a line and be followed by nothing but whitespace, and it is
+recognised only where a declaration could begin — at the top level, outside every brace.
+Inside a `block` body a `---` line is the render section marker of §4.7; inside any other
+declaration it is the syntax error it would otherwise be. In neither case is the rest of
+the file silently discarded.
 
 Text after the marker is reproduced byte for byte by every tool. `manta fmt` does not
 reflow it, reindent it, or normalise its line endings, because it is not manta and may be
@@ -445,7 +455,8 @@ toolchain cannot satisfy is error **E-36**.
 A block is a reusable subcircuit.
 
 ```ebnf
-block_def = [ linkage ] "block" identifier "{" { item | statement } "}" ";" ;
+block_def = [ linkage ] "block" identifier
+            "{" { item | statement | section_marker } "}" ";" ;
 ```
 
 ```
@@ -546,6 +557,46 @@ pins, and a part may be replaced by a block of the same interface without editin
 >IN = {BLK?~rc-filter}OUT = MID>;      // a block
 >IN = A{D?~DI3643}K       = MID>;      // a part
 ```
+
+### 4.7 Render sections
+
+A line beginning `---` inside a block body names a **render section**. The statements
+after it belong to the section it titles, until the next marker or the end of the block.
+
+```ebnf
+section_marker = "---" title ;
+```
+
+The marker is line-oriented, exactly as the end-of-content marker of §2.8: the `---`
+shall be first on its line, leading whitespace permitted, and `title` is free text
+running to the end of it. `//` is not special in a title — everything after the `---`
+names the section, so `--- I/O // left` is one title, not a title and a comment.
+
+```
+block charger {
+    --- POWER IN
+    {J1~CONN-USB-C: VBUS = VBUS;};
+
+    --- REGULATION
+    VBUS = VIN{U1~LDO-3V3}VOUT = 3V3;
+};
+```
+
+A bare `---` inside a block is an error — a section marker needs a title — while at the
+top level, outside every brace, it remains the end-of-content marker of §2.8, unchanged.
+A marker is legal only in a `block` body; in a `part`, `cable`, `harness`, `netclass` or
+`match` body it is an error.
+
+A section is purely presentational: it is how `manta render` (§15.5) groups a page into
+titled rooms. It changes no connectivity, no check, and no electrical content of the
+netlist — two designs differing only in markers link to identical nets. What it does
+change is the `section` field (§15.4) that elaboration stamps onto every component and
+child block instantiated under it. A nested block's body begins sectionless and keeps
+its own markers to itself; its instantiation site takes the enclosing section exactly as
+a component does.
+
+`manta fmt` emits a marker as `--- TITLE` at body indentation, with a blank line above
+unless it opens the body.
 
 ---
 
@@ -2019,6 +2070,15 @@ A netlist may also carry a top-level `swaps` array recording the exchanges a
 router made within a swap group, which is what `manta annotate --swaps` reconciles
 back to source (§13.6); it is optional, and its absence makes `--swaps` a no-op.
 
+Revision 1.3 adds what a renderer needs, all of it optional so an older netlist
+still validates. Each component carries a `pins` array — its declared pins in
+declaration order, so a pin on no net survives into the interchange — and a
+`section` naming the render section (§4.7) it was instantiated under. A top-level
+`blocks` array records the instance hierarchy: each entry's `path`, `block`,
+`section`, resolved `ports` and `localNets`, the last being the block-local
+spellings a definition page displays. The `version` field names the language
+revision the emitting toolchain implements.
+
 ```json
 {
   "version": "1.0",
@@ -2148,6 +2208,21 @@ manta export [options] --format <target> <netlist.mantaNets>
 | `--footprint-map <file>` | Map footprint names to the target's, one `name  Library:Footprint` pair per line. |
 | `--footprint-lib <nickname>` | Library nickname for any footprint the map does not cover and that names no library itself. KiCad only. |
 
+#### `manta render`
+
+```
+manta render [options] <netlist.mantaNets>
+```
+
+Renders a netlist as a clickable HTML schematic: one sheet per block definition, with
+the render sections of §4.7 as titled rooms.
+
+| Option | Meaning |
+|---|---|
+| `-o`, `--output <file>` | HTML output path. Default: derived from the input name. |
+| `--title <text>` | Title-block text. Default: the design's top block. |
+| `--pdf <file>` | Also print the sheets to PDF, through a headless Chromium found on `PATH`. |
+
 ### 15.6 Diagnostics
 
 A diagnostic is written to stderr in the form:
@@ -2183,7 +2258,9 @@ original source.
 ### 15.8 Determinism
 
 Given identical input, manta produces byte-identical output at every stage. There is no
-timestamp, random seed, environment dependency or external process invocation.
+timestamp, random seed, environment dependency or external process invocation. `manta
+render`'s HTML is inside this guarantee; the PDF that `--pdf` prints through an external
+browser is not.
 
 ---
 
@@ -2364,7 +2441,8 @@ file            = { item } ;
 item            = block_def | part_def | harness_def | netclass_def | match_def
                 | cable_def ;
 
-block_def       = [ linkage ] "block" identifier "{" { item | statement } "}" ";" ;
+block_def       = [ linkage ] "block" identifier
+                  "{" { item | statement | section_marker } "}" ";" ;
 part_def        = [ linkage ] "part" identifier "{" { field_decl | pin_map } "}" ";" ;
 harness_def     = "harness" identifier "{" { member_decl | directive } "}" ";" ;
 netclass_def    = "netclass" identifier "{" { directive } "}" ";" ;
@@ -2380,6 +2458,7 @@ member_decl     = identifier [ arrow ] { directive } ";" ;
 
 statement       = [ "extern" ] ( chain | field_decl | port_decl )
                   { directive } ";" ;
+section_marker  = "---" title ;
 
 chain           = segment { "^" segment } ;
 segment         = element { connector element } ;
@@ -2435,6 +2514,10 @@ unary           = [ "-" | "!" ] atom ;
 atom            = integer | boolean | identifier
                 | '"' identifier '"' | "(" expr ")" ;
 ```
+
+`section_marker` is line-oriented, exactly as the end-of-content marker of §2.8: the
+`---` shall be first on its line and `title` is free text running to the end of it
+(§4.7).
 
 ---
 
