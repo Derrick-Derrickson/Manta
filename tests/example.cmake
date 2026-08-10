@@ -208,6 +208,24 @@ foreach(want "\"name\": \"BLK1.LED-ANODE\"" "\"name\": \"BLK2.LED-ANODE\"")
     endif()
 endforeach()
 
+# The indicator imports the board's ground with '>>GND' (spec 10.3), so the
+# design has exactly ONE net named GND and the LED cathodes sit on it with the
+# rest of the board -- not on a private one-pin ground per instance.
+string(JSON blinky_net_count LENGTH "${blinky_nets}" nets)
+math(EXPR blinky_net_last "${blinky_net_count} - 1")
+set(gnd_count 0)
+foreach(i RANGE ${blinky_net_last})
+    string(JSON gnd_name GET "${blinky_nets}" nets ${i} name)
+    if(gnd_name STREQUAL "GND")
+        math(EXPR gnd_count "${gnd_count} + 1")
+    endif()
+endforeach()
+if(NOT gnd_count EQUAL 1)
+    message(FATAL_ERROR "expected exactly one net named GND, got ${gnd_count}")
+endif()
+assert_same_net(blinky_nets J1 2 BLK1_D1 2)
+assert_same_net(blinky_nets J1 2 BLK2_D1 2)
+
 # Rules must not perturb the netlist, and must be deterministic.
 run_manta(link --top blinky -L "${WORK}/build" --rules "${RULES}" -Werror
           -o "${WORK}/blinky2.mantaNets")

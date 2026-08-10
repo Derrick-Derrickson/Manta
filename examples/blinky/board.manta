@@ -15,6 +15,10 @@ block indicator {
     #~series-r = 1;
     >DRIVE;
 
+    // The board's ground, imported from the global scope (spec 10.3): without
+    // this the block's GND would be a private net and the cathodes would float.
+    >>GND;
+
     // A designator is annotated in the scope where it is written, so these are
     // assigned once however many times the block is instantiated. The flat
     // names at export are BLK1.R1, BLK2.R1 and so on (spec 13.4).

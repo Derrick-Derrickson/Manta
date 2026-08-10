@@ -98,6 +98,15 @@ std::uint32_t Elaborator::netNode(Scope& scope, SymbolId name, std::int64_t inde
     return id;
 }
 
+void Elaborator::bindGlobal(std::uint32_t node) {
+    // Keyed by the node's own spelling -- "GND", "BUS[3]" -- so a block's
+    // ">>GND" and the board's "GND>>" meet on one design-wide net whichever
+    // is elaborated first.
+    SymbolId spelling = interner_.intern(nodeInfo_[node].name);
+    auto [slot, inserted] = globalNets_.insert(spelling, node);
+    if (!inserted) unite(node, *slot);
+}
+
 void Elaborator::unite(std::uint32_t a, std::uint32_t b) {
     std::uint32_t ra = uf_.find(a);
     std::uint32_t rb = uf_.find(b);
@@ -480,6 +489,7 @@ Elaborator::ElemValue Elaborator::evalNet(const NetExpr* net, Scope& scope,
             // Spec 4.4: the arrow is what makes a net a port of its block, so
             // this is where the block's declared interface is recorded.
             pendingPorts_.push_back(PendingPort{scope.id, nd, port.dir});
+            if (port.global) bindGlobal(nd);
         }
     }
 
@@ -1381,6 +1391,7 @@ void Elaborator::elaborateStatement(const Stmt* stmt, Scope& scope) {
                     info.global = info.global || stmt->listArrow.global;
                     if (info.direction == PortDir::None) info.direction = stmt->listArrow.dir;
                     pendingPorts_.push_back(PendingPort{scope.id, nd, stmt->listArrow.dir});
+                    if (stmt->listArrow.global) bindGlobal(nd);
                 }
             }
             applyStatementDirectives(stmt, touched, scope);
@@ -1766,6 +1777,15 @@ void Elaborator::buildNets(Design& design) {
                         : std::string(interner_.text(key.name));
         design.nets[*slot].name =
             depth == 0 ? std::move(spelling) : flattenPath(**path) + "." + spelling;
+    }
+
+    // A '>>' name is design-wide (spec 10.3), so it keeps its bare spelling
+    // even when every block that mentions it is a child instance.
+    for (const auto& [spelling, node] : globalNets_) {
+        std::uint32_t* slot = rootToNet.find(uf_.find(node));
+        if (!slot || namedDepth[*slot] == 0) continue;
+        namedDepth[*slot] = 0;
+        design.nets[*slot].name = std::string(interner_.text(spelling));
     }
 
     // Attach pins.

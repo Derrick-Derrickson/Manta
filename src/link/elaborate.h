@@ -166,6 +166,8 @@ private:
     // ---- nodes ---------------------------------------------------------------
     std::uint32_t netNode(Scope& scope, SymbolId name, std::int64_t index, bool indexed, Span at,
                           bool countReference = true);
+    // Joins a '>>' node to the design-wide net of its spelling (spec 10.3).
+    void bindGlobal(std::uint32_t node);
     std::uint32_t freshNode(Span at);
     void unite(std::uint32_t a, std::uint32_t b);
     void uniteBundles(const Bundle& a, const Bundle& b, Span at);
@@ -196,6 +198,10 @@ private:
     UnionFind uf_;
     std::vector<NodeInfo> nodeInfo_;
     FlatMap<NetKey, std::uint32_t> netNodes_;
+    // Spec 10.3: "a global export is visible design-wide". One representative
+    // node per '>>' spelling; every scope's '>>NAME' unites with it, which is
+    // what makes the import/export pairing order-independent.
+    FlatMap<SymbolId, std::uint32_t> globalNets_;
     // Union-find root -> Design::nets index, filled by buildNets so that data
     // recorded against node handles during elaboration can be resolved after
     // the merge is done.
