@@ -18,6 +18,20 @@ enum class NetMark : std::uint8_t { Label, Ground, Rail };
 struct RenderNet {
     std::string display;  // the name drawn at each stub
     NetMark mark = NetMark::Label;
+    // Pins in two or more rooms of its page: shown as a port flag, the same
+    // shape a block port (direction != None) gets. Ground and rail marks win
+    // over the flag -- a rail crossing rooms is still a rail.
+    bool crossing = false;
+    PortDir direction = PortDir::None;
+};
+
+// A titled rectangle on the sheet, grouping one section's components. The
+// untitled room (empty title) collects components placed before any marker;
+// `framed` is false only when the whole page has no sections at all.
+struct RenderRoom {
+    std::string title;
+    bool framed = true;
+    std::vector<std::uint32_t> components;  // indices into Design::components
 };
 
 // One printed sheet. The skeleton puts the whole design on one page; the
@@ -27,6 +41,7 @@ struct RenderPage {
     std::string id;     // "page-<name>": the <section> id and sidebar anchor
     std::string title;
     std::vector<std::uint32_t> components;  // indices into Design::components
+    std::vector<RenderRoom> rooms;          // partition of `components`
 };
 
 struct RenderModel {

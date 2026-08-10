@@ -31,6 +31,15 @@ if(Python3_FOUND)
     set_tests_properties(schema PROPERTIES DEPENDS pipeline)
 endif()
 
+# The schematic layout engine: rooms, idioms, port flags and render
+# determinism, through the real binary. The debug builds additionally prove,
+# via the renderer's internal assert, that no two placed symbols overlap.
+add_test(NAME render
+         COMMAND ${CMAKE_COMMAND}
+                 -DMANTA=$<TARGET_FILE:manta>
+                 -DWORK=${CMAKE_CURRENT_BINARY_DIR}/render-work
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/render.cmake)
+
 # A complete design that must pass every check with nothing to report -- the
 # other half of the conformance argument.
 add_test(NAME example

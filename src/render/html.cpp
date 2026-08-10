@@ -74,15 +74,25 @@ svg.sheet { display: block; width: 100%; height: auto; background: var(--sheet);
 .partname { font-size: 9px; fill: #1c1c1c; font-family: 'Courier New', monospace; }
 .pinname { font-size: 10px; fill: var(--pinname); font-family: 'Courier New', monospace; }
 .pinnum { font-size: 7px; fill: var(--pinnum); font-family: 'Courier New', monospace; }
-line.wire { stroke: var(--wire); stroke-width: 1; }
+line.wire, polyline.wire { stroke: var(--wire); stroke-width: 1; fill: none; }
+line.railbar { stroke: var(--wire); stroke-width: 3; }
+circle.dot { fill: var(--wire); stroke: none; }
 .netlabel { font-size: 9px; font-weight: bold; fill: var(--label);
             font-family: 'Courier New', monospace; }
+.portflag .flag { fill: var(--body-fill); stroke: var(--body-stroke); stroke-width: 1; }
+.portflag .flagtext { font-size: 9px; font-weight: bold; fill: var(--label);
+                      font-family: 'Courier New', monospace; }
+rect.room { fill: none; stroke: var(--wire); stroke-width: 1; }
+.roomtitle { font-size: 12px; fill: var(--wire); letter-spacing: 2px;
+             font-family: Georgia, serif; }
 text.nc { fill: var(--nc); }
 
 /* interactivity */
 [data-net], .sym { cursor: pointer; }
-line.hl, .hl line { stroke: var(--hl); stroke-width: 2; }
+line.hl, .hl line, polyline.hl, .hl polyline, circle.hl { stroke: var(--hl); stroke-width: 2; }
+circle.dot.hl { fill: var(--hl); }
 text.hl, .hl text { fill: var(--hl); }
+.portflag.hl .flag { stroke: var(--hl); stroke-width: 2; }
 .sym.sel .body, .sym.sel .glyph { stroke: var(--hl); stroke-width: 2; }
 .sym.sel .glyph.fill { fill: var(--hl); }
 
