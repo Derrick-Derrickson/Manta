@@ -40,7 +40,8 @@ block blinky {
     3V3 &CLASS=power;
     VBUS &CLASS=power;
 
-    // ---- power in ---------------------------------------------------------
+    --- USB-C POWER IN
+
     // The connector's VBUS pin is 'POWER>', so it is the source that satisfies
     // the supply check for the whole VBUS net.
     {J1~CONN-USB-C: VBUS = VBUS; CC1  = CC1; CC2  = CC2;};
@@ -50,14 +51,16 @@ block blinky {
     CC1 = .{R1~R-10kR-0603}. = GND;
     CC2 = .{R2~R-10kR-0603}. = GND;
 
-    // ---- regulation -------------------------------------------------------
+    --- 3V3 REGULATOR
+
     // The bulk cap sits on VBUS and the bypass on 3V3, which is what keeps
     // W-04 quiet on both supply pins.
     VBUS == .{C1~C-10uF-0805: . = GND;};
     VBUS = VIN{U1~LDO-3V3: EN = VBUS; NC = ?;}VOUT = 3V3 &CURRENT=600mA &!VOLTAGE=6V;
     3V3 == .{C2~C-10uF-0805: . = GND;};
 
-    // ---- microcontroller --------------------------------------------------
+    --- MCU
+
     // VCC and GND take their default nets from the part's '&~NET', so neither
     // needs binding here (spec 11.6).
     {U2~MCU-8PIN: nRESET  = nRESET; GPIO[0] = LED-DRIVE[0]; GPIO[1] = LED-DRIVE[1]; SDA     = i2c.SDA; SCL     = i2c.SCL; MISO    = TP-MISO;};
@@ -70,7 +73,8 @@ block blinky {
     3V3 = .{R3~R-10kR-0603}. == nRESET;
     nRESET == .{C4~C-100nF-0603: . = GND;};
 
-    // ---- i2c --------------------------------------------------------------
+    --- I2C
+
     // An open-drain bus is held high by its pull-ups rather than driven, so it
     // needs no source (spec 11.6).
     i2c &HARNESS=i2c-bus;
@@ -78,7 +82,8 @@ block blinky {
     3V3 = .{R4~R-10kR-0603}. == i2c.SDA;
     3V3 = .{R5~R-10kR-0603}. == i2c.SCL;
 
-    // ---- indicators -------------------------------------------------------
+    --- INDICATORS
+
     // One copy of the block per element of the bus flowing through it. The
     // block's arity is its declared port count, so two wires give two copies
     // (spec 8.3).
