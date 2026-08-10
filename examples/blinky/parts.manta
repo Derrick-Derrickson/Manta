@@ -149,6 +149,6 @@ part WIRE-24AWG-RED {
 cable usb-c-1m {
     #length = 1m;
     {P1~USB-C-PLUG}P[1:4]
-         = [[.{X%[1:4]~CRIMP-USB-C}. = .{W%[1:4]~WIRE-24AWG-RED}. = .{X%[5:8]~CRIMP-USB-C}.]]
-         = P[1:4]{P2~USB-C-PLUG};
+        = [[.{X%[1:4]~CRIMP-USB-C}. = .{W%[1:4]~WIRE-24AWG-RED}. = .{X%[5:8]~CRIMP-USB-C}.]]
+        = P[1:4]{P2~USB-C-PLUG};
 };
