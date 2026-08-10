@@ -4,12 +4,13 @@
 ctest --preset linux-release      # or linux-debug, linux-asan
 ```
 
-Seven targets, each proving something different.
+One target per row, each proving something different.
 
 | Target | What it establishes |
 |---|---|
 | `unit.test_dimensioned` | Every SI form in the specification's table parses, both spellings of a fractional value agree, and canonical rendering is idempotent. |
 | `unit.test_parse` | Every worked example parses, plus targeted checks on each grammar construct. |
+| `unit.test_format` | `manta fmt` corrects indentation and touches nothing else: line structure, blank lines, comment interiors and post-marker text survive byte for byte, and formatting is idempotent. |
 | `unit.test_object` | `.mantaO` round-trips byte-exactly, and compiling twice gives identical bytes. |
 | `unit.test_diagnostics` | **The conformance suite.** Each of the 39 errors and 8 warnings fires on its own fixture. |
 | `pipeline` | The specification's own build sequence end to end through the real binary, plus determinism and the guarantee that formatting does not change a netlist. |
@@ -36,7 +37,8 @@ fix a false negative by strengthening one until `blinky` starts complaining.
   time and cross-compiles wherever the compiler does.
 - `diag/` — one fixture per diagnostic code, named for it.
 - `spec/` — the specification's worked examples, with the four corrections
-  listed in `docs/assumptions.md` §B and nothing else changed.
+  listed in `docs/assumptions.md` §B, re-indented to §17's canon, and nothing
+  else changed. `pipeline` holds them to `fmt --check`.
 - `rules/` — one rules file, plus a design that violates it and one that does
   not. Both are needed: a rule that never fires is useless and one that always
   fires is worse.
