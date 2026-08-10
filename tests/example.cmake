@@ -143,6 +143,89 @@ if(NOT blinky_nets MATCHES "\"pin\": \"4\",[\r\n ]+\"name\": \"NC\",[\r\n ]+\"ty
     message(FATAL_ERROR "U1's NC pin is missing from its declared pin list")
 endif()
 
+# Two pins share one net in a .mantaNets held in the named variable. Walked
+# with string(JSON) rather than a regex: a pin's logical name may contain the
+# ']' or '}' any textual bound would lean on.
+function(assert_same_net netsvar ref_a pin_a ref_b pin_b)
+    string(JSON net_count LENGTH "${${netsvar}}" nets)
+    math(EXPR net_last "${net_count} - 1")
+    foreach(i RANGE ${net_last})
+        string(JSON pins GET "${${netsvar}}" nets ${i} pins)
+        string(JSON pin_count LENGTH "${pins}")
+        if(pin_count EQUAL 0)
+            continue()
+        endif()
+        set(has_a FALSE)
+        set(has_b FALSE)
+        math(EXPR pin_last "${pin_count} - 1")
+        foreach(p RANGE ${pin_last})
+            string(JSON d GET "${pins}" ${p} designator)
+            string(JSON n GET "${pins}" ${p} pin)
+            if(d STREQUAL ref_a AND n STREQUAL pin_a)
+                set(has_a TRUE)
+            endif()
+            if(d STREQUAL ref_b AND n STREQUAL pin_b)
+                set(has_b TRUE)
+            endif()
+        endforeach()
+        if(has_a AND has_b)
+            return()
+        endif()
+    endforeach()
+    message(FATAL_ERROR "${ref_a}.${pin_a} and ${ref_b}.${pin_b} do not share a net")
+endfunction()
+
+# The LEDs are actually driven: "LED-DRIVE[0:1] = [[{BLK%[1:2]~indicator}DRIVE]]"
+# must put U2's GPIO pin and the indicator's series resistor on ONE net, per
+# channel. This is the cross-boundary membership no netlist ever had while the
+# terminal-style port binding united nothing.
+assert_same_net(blinky_nets U2 2 BLK1_R1 1)
+assert_same_net(blinky_nets U2 3 BLK2_R1 1)
+
+# No two nets may share a name: KiCad and friends merge nets BY NAME on import,
+# so a duplicate would short the two LED channels on the real board.
+function(assert_unique_net_names netsvar)
+    string(JSON net_count LENGTH "${${netsvar}}" nets)
+    math(EXPR net_last "${net_count} - 1")
+    set(names "")
+    foreach(i RANGE ${net_last})
+        string(JSON name GET "${${netsvar}}" nets ${i} name)
+        list(FIND names "${name}" at)
+        if(NOT at EQUAL -1)
+            message(FATAL_ERROR "two nets are both named '${name}'")
+        endif()
+        list(APPEND names "${name}")
+    endforeach()
+endfunction()
+assert_unique_net_names(blinky_nets)
+
+# Each indicator's anode net is block-local, so it flattens under its instance
+# path -- while the block record still carries the local spelling 'LED-ANODE'.
+foreach(want "\"name\": \"BLK1.LED-ANODE\"" "\"name\": \"BLK2.LED-ANODE\"")
+    string(FIND "${blinky_nets}" "${want}" at)
+    if(at EQUAL -1)
+        message(FATAL_ERROR "expected a net named ${want}")
+    endif()
+endforeach()
+
+# The indicator imports the board's ground with '>>GND' (spec 10.3), so the
+# design has exactly ONE net named GND and the LED cathodes sit on it with the
+# rest of the board -- not on a private one-pin ground per instance.
+string(JSON blinky_net_count LENGTH "${blinky_nets}" nets)
+math(EXPR blinky_net_last "${blinky_net_count} - 1")
+set(gnd_count 0)
+foreach(i RANGE ${blinky_net_last})
+    string(JSON gnd_name GET "${blinky_nets}" nets ${i} name)
+    if(gnd_name STREQUAL "GND")
+        math(EXPR gnd_count "${gnd_count} + 1")
+    endif()
+endforeach()
+if(NOT gnd_count EQUAL 1)
+    message(FATAL_ERROR "expected exactly one net named GND, got ${gnd_count}")
+endif()
+assert_same_net(blinky_nets J1 2 BLK1_D1 2)
+assert_same_net(blinky_nets J1 2 BLK2_D1 2)
+
 # Rules must not perturb the netlist, and must be deterministic.
 run_manta(link --top blinky -L "${WORK}/build" --rules "${RULES}" -Werror
           -o "${WORK}/blinky2.mantaNets")

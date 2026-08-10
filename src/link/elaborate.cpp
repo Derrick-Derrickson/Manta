@@ -98,6 +98,15 @@ std::uint32_t Elaborator::netNode(Scope& scope, SymbolId name, std::int64_t inde
     return id;
 }
 
+void Elaborator::bindGlobal(std::uint32_t node) {
+    // Keyed by the node's own spelling -- "GND", "BUS[3]" -- so a block's
+    // ">>GND" and the board's "GND>>" meet on one design-wide net whichever
+    // is elaborated first.
+    SymbolId spelling = interner_.intern(nodeInfo_[node].name);
+    auto [slot, inserted] = globalNets_.insert(spelling, node);
+    if (!inserted) unite(node, *slot);
+}
+
 void Elaborator::unite(std::uint32_t a, std::uint32_t b) {
     std::uint32_t ra = uf_.find(a);
     std::uint32_t rb = uf_.find(b);
@@ -480,6 +489,7 @@ Elaborator::ElemValue Elaborator::evalNet(const NetExpr* net, Scope& scope,
             // Spec 4.4: the arrow is what makes a net a port of its block, so
             // this is where the block's declared interface is recorded.
             pendingPorts_.push_back(PendingPort{scope.id, nd, port.dir});
+            if (port.global) bindGlobal(nd);
         }
     }
 
@@ -500,6 +510,7 @@ std::uint32_t Elaborator::instantiatePart(const Instance* inst, const PartInfo& 
     c.path = scope.path;
     c.span = inst->span;
     c.pins = part.pins;
+    c.section = scope.activeSection;
 
     SymbolId partName = resolve(inst->partOrBlock, scope);
     c.part = partName;
@@ -633,15 +644,21 @@ std::uint32_t Elaborator::instantiatePart(const Instance* inst, const PartInfo& 
     }
 
     // Give every pin its own node up front; connections merge them afterwards.
+    //
+    // Spec 5.2: an unnamed node "takes the name of the first pin connected to
+    // it, written DESIGNATOR.PIN". The designator here is the *flat* one of
+    // spec 13.4 -- a local designator is unique only within its block, so two
+    // instances of one block would otherwise emit two nets both named "R1.2",
+    // and an importer that merges nets by name would short them.
+    std::string flatName = c.path.size() > 1
+                               ? flattenPath(c.path)
+                               : (c.designator.empty() ? c.identity : c.designator);
     for (std::uint32_t p = 0; p < c.pins.size(); ++p) {
         std::uint32_t node = freshNode(c.pins[p].span);
         c.pins[p].node = node;
         nodeInfo_[node].component = static_cast<std::int32_t>(index);
         nodeInfo_[node].pin = static_cast<std::int32_t>(p);
-        // Spec 5.2: an unnamed node "takes the name of the first pin connected
-        // to it, written DESIGNATOR.PIN".
-        nodeInfo_[node].name =
-            (c.designator.empty() ? c.identity : c.designator) + "." + c.pins[p].logical;
+        nodeInfo_[node].name = flatName + "." + c.pins[p].logical;
     }
 
     if (valid(inst->designator.prefix.symbol) &&
@@ -919,18 +936,41 @@ Elaborator::ElemValue Elaborator::evalDevice(const Device* dev, Scope& scope,
                 return;
             }
             SymbolId portName = resolve(t.name, scope);
+
+            // An explicit range selects elements of a port array, in the order
+            // written (spec 8.1: range order defines wire order).
+            if (t.range.present) {
+                bool ok = true;
+                std::int64_t lo = subst_.resolveIndex(t.range.lo, *scope.fields, ok);
+                std::int64_t hi = subst_.resolveIndex(t.range.hi, *scope.fields, ok);
+                if (!ok) return;
+                std::int64_t step = lo <= hi ? 1 : -1;
+                for (std::int64_t k = lo;; k += step) {
+                    NetKey ik{child->id, portName, k, true};
+                    if (std::uint32_t* n = netNodes_.find(ik)) {
+                        out.push_back(*n);
+                    } else {
+                        diags_.report(DiagId::E31, t.span,
+                                      std::format("{}.{}[{}]", interner_.text(targetName),
+                                                  interner_.text(portName), k));
+                    }
+                    if (k == hi) break;
+                }
+                return;
+            }
+
             NetKey key{child->id, portName, 0, false};
             if (std::uint32_t* node = netNodes_.find(key)) {
                 out.push_back(*node);
                 return;
             }
-            // Try an indexed port array.
+            // A bare array name is the whole array, in declaration order --
+            // which is insertion order in netNodes_, so a descending or
+            // non-zero-based declaration keeps its wire order.
             bool any = false;
-            for (std::int64_t k = 0;; ++k) {
-                NetKey ik{child->id, portName, k, true};
-                std::uint32_t* n = netNodes_.find(ik);
-                if (!n) break;
-                out.push_back(*n);
+            for (const auto& [k, n] : netNodes_) {
+                if (k.scope != child->id || k.name != portName || !k.indexed) continue;
+                out.push_back(n);
                 any = true;
             }
             if (!any) {
@@ -1247,8 +1287,13 @@ Elaborator::ElemValue Elaborator::elaborateSegment(const Segment* seg, Scope& sc
     // Apply the connectors of spec 6.
     for (std::size_t i = 0; i + 1 < seg->elements.size(); ++i) {
         Connector c = seg->connectors[i];
-        const Bundle& lhs = values[i].exit;
-        const Bundle& rhs = values[i + 1].entry;
+        // An element with a single terminal passes the chain through it: a pin
+        // and its net are one (spec 5.2), so the node is the same on either
+        // side. This is what binds "FEED = {B1~inner}IN", where the block's one
+        // written port faces away from the connector.
+        const Bundle& lhs = values[i].exit.empty() ? values[i].entry : values[i].exit;
+        const Bundle& rhs = values[i + 1].entry.empty() ? values[i + 1].exit
+                                                        : values[i + 1].entry;
         Span at = values[i].span.merge(values[i + 1].span);
 
         switch (c) {
@@ -1313,8 +1358,12 @@ Elaborator::ElemValue Elaborator::elaborateSegment(const Segment* seg, Scope& sc
     result.entry = values.front().entry;
     result.exit = values.back().exit;
     // A shunt has no exit terminal, so the node is the same either side of it
-    // (spec 6.3), which is what lets a chain continue past one.
+    // (spec 6.3), which is what lets a chain continue past one. The entry side
+    // mirrors it: a segment beginning with an exit-only device -- the
+    // replication body "[[{BLK%[1:2]~indicator}DRIVE]]" -- presents that
+    // terminal to whatever connects from the left.
     if (result.exit.empty()) result.exit = values.back().entry;
+    if (result.entry.empty()) result.entry = values.front().exit;
     result.hasEntry = !result.entry.empty();
     result.hasExit = !result.exit.empty();
     return result;
@@ -1343,6 +1392,7 @@ void Elaborator::elaborateStatement(const Stmt* stmt, Scope& scope) {
                     info.global = info.global || stmt->listArrow.global;
                     if (info.direction == PortDir::None) info.direction = stmt->listArrow.dir;
                     pendingPorts_.push_back(PendingPort{scope.id, nd, stmt->listArrow.dir});
+                    if (stmt->listArrow.global) bindGlobal(nd);
                 }
             }
             applyStatementDirectives(stmt, touched, scope);
@@ -1528,7 +1578,10 @@ std::unique_ptr<Elaborator::Scope> Elaborator::instantiateBlock(const Instance* 
     pendingBlocks_.push_back(PendingBlock{
         child->id, child->path,
         valid(block->name.symbol) ? std::string(interner_.text(block->name.symbol))
-                                  : std::string{}});
+                                  : std::string{},
+        // The instantiation site's section, not anything of the child's own:
+        // the child body starts sectionless and keeps its markers to itself.
+        parent.activeSection});
 
     ++depth_;
     elaborateBlock(block, *child);
@@ -1567,6 +1620,13 @@ void Elaborator::elaborateBlock(const Item* block, Scope& scope) {
 
     for (const BodyEntry& e : block->body) {
         switch (e.kind) {
+            case BodyKind::Section:
+                // '--- TITLE' (revision 1.3): everything instantiated from
+                // here to the next marker belongs to this render section.
+                scope.activeSection = valid(e.section->name)
+                                          ? std::string(interner_.text(e.section->name))
+                                          : std::string{};
+                break;
             case BodyKind::Stmt:
                 if (e.stmt->kind != StmtKind::Field) elaborateStatement(e.stmt, scope);
                 break;
@@ -1687,7 +1747,8 @@ void Elaborator::buildNets(Design& design) {
 
     // Name each net. Spec 5.2: "Where a net is also named explicitly the two
     // are aliases, and the explicit name is used for display, netlist output
-    // and BOM."
+    // and BOM." This pass provides the pin-derived fallback and accumulates
+    // the per-node bookkeeping; explicit spellings are settled below.
     for (std::uint32_t node = 0; node < nodeInfo_.size(); ++node) {
         std::uint32_t root = uf_.find(node);
         std::uint32_t* slot = rootToNet.find(root);
@@ -1695,20 +1756,47 @@ void Elaborator::buildNets(Design& design) {
         Net& net = design.nets[*slot];
         const NodeInfo& info = nodeInfo_[node];
 
-        if (info.explicitName && net.name.empty()) net.name = info.name;
-        if (!info.explicitName && net.name.empty()) net.name = info.name;
+        if (net.name.empty()) net.name = info.name;
         net.references += info.references;
         net.global = net.global || info.global;
         if (net.direction == PortDir::None) net.direction = info.direction;
         if (!net.firstSeen.valid()) net.firstSeen = info.firstSeen;
     }
-    // A second pass so an explicit name always beats a pin-derived one.
-    for (std::uint32_t node = 0; node < nodeInfo_.size(); ++node) {
-        const NodeInfo& info = nodeInfo_[node];
-        if (!info.explicitName) continue;
+
+    // An explicit name beats a pin-derived one, and among a net's explicit
+    // spellings the outermost scope's wins: a port binding surfaces under the
+    // name the instantiating block gave it. A net spelled only inside child
+    // instances is block-local, and its flat name is the instance path plus
+    // the local spelling -- the same flattening components get (spec 13.4) --
+    // so two instances of one block cannot emit two nets under one name, which
+    // an importer merging nets by name would short together.
+    FlatMap<std::uint32_t, const std::vector<std::string>*> scopePath;
+    for (const PendingBlock& pb : pendingBlocks_) scopePath.insert(pb.scope, &pb.path);
+
+    std::vector<std::size_t> namedDepth(design.nets.size(), SIZE_MAX);
+    for (const auto& [key, node] : netNodes_) {
         std::uint32_t* slot = rootToNet.find(uf_.find(node));
         if (!slot) continue;
-        design.nets[*slot].name = info.name;
+        const std::vector<std::string>* const* path = scopePath.find(key.scope);
+        std::size_t depth = path ? (*path)->size() : 0;
+        // The first spelling seen at the outermost depth wins, and netNodes_
+        // iterates in insertion order, which is source order.
+        if (depth >= namedDepth[*slot]) continue;
+        namedDepth[*slot] = depth;
+        std::string spelling =
+            key.indexed ? std::format("{}[{}]", interner_.text(key.name), key.index)
+                        : std::string(interner_.text(key.name));
+        design.nets[*slot].name =
+            depth == 0 ? std::move(spelling) : flattenPath(**path) + "." + spelling;
+    }
+
+    // A '>>' name is design-wide (spec 10.3), so it keeps its bare spelling
+    // even when every block that mentions it is a child instance.
+    for (const auto& [spelling, node] : globalNets_) {
+        std::uint32_t* slot = rootToNet.find(uf_.find(node));
+        if (!slot || namedDepth[*slot] == 0) continue;
+        namedDepth[*slot] = 0;
+        design.nets[*slot].name = std::string(interner_.text(spelling));
     }
 
     // Attach pins.
@@ -1806,6 +1894,7 @@ void Elaborator::collectBlockInstances(Design& design) {
         BlockInstance instance;
         instance.path = pb.path;
         instance.block = pb.block;
+        instance.section = pb.section;
 
         // Declared ports, in declaration order. A port written with its arrow
         // more than once is still one port, so only the first record counts.
