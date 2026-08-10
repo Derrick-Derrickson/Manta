@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Tom
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Dimensioned values (spec 3.2) and their canonical rendering (spec 17).
+// Dimensioned values and their canonical rendering (spec 3.2).
 //
 // A value is stored as an exact scaled integer -- mantissa x 10^exp10 -- and
 // never as a double. Spec 15.8 requires byte-identical output, and binary

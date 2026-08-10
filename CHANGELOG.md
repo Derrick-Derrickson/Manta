@@ -10,8 +10,20 @@
   special in it — and a section is purely presentational: connectivity, ERC and
   the netlist's electrical content are untouched. At the top level a bare `---`
   is still the §2.8 end-of-content marker; inside a block it is an error, since
-  a section needs a title. `manta fmt` writes a marker at body indentation with
-  a blank line above.
+  a section needs a title. `manta fmt` indents a marker to body depth like any
+  statement.
+
+### Changed: `manta fmt` keeps the author's lines
+
+The formatter used to re-emit the file from the syntax tree, which forced every
+statement onto one line and imposed its own blank-line rules. It now preserves
+the author's line structure and manages only indentation: the sole bytes it
+rewrites are each line's leading whitespace, under the depth and continuation
+rules of §17, plus the LF and final-newline normalisation of §1.4. It never
+joins or splits lines, never adds or removes blank lines or `;`, never realigns
+anything within a line, and leaves comment interiors and everything after the
+end-of-content marker byte for byte. `--check`, `--stdout` and `--diff` are
+unchanged, and a file that does not parse is still refused.
 
 ### `manta render`: the netlist on a page
 
