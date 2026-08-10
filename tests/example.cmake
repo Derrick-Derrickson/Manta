@@ -143,6 +143,45 @@ if(NOT blinky_nets MATCHES "\"pin\": \"4\",[\r\n ]+\"name\": \"NC\",[\r\n ]+\"ty
     message(FATAL_ERROR "U1's NC pin is missing from its declared pin list")
 endif()
 
+# Two pins share one net in a .mantaNets held in the named variable. Walked
+# with string(JSON) rather than a regex: a pin's logical name may contain the
+# ']' or '}' any textual bound would lean on.
+function(assert_same_net netsvar ref_a pin_a ref_b pin_b)
+    string(JSON net_count LENGTH "${${netsvar}}" nets)
+    math(EXPR net_last "${net_count} - 1")
+    foreach(i RANGE ${net_last})
+        string(JSON pins GET "${${netsvar}}" nets ${i} pins)
+        string(JSON pin_count LENGTH "${pins}")
+        if(pin_count EQUAL 0)
+            continue()
+        endif()
+        set(has_a FALSE)
+        set(has_b FALSE)
+        math(EXPR pin_last "${pin_count} - 1")
+        foreach(p RANGE ${pin_last})
+            string(JSON d GET "${pins}" ${p} designator)
+            string(JSON n GET "${pins}" ${p} pin)
+            if(d STREQUAL ref_a AND n STREQUAL pin_a)
+                set(has_a TRUE)
+            endif()
+            if(d STREQUAL ref_b AND n STREQUAL pin_b)
+                set(has_b TRUE)
+            endif()
+        endforeach()
+        if(has_a AND has_b)
+            return()
+        endif()
+    endforeach()
+    message(FATAL_ERROR "${ref_a}.${pin_a} and ${ref_b}.${pin_b} do not share a net")
+endfunction()
+
+# The LEDs are actually driven: "LED-DRIVE[0:1] = [[{BLK%[1:2]~indicator}DRIVE]]"
+# must put U2's GPIO pin and the indicator's series resistor on ONE net, per
+# channel. This is the cross-boundary membership no netlist ever had while the
+# terminal-style port binding united nothing.
+assert_same_net(blinky_nets U2 2 BLK1_R1 1)
+assert_same_net(blinky_nets U2 3 BLK2_R1 1)
+
 # Rules must not perturb the netlist, and must be deterministic.
 run_manta(link --top blinky -L "${WORK}/build" --rules "${RULES}" -Werror
           -o "${WORK}/blinky2.mantaNets")

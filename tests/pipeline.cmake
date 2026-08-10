@@ -122,9 +122,13 @@ block leg {
 block blocktop {
     BGND &TYPE=GROUND &STUB;
     BPWR>>;
+    {U9~BR-1k: A = BDRIVE[0]; B = BDRIVE[1]; SHIELD = ?;};
     BDRIVE[0:1] = [[{BLK%[1:2]~leg}IN]];
     BDRIVE[0] == BPWR;
     BDRIVE[1] == BPWR;
+    {U8~BR-1k: A = BSENSE; B = BFEED; SHIELD = ?;};
+    BSENSE = {BLK3~clamp}TAP;
+    TAP{BLK4~clamp} = BFEED;
 };
 ")
 run_manta(compile -o "${WORK}/blockbuild/" "${BLOCKSRC}")
@@ -156,8 +160,9 @@ string(REGEX MATCHALL "\"block\": \"leg\"" legs "${blocks_net}")
 list(LENGTH legs leg_count)
 string(REGEX MATCHALL "\"block\": \"clamp\"" clamps "${blocks_net}")
 list(LENGTH clamps clamp_count)
-if(NOT leg_count EQUAL 2 OR NOT clamp_count EQUAL 2)
-    message(FATAL_ERROR "expected 2 'leg' and 2 'clamp' block records, "
+# Four clamps: one nested in each 'leg' copy, plus BLK3 and BLK4 at the top.
+if(NOT leg_count EQUAL 2 OR NOT clamp_count EQUAL 4)
+    message(FATAL_ERROR "expected 2 'leg' and 4 'clamp' block records, "
                         "got ${leg_count} and ${clamp_count}")
 endif()
 
@@ -165,6 +170,50 @@ endif()
 if(NOT blocks_net MATCHES "\"BLK1\",[\r\n ]+\"CL1\"")
     message(FATAL_ERROR "the nested clamp does not carry its full instance path")
 endif()
+
+# --- a chain terminal on a block instance binds its port ---------------------
+# Two pins share one net in a .mantaNets held in the named variable. Walked
+# with string(JSON) rather than a regex: a pin's logical name may contain the
+# ']' or '}' any textual bound would lean on.
+function(assert_same_net netsvar ref_a pin_a ref_b pin_b)
+    string(JSON net_count LENGTH "${${netsvar}}" nets)
+    math(EXPR net_last "${net_count} - 1")
+    foreach(i RANGE ${net_last})
+        string(JSON pins GET "${${netsvar}}" nets ${i} pins)
+        string(JSON pin_count LENGTH "${pins}")
+        if(pin_count EQUAL 0)
+            continue()
+        endif()
+        set(has_a FALSE)
+        set(has_b FALSE)
+        math(EXPR pin_last "${pin_count} - 1")
+        foreach(p RANGE ${pin_last})
+            string(JSON d GET "${pins}" ${p} designator)
+            string(JSON n GET "${pins}" ${p} pin)
+            if(d STREQUAL ref_a AND n STREQUAL pin_a)
+                set(has_a TRUE)
+            endif()
+            if(d STREQUAL ref_b AND n STREQUAL pin_b)
+                set(has_b TRUE)
+            endif()
+        endforeach()
+        if(has_a AND has_b)
+            return()
+        endif()
+    endforeach()
+    message(FATAL_ERROR "${ref_a}.${pin_a} and ${ref_b}.${pin_b} do not share a net")
+endfunction()
+
+# "BDRIVE[0:1] = [[{BLK%[1:2]~leg}IN]]" must put the parent-side pin and the
+# child-side pin on ONE net: U9.1 with BLK1's R1.1, U9.2 with BLK2's R1.1. The
+# terminal faces away from the connector, which is exactly the spelling that
+# once united nothing and left every child port floating.
+assert_same_net(blocks_net U9 1 BLK1_R1 1)
+assert_same_net(blocks_net U9 2 BLK2_R1 1)
+# ...and the scalar spellings, exit-terminal and entry-terminal:
+# "BSENSE = {BLK3~clamp}TAP" and "TAP{BLK4~clamp} = BFEED".
+assert_same_net(blocks_net U8 1 BLK3_R9 1)
+assert_same_net(blocks_net U8 2 BLK4_R9 1)
 
 # Every declared port resolved to a real net: nothing in this design leaves a
 # port dangling, so a '-1' means the resolution went wrong.
@@ -379,8 +428,11 @@ if(NOT wires OR NOT crimps)
     message(FATAL_ERROR "a cable BOM lists no wires or no crimps")
 endif()
 
-# The board alone: the mating is checked, the cable is not emitted.
-set(QUIET -Wno-W-04 -Wno-W-09 -Wno-E-02)
+# The board alone: the mating is checked, the cable is not emitted. E-01 is
+# quieted as the bad-* fixtures already do: U2's TX and J1's outbound TXD pin
+# are one net -- the card re-declares the signal's direction at its boundary,
+# which the on-board driver count reads as a second driver.
+set(QUIET -Wno-W-04 -Wno-W-09 -Wno-E-01 -Wno-E-02)
 run_manta(link --top sensor-card -L "${WORK}/cable" ${QUIET} -o "${WORK}/card.mantaNets")
 
 # '--assembly' writes the loom beside the board and never merges the two.

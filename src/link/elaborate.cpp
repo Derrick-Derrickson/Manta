@@ -919,18 +919,41 @@ Elaborator::ElemValue Elaborator::evalDevice(const Device* dev, Scope& scope,
                 return;
             }
             SymbolId portName = resolve(t.name, scope);
+
+            // An explicit range selects elements of a port array, in the order
+            // written (spec 8.1: range order defines wire order).
+            if (t.range.present) {
+                bool ok = true;
+                std::int64_t lo = subst_.resolveIndex(t.range.lo, *scope.fields, ok);
+                std::int64_t hi = subst_.resolveIndex(t.range.hi, *scope.fields, ok);
+                if (!ok) return;
+                std::int64_t step = lo <= hi ? 1 : -1;
+                for (std::int64_t k = lo;; k += step) {
+                    NetKey ik{child->id, portName, k, true};
+                    if (std::uint32_t* n = netNodes_.find(ik)) {
+                        out.push_back(*n);
+                    } else {
+                        diags_.report(DiagId::E31, t.span,
+                                      std::format("{}.{}[{}]", interner_.text(targetName),
+                                                  interner_.text(portName), k));
+                    }
+                    if (k == hi) break;
+                }
+                return;
+            }
+
             NetKey key{child->id, portName, 0, false};
             if (std::uint32_t* node = netNodes_.find(key)) {
                 out.push_back(*node);
                 return;
             }
-            // Try an indexed port array.
+            // A bare array name is the whole array, in declaration order --
+            // which is insertion order in netNodes_, so a descending or
+            // non-zero-based declaration keeps its wire order.
             bool any = false;
-            for (std::int64_t k = 0;; ++k) {
-                NetKey ik{child->id, portName, k, true};
-                std::uint32_t* n = netNodes_.find(ik);
-                if (!n) break;
-                out.push_back(*n);
+            for (const auto& [k, n] : netNodes_) {
+                if (k.scope != child->id || k.name != portName || !k.indexed) continue;
+                out.push_back(n);
                 any = true;
             }
             if (!any) {
@@ -1247,8 +1270,13 @@ Elaborator::ElemValue Elaborator::elaborateSegment(const Segment* seg, Scope& sc
     // Apply the connectors of spec 6.
     for (std::size_t i = 0; i + 1 < seg->elements.size(); ++i) {
         Connector c = seg->connectors[i];
-        const Bundle& lhs = values[i].exit;
-        const Bundle& rhs = values[i + 1].entry;
+        // An element with a single terminal passes the chain through it: a pin
+        // and its net are one (spec 5.2), so the node is the same on either
+        // side. This is what binds "FEED = {B1~inner}IN", where the block's one
+        // written port faces away from the connector.
+        const Bundle& lhs = values[i].exit.empty() ? values[i].entry : values[i].exit;
+        const Bundle& rhs = values[i + 1].entry.empty() ? values[i + 1].exit
+                                                        : values[i + 1].entry;
         Span at = values[i].span.merge(values[i + 1].span);
 
         switch (c) {
@@ -1313,8 +1341,12 @@ Elaborator::ElemValue Elaborator::elaborateSegment(const Segment* seg, Scope& sc
     result.entry = values.front().entry;
     result.exit = values.back().exit;
     // A shunt has no exit terminal, so the node is the same either side of it
-    // (spec 6.3), which is what lets a chain continue past one.
+    // (spec 6.3), which is what lets a chain continue past one. The entry side
+    // mirrors it: a segment beginning with an exit-only device -- the
+    // replication body "[[{BLK%[1:2]~indicator}DRIVE]]" -- presents that
+    // terminal to whatever connects from the left.
     if (result.exit.empty()) result.exit = values.back().entry;
+    if (result.entry.empty()) result.entry = values.front().exit;
     result.hasEntry = !result.entry.empty();
     result.hasExit = !result.exit.empty();
     return result;
