@@ -123,9 +123,13 @@ block blocktop {
     BGND &TYPE=GROUND &STUB;
     BPWR>>;
     {U9~BR-1k: A = BDRIVE[0]; B = BDRIVE[1]; SHIELD = ?;};
+
+    --- LEGS
     BDRIVE[0:1] = [[{BLK%[1:2]~leg}IN]];
     BDRIVE[0] == BPWR;
     BDRIVE[1] == BPWR;
+
+    --- SENSE
     {U8~BR-1k: A = BSENSE; B = BFEED; SHIELD = ?;};
     BSENSE = {BLK3~clamp}TAP;
     TAP{BLK4~clamp} = BFEED;
@@ -230,6 +234,39 @@ assert_same_net(blocks_net U9 2 BLK2_R1 1)
 # "BSENSE = {BLK3~clamp}TAP" and "TAP{BLK4~clamp} = BFEED".
 assert_same_net(blocks_net U8 1 BLK3_R9 1)
 assert_same_net(blocks_net U8 2 BLK4_R9 1)
+
+# --- '--- TITLE' section markers (revision 1.3) ------------------------------
+# The section in force at an instantiation site travels onto what it makes: a
+# part before any marker carries none, a part under a marker carries it, and a
+# child block's *record* takes the site's section while the child's own body
+# starts sectionless -- so the parts inside 'leg' carry nothing.
+if(blocks_net MATCHES "\"designator\": \"U9\",[^{]*\"section\"")
+    message(FATAL_ERROR "U9 precedes every marker and must carry no section")
+endif()
+if(NOT blocks_net MATCHES "\"designator\": \"U8\",[^{]*\"section\": \"SENSE\"")
+    message(FATAL_ERROR "U8 is under '--- SENSE' and must carry that section")
+endif()
+if(blocks_net MATCHES "\"designator\": \"BLK1_R1\",[^{]*\"section\"")
+    message(FATAL_ERROR "a nested block's body starts sectionless, but BLK1's R1 "
+                        "inherited the enclosing '--- LEGS'")
+endif()
+string(REGEX MATCHALL "\"block\": \"leg\",[\r\n ]+\"section\": \"LEGS\"" leg_sections
+       "${blocks_net}")
+list(LENGTH leg_sections leg_section_count)
+if(NOT leg_section_count EQUAL 2)
+    message(FATAL_ERROR "expected both 'leg' records to carry section LEGS, "
+                        "got ${leg_section_count}")
+endif()
+string(REGEX MATCHALL "\"block\": \"clamp\",[\r\n ]+\"section\": \"SENSE\"" clamp_sections
+       "${blocks_net}")
+list(LENGTH clamp_sections clamp_section_count)
+string(REGEX MATCHALL "\"block\": \"clamp\",[\r\n ]+\"ports\"" bare_clamps "${blocks_net}")
+list(LENGTH bare_clamps bare_clamp_count)
+if(NOT clamp_section_count EQUAL 2 OR NOT bare_clamp_count EQUAL 2)
+    message(FATAL_ERROR "expected BLK3/BLK4 to carry section SENSE and the two clamps "
+                        "nested in 'leg' to carry none, got ${clamp_section_count} "
+                        "and ${bare_clamp_count}")
+endif()
 
 # Block-local nets flatten as components do: 'leg' spells a BGND of its own, so
 # each instance's copy is emitted under its instance path while the top-level

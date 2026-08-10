@@ -510,6 +510,7 @@ std::uint32_t Elaborator::instantiatePart(const Instance* inst, const PartInfo& 
     c.path = scope.path;
     c.span = inst->span;
     c.pins = part.pins;
+    c.section = scope.activeSection;
 
     SymbolId partName = resolve(inst->partOrBlock, scope);
     c.part = partName;
@@ -1577,7 +1578,10 @@ std::unique_ptr<Elaborator::Scope> Elaborator::instantiateBlock(const Instance* 
     pendingBlocks_.push_back(PendingBlock{
         child->id, child->path,
         valid(block->name.symbol) ? std::string(interner_.text(block->name.symbol))
-                                  : std::string{}});
+                                  : std::string{},
+        // The instantiation site's section, not anything of the child's own:
+        // the child body starts sectionless and keeps its markers to itself.
+        parent.activeSection});
 
     ++depth_;
     elaborateBlock(block, *child);
@@ -1616,6 +1620,13 @@ void Elaborator::elaborateBlock(const Item* block, Scope& scope) {
 
     for (const BodyEntry& e : block->body) {
         switch (e.kind) {
+            case BodyKind::Section:
+                // '--- TITLE' (revision 1.3): everything instantiated from
+                // here to the next marker belongs to this render section.
+                scope.activeSection = valid(e.section->name)
+                                          ? std::string(interner_.text(e.section->name))
+                                          : std::string{};
+                break;
             case BodyKind::Stmt:
                 if (e.stmt->kind != StmtKind::Field) elaborateStatement(e.stmt, scope);
                 break;
@@ -1883,6 +1894,7 @@ void Elaborator::collectBlockInstances(Design& design) {
         BlockInstance instance;
         instance.path = pb.path;
         instance.block = pb.block;
+        instance.section = pb.section;
 
         // Declared ports, in declaration order. A port written with its arrow
         // more than once is still one port, so only the first record counts.

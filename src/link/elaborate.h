@@ -102,6 +102,10 @@ private:
         // Harness identifier -> the type assigned to it (spec 12.1).
         FlatMap<SymbolId, SymbolId> harnessTypes;
         std::string flatFormat;
+        // The '--- TITLE' render section in force (revision 1.3): empty at
+        // body start, set by each marker, copied onto whatever the statements
+        // beneath it instantiate. A nested block's own body starts afresh.
+        std::string activeSection;
     };
 
     // ---- element evaluation ----------------------------------------------
@@ -263,6 +267,8 @@ private:
         std::uint32_t scope;
         std::vector<std::string> path;
         std::string block;
+        // The section active at the instantiation site, in the parent.
+        std::string section;
     };
     std::vector<PendingBlock> pendingBlocks_;
 
