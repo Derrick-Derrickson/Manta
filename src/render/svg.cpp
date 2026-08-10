@@ -41,134 +41,154 @@ void groundGlyph(std::string& out, int x, int y, int dy) {
     line(out, "wire", x - 2, y + 6 * dy, x + 2, y + 6 * dy);
 }
 
-// The same glyph turned sideways for a horizontal wire, growing in +dx, so it
-// never intrudes into the pin row below.
+// The same glyph turned sideways for a horizontal wire, growing in +dx.
 void groundGlyphSideways(std::string& out, int x, int y, int dx) {
     line(out, "wire", x, y - 7, x, y + 7);
     line(out, "wire", x + 3 * dx, y - 4, x + 3 * dx, y + 4);
     line(out, "wire", x + 6 * dx, y - 2, x + 6 * dx, y + 2);
 }
 
-void emitPin(std::string& out, const RenderModel& m, const PlacedSymbol& s, const SymPin& p) {
-    const int x = s.x, y = s.y, w = s.geom.w, h = s.geom.h;
-    // A classic symbol is its own pin annotation: an anode is drawn, not named.
-    const bool classic = !s.geom.prims.empty();
-    std::string_view net;
-    NetMark mark = NetMark::Label;
-    if (p.net >= 0) {
-        const RenderNet& rn = m.nets[static_cast<std::size_t>(p.net)];
-        net = rn.display;
-        mark = rn.mark;
-    }
-    std::string_view numCls = p.nc ? "pinnum nc" : "pinnum";
-    std::string_view nameCls = p.nc ? "pinname nc" : "pinname";
+std::string_view netOf(const RenderModel& m, std::int32_t net) {
+    return net < 0 ? std::string_view{} : m.nets[static_cast<std::size_t>(net)].display;
+}
 
-    switch (p.side) {
-        case Side::Left: {
-            int py = y + p.offset;
-            line(out, "wire", x - kStubLen, py, x, py, net);
-            if (!classic) {
-                text(out, numCls, x - 2, py - 2, "end", p.number);
-                text(out, nameCls, x + 3, py + 3, {}, p.name);
+// ---------------------------------------------------------------------------
+// Display-list items.
+// ---------------------------------------------------------------------------
+
+void emitWire(std::string& out, const RenderModel& m, const WireItem& w) {
+    std::string_view net = netOf(m, w.net);
+    if (w.pts.size() == 4) {
+        line(out, "wire", w.pts[0], w.pts[1], w.pts[2], w.pts[3], net);
+        return;
+    }
+    out += "<polyline class=\"wire\" points=\"";
+    for (std::size_t i = 0; i + 1 < w.pts.size(); i += 2) {
+        if (i) out += ' ';
+        out += std::format("{},{}", w.pts[i], w.pts[i + 1]);
+    }
+    out += "\"";
+    if (!net.empty()) out += std::format(" data-net=\"{}\"", esc(net));
+    out += "/>\n";
+}
+
+void emitPortFlag(std::string& out, const MarkItem& mk, std::string_view name, PortDir dir) {
+    int w = kCharWidth * static_cast<int>(name.size()) + 18;
+    // The flag body's span and text centre, from the attach point and side.
+    int x0 = mk.x, y = mk.y;
+    switch (mk.dir) {
+        case Side::Left: x0 = mk.x - w; break;
+        case Side::Right: x0 = mk.x; break;
+        case Side::Top:
+            x0 = mk.x - w / 2;
+            y = mk.y - 10;
+            break;
+        case Side::Bottom:
+            x0 = mk.x - w / 2;
+            y = mk.y + 10;
+            break;
+    }
+    int x1 = x0 + w;
+    out += "<polygon class=\"flag\" points=\"";
+    auto pt = [&](int px, int py) { out += std::format("{},{} ", px, py); };
+    // in: pointed left end; out: pointed right end; anything else: both.
+    bool pointL = dir != PortDir::Out;
+    bool pointR = dir != PortDir::In;
+    if (pointL) {
+        pt(x0, y);
+        pt(x0 + 6, y - 6);
+    } else {
+        pt(x0, y - 6);
+    }
+    if (pointR) {
+        pt(x1 - 6, y - 6);
+        pt(x1, y);
+        pt(x1 - 6, y + 6);
+    } else {
+        pt(x1, y - 6);
+        pt(x1, y + 6);
+    }
+    if (pointL) pt(x0 + 6, y + 6);
+    else pt(x0, y + 6);
+    out.pop_back();  // the trailing space
+    out += "\"/>\n";
+    text(out, "flagtext", (x0 + x1) / 2, y + 3, "middle", name);
+    // A vertical stub attaches mid-edge; bridge the gap to the flag body.
+    if (mk.dir == Side::Top) line(out, "wire", mk.x, mk.y, mk.x, y + 6);
+    if (mk.dir == Side::Bottom) line(out, "wire", mk.x, mk.y, mk.x, y - 6);
+}
+
+void emitMark(std::string& out, const RenderModel& m, const MarkItem& mk) {
+    std::string_view net = netOf(m, mk.net);
+    switch (mk.kind) {
+        case MarkKind::Ground:
+            out += std::format("<g class=\"gnd\" data-net=\"{}\">\n", esc(net));
+            switch (mk.dir) {
+                case Side::Bottom: groundGlyph(out, mk.x, mk.y, 1); break;
+                case Side::Top: groundGlyph(out, mk.x, mk.y, -1); break;
+                case Side::Left: groundGlyphSideways(out, mk.x, mk.y, -1); break;
+                case Side::Right: groundGlyphSideways(out, mk.x, mk.y, 1); break;
             }
-            if (net.empty()) break;
-            if (mark == NetMark::Ground) {
-                out += std::format("<g class=\"gnd\" data-net=\"{}\">\n", esc(net));
-                groundGlyphSideways(out, x - kStubLen, py, -1);
-                out += "</g>\n";
-            } else if (mark == NetMark::Rail) {
-                out += std::format("<g class=\"rail\" data-net=\"{}\">\n", esc(net));
-                line(out, "wire", x - kStubLen, py - 5, x - kStubLen, py + 5);
-                text(out, "netlabel", x - kStubLen - 4, py + 3, "end", net);
-                out += "</g>\n";
-            } else {
-                text(out, "netlabel", x - kStubLen - 3, py + 3, "end", net, net);
+            out += "</g>\n";
+            break;
+        case MarkKind::RailFlag:
+            out += std::format("<g class=\"rail\" data-net=\"{}\">\n", esc(net));
+            switch (mk.dir) {
+                case Side::Top:
+                    line(out, "wire", mk.x - 6, mk.y, mk.x + 6, mk.y);
+                    text(out, "netlabel", mk.x, mk.y - 4, "middle", net);
+                    break;
+                case Side::Bottom:
+                    line(out, "wire", mk.x - 6, mk.y, mk.x + 6, mk.y);
+                    text(out, "netlabel", mk.x, mk.y + 10, "middle", net);
+                    break;
+                case Side::Left:
+                    line(out, "wire", mk.x, mk.y - 5, mk.x, mk.y + 5);
+                    text(out, "netlabel", mk.x - 4, mk.y + 3, "end", net);
+                    break;
+                case Side::Right:
+                    line(out, "wire", mk.x, mk.y - 5, mk.x, mk.y + 5);
+                    text(out, "netlabel", mk.x + 4, mk.y + 3, {}, net);
+                    break;
+            }
+            out += "</g>\n";
+            break;
+        case MarkKind::Label:
+            switch (mk.dir) {
+                case Side::Left: text(out, "netlabel", mk.x - 3, mk.y + 3, "end", net, net); break;
+                case Side::Right: text(out, "netlabel", mk.x + 3, mk.y + 3, {}, net, net); break;
+                case Side::Top: text(out, "netlabel", mk.x, mk.y - 4, "middle", net, net); break;
+                case Side::Bottom:
+                    text(out, "netlabel", mk.x, mk.y + 10, "middle", net, net);
+                    break;
             }
             break;
-        }
-        case Side::Right: {
-            int py = y + p.offset;
-            int px = x + w;
-            line(out, "wire", px, py, px + kStubLen, py, net);
-            if (!classic) {
-                text(out, numCls, px + 2, py - 2, {}, p.number);
-                text(out, nameCls, px - 3, py + 3, "end", p.name);
-            }
-            if (net.empty()) break;
-            if (mark == NetMark::Ground) {
-                out += std::format("<g class=\"gnd\" data-net=\"{}\">\n", esc(net));
-                groundGlyphSideways(out, px + kStubLen, py, 1);
-                out += "</g>\n";
-            } else if (mark == NetMark::Rail) {
-                out += std::format("<g class=\"rail\" data-net=\"{}\">\n", esc(net));
-                line(out, "wire", px + kStubLen, py - 5, px + kStubLen, py + 5);
-                text(out, "netlabel", px + kStubLen + 4, py + 3, {}, net);
-                out += "</g>\n";
-            } else {
-                text(out, "netlabel", px + kStubLen + 3, py + 3, {}, net, net);
-            }
-            break;
-        }
-        case Side::Top: {
-            int px = x + p.offset;
-            line(out, "wire", px, y - kStubLen, px, y, net);
-            if (!classic) {
-                text(out, numCls, px + 2, y - 3, {}, p.number);
-                out += std::format(
-                    "<text class=\"{}\" transform=\"translate({} {}) rotate(90)\">{}</text>\n",
-                    nameCls, px, y + 4, esc(p.name));
-            }
-            if (net.empty()) break;
-            if (mark == NetMark::Ground) {
-                out += std::format("<g class=\"gnd\" data-net=\"{}\">\n", esc(net));
-                groundGlyph(out, px, y - kStubLen, -1);
-                out += "</g>\n";
-            } else if (mark == NetMark::Rail) {
-                out += std::format("<g class=\"rail\" data-net=\"{}\">\n", esc(net));
-                line(out, "wire", px - 6, y - kStubLen, px + 6, y - kStubLen);
-                text(out, "netlabel", px, y - kStubLen - 4, "middle", net);
-                out += "</g>\n";
-            } else {
-                text(out, "netlabel", px, y - kStubLen - 4, "middle", net, net);
-            }
-            break;
-        }
-        case Side::Bottom: {
-            int px = x + p.offset;
-            int by = y + h;
-            line(out, "wire", px, by, px, by + kStubLen, net);
-            if (!classic) {
-                text(out, numCls, px + 2, by + 8, {}, p.number);
-                out += std::format(
-                    "<text class=\"{}\" transform=\"translate({} {}) rotate(-90)\">{}</text>\n",
-                    nameCls, px, by - 4, esc(p.name));
-            }
-            if (net.empty()) break;
-            if (mark == NetMark::Ground) {
-                out += std::format("<g class=\"gnd\" data-net=\"{}\">\n", esc(net));
-                groundGlyph(out, px, by + kStubLen, 1);
-                out += "</g>\n";
-            } else if (mark == NetMark::Rail) {
-                out += std::format("<g class=\"rail\" data-net=\"{}\">\n", esc(net));
-                line(out, "wire", px - 6, by + kStubLen, px + 6, by + kStubLen);
-                text(out, "netlabel", px, by + kStubLen + 10, "middle", net);
-                out += "</g>\n";
-            } else {
-                text(out, "netlabel", px, by + kStubLen + 10, "middle", net, net);
-            }
+        case MarkKind::PortFlag: {
+            const RenderNet& rn = m.nets[static_cast<std::size_t>(mk.net)];
+            out += std::format("<g class=\"portflag\" data-net=\"{}\">\n", esc(net));
+            emitPortFlag(out, mk, net, rn.direction);
+            out += "</g>\n";
             break;
         }
     }
 }
 
-// Classic artwork, translated from body-local to sheet coordinates.
+// Classic artwork, rotated point-by-point from body-local to sheet space.
 void emitPrims(std::string& out, const PlacedSymbol& s) {
+    auto tp = [&](int px, int py, int& ox, int& oy) {
+        rotatePoint(s.geom, s.rot, px, py, ox, oy);
+        ox += s.x;
+        oy += s.y;
+    };
     for (const Prim& p : s.geom.prims) {
         switch (p.kind) {
-            case Prim::Kind::Line:
-                line(out, "glyph", s.x + p.pts[0], s.y + p.pts[1], s.x + p.pts[2],
-                     s.y + p.pts[3]);
+            case Prim::Kind::Line: {
+                int x1, y1, x2, y2;
+                tp(p.pts[0], p.pts[1], x1, y1);
+                tp(p.pts[2], p.pts[3], x2, y2);
+                line(out, "glyph", x1, y1, x2, y2);
                 break;
+            }
             case Prim::Kind::Polyline:
             case Prim::Kind::Polygon: {
                 std::string_view tag = p.kind == Prim::Kind::Polygon ? "polygon" : "polyline";
@@ -176,24 +196,66 @@ void emitPrims(std::string& out, const PlacedSymbol& s) {
                 out += std::format("<{} class=\"{}\" points=\"", tag, cls);
                 for (std::size_t i = 0; i + 1 < p.pts.size(); i += 2) {
                     if (i) out += ' ';
-                    out += std::format("{},{}", s.x + p.pts[i], s.y + p.pts[i + 1]);
+                    int x, y;
+                    tp(p.pts[i], p.pts[i + 1], x, y);
+                    out += std::format("{},{}", x, y);
                 }
                 out += std::format("\"/>\n");
                 break;
             }
-            case Prim::Kind::Circle:
+            case Prim::Kind::Circle: {
+                int cx, cy;
+                tp(p.pts[0], p.pts[1], cx, cy);
                 out += std::format("<circle class=\"{}\" cx=\"{}\" cy=\"{}\" r=\"{}\"/>\n",
-                                   p.fill ? "glyph fill" : "glyph", s.x + p.pts[0],
-                                   s.y + p.pts[1], p.pts[2]);
+                                   p.fill ? "glyph fill" : "glyph", cx, cy, p.pts[2]);
                 break;
-            case Prim::Kind::Arc:
+            }
+            case Prim::Kind::Arc: {
+                // A rotation preserves handedness, so the sweep flag survives.
+                int x1, y1, x2, y2;
+                tp(p.pts[0], p.pts[1], x1, y1);
+                tp(p.pts[2], p.pts[3], x2, y2);
+                out += std::format("<path class=\"glyph\" d=\"M {} {} A {} {} 0 0 {} {} {}\"/>\n",
+                                   x1, y1, p.pts[4], p.pts[4], p.pts[5], x2, y2);
+                break;
+            }
+            case Prim::Kind::Text: {
+                int x, y;
+                tp(p.pts[0], p.pts[1], x, y);
+                text(out, "mark", x, y, "middle", p.text);
+                break;
+            }
+        }
+    }
+}
+
+// Pin numbers and names for a box symbol. Classic symbols draw none: an anode
+// is drawn, not named. Boxes never rotate, so the geometry reads directly.
+void emitBoxPinText(std::string& out, const PlacedSymbol& s) {
+    const int x = s.x, y = s.y, w = s.geom.w, h = s.geom.h;
+    for (const SymPin& p : s.geom.pins) {
+        std::string_view numCls = p.nc ? "pinnum nc" : "pinnum";
+        std::string_view nameCls = p.nc ? "pinname nc" : "pinname";
+        switch (p.side) {
+            case Side::Left:
+                text(out, numCls, x - 2, y + p.offset - 2, "end", p.number);
+                text(out, nameCls, x + 3, y + p.offset + 3, {}, p.name);
+                break;
+            case Side::Right:
+                text(out, numCls, x + w + 2, y + p.offset - 2, {}, p.number);
+                text(out, nameCls, x + w - 3, y + p.offset + 3, "end", p.name);
+                break;
+            case Side::Top:
+                text(out, numCls, x + p.offset + 2, y - 3, {}, p.number);
                 out += std::format(
-                    "<path class=\"glyph\" d=\"M {} {} A {} {} 0 0 {} {} {}\"/>\n",
-                    s.x + p.pts[0], s.y + p.pts[1], p.pts[4], p.pts[4], p.pts[5],
-                    s.x + p.pts[2], s.y + p.pts[3]);
+                    "<text class=\"{}\" transform=\"translate({} {}) rotate(90)\">{}</text>\n",
+                    nameCls, x + p.offset, y + 4, esc(p.name));
                 break;
-            case Prim::Kind::Text:
-                text(out, "mark", s.x + p.pts[0], s.y + p.pts[1], "middle", p.text);
+            case Side::Bottom:
+                text(out, numCls, x + p.offset + 2, y + h + 8, {}, p.number);
+                out += std::format(
+                    "<text class=\"{}\" transform=\"translate({} {}) rotate(-90)\">{}</text>\n",
+                    nameCls, x + p.offset, y + h - 4, esc(p.name));
                 break;
         }
     }
@@ -215,10 +277,18 @@ void emitSymbol(std::string& out, const RenderModel& m, const PlacedSymbol& s) {
     } else {
         out += std::format("<rect class=\"body\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/>\n",
                            s.x, s.y, s.geom.w, s.geom.h);
+        emitBoxPinText(out, s);
     }
     if (!c.fitted) partLine += " (DNF)";
 
-    if (classic) {
+    if (classic && (s.rot == Rot::R90 || s.rot == Rot::R270)) {
+        // A vertical two-terminal part reads like the reference: designator
+        // and value stacked to the right of the body.
+        int tx = s.x + rotatedW(s.geom, s.rot) + 3;
+        int cy = s.y + rotatedH(s.geom, s.rot) / 2;
+        text(out, "refdes", tx, cy - 2, {}, c.designator);
+        text(out, "partname", tx, cy + 10, {}, partLine);
+    } else if (classic) {
         auto anchor = [](std::uint8_t a) -> std::string_view {
             return a == 0 ? "middle" : a == 1 ? "end" : std::string_view{};
         };
@@ -230,8 +300,14 @@ void emitSymbol(std::string& out, const RenderModel& m, const PlacedSymbol& s) {
         text(out, "refdes", s.x, s.y - 4, {}, c.designator);
         text(out, "partname", s.x, s.y + s.geom.h + 11, {}, partLine);
     }
-    for (const SymPin& p : s.geom.pins) emitPin(out, m, s, p);
     out += "</g>\n";
+}
+
+void emitRoom(std::string& out, const RoomItem& r) {
+    if (!r.framed) return;
+    out += std::format("<rect class=\"room\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/>\n",
+                       r.x, r.y, r.w, r.h);
+    if (!r.title.empty()) text(out, "roomtitle", r.x + 8, r.y + 13, {}, r.title);
 }
 
 // The double border with zone ticks: letters down the sides, numbers across
@@ -249,8 +325,9 @@ void emitFrame(std::string& out, const SheetLayout& sheet) {
         "<rect class=\"frame\" x=\"{0}\" y=\"{0}\" width=\"{1}\" height=\"{2}\"/>\n", i, w - 2 * i,
         h - 2 * i);
 
-    int cols = std::clamp(w / 300, 2, 8);
-    int rows = std::clamp(h / 300, 2, 6);
+    // Zone ticks roughly every 250 units, like a real drawing frame.
+    int cols = std::clamp(w / 250, 2, 12);
+    int rows = std::clamp(h / 250, 2, 10);
     for (int c = 1; c < cols; ++c) {
         int cx = o + (w - 2 * o) * c / cols;
         line(out, "frame", cx, o, cx, i);
@@ -308,7 +385,21 @@ void emitSheetSvg(std::string& out, const RenderModel& model, const SheetLayout&
         "<svg class=\"sheet\" viewBox=\"0 0 {} {}\" xmlns=\"http://www.w3.org/2000/svg\">\n",
         sheet.w, sheet.h);
     emitFrame(out, sheet);
+    for (const RoomItem& r : sheet.rooms) emitRoom(out, r);
+    for (const RailBarItem& b : sheet.bars) {
+        std::string_view net = netOf(model, b.net);
+        out += std::format(
+            "<line class=\"railbar\" x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" data-net=\"{}\"/>\n",
+            b.x1, b.y, b.x2, b.y, esc(net));
+        text(out, "netlabel", b.x1, b.y - 4, {}, net, net);
+    }
+    for (const WireItem& w : sheet.wires) emitWire(out, model, w);
     for (const PlacedSymbol& s : sheet.symbols) emitSymbol(out, model, s);
+    for (const DotItem& d : sheet.dots) {
+        out += std::format("<circle class=\"dot\" cx=\"{}\" cy=\"{}\" r=\"2\" data-net=\"{}\"/>\n",
+                           d.x, d.y, esc(netOf(model, d.net)));
+    }
+    for (const MarkItem& mk : sheet.marks) emitMark(out, model, mk);
     out += "</svg>\n";
 }
 
