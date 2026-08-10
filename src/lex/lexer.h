@@ -35,8 +35,8 @@ struct TokenStream {
 
     // Byte offset of the end-of-content marker line, or kNoContentEnd when the
     // file has none. Everything from here on is not manta and was never
-    // tokenised, but the offset has to survive: 'manta fmt' rewrites whole
-    // files from the AST, so without it a reformat would delete the text.
+    // tokenised, but the offset has to survive: 'manta fmt' rewrites files a
+    // line at a time, and from here on it must reproduce bytes untouched.
     static constexpr std::uint32_t kNoContentEnd = 0xFFFFFFFFu;
     std::uint32_t contentEnd = kNoContentEnd;
 

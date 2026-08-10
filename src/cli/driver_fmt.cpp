@@ -33,20 +33,21 @@ int runFormat(const Options& opts) {
         Lexer lexer(*file, fileDiags);
         TokenStream tokens = lexer.run();
         Parser parser(tokens, *file, arena, interner, fileDiags);
-        SourceUnit unit = parser.run();
+        // The parse result itself is not needed -- formatting is lexical --
+        // but a file that does not parse is refused: the depth rule leans on
+        // bracket balance, and reformatting a broken file would disturb the
+        // very text the author needs to fix.
+        static_cast<void>(parser.run());
 
         if (fileDiags.hasErrors()) {
-            // Spec 17 is normative about what the formatter emits, which
-            // presupposes a parseable file. Reformatting a broken one would
-            // destroy the very text the author needs to fix.
             diags.absorb(std::move(fileDiags));
             continue;
         }
 
-        std::string formatted = formatUnit(unit, tokens, *file, interner);
+        std::string formatted = formatSource(tokens, *file);
         // Spec 1.4: "Line endings may be LF or CRLF, and the formatter
-        // normalises them to LF." The printer emits LF throughout, so a file
-        // that differs only in line endings is still a change.
+        // normalises them to LF." The formatter emits LF throughout, so a
+        // file that differs only in line endings is still a change.
         bool changed = formatted != file->text();
         if (changed) anyChanged = true;
 

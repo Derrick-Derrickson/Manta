@@ -63,7 +63,14 @@ block blinky {
 
     // VCC and GND take their default nets from the part's '&~NET', so neither
     // needs binding here (spec 11.6).
-    {U2~MCU-8PIN: nRESET  = nRESET; GPIO[0] = LED-DRIVE[0]; GPIO[1] = LED-DRIVE[1]; SDA     = i2c.SDA; SCL     = i2c.SCL; MISO    = TP-MISO;};
+    {U2~MCU-8PIN:
+        nRESET  = nRESET;
+        GPIO[0] = LED-DRIVE[0];
+        GPIO[1] = LED-DRIVE[1];
+        SDA     = i2c.SDA;
+        SCL     = i2c.SCL;
+        MISO    = TP-MISO;
+    };
 
     // Two decoupling caps on the supply pin, one bulk and one high frequency.
     3V3 == .{C3~C-100nF-0603: . = GND;};

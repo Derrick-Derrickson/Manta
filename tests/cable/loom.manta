@@ -22,6 +22,6 @@ part WIRE {
 
 cable jumper-8way {
     {K1~PLUG2}P[1:2]
-         = [[.{X%[1:2]~CRIMP}. = .{W%[1:2]~WIRE}. = .{Y%[1:2]~CRIMP}.]]
-         = P[1:2]{K2~PLUG2};
+        = [[.{X%[1:2]~CRIMP}. = .{W%[1:2]~WIRE}. = .{Y%[1:2]~CRIMP}.]]
+        = P[1:2]{K2~PLUG2};
 };

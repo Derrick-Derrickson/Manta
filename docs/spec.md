@@ -286,7 +286,9 @@ intervening space.
 SI prefixes are `p n u m k M G T`. The prefix `u` denotes micro; `µ` is not accepted.
 
 Where a value has a fractional part, the SI prefix may replace the decimal point. Both
-forms are accepted and the formatter emits the substituted form.
+forms are accepted and denote the same value; the substituted form is the canonical
+spelling, which compiled artifacts carry (§15.4). The formatter leaves either as
+written (§17).
 
 ```
 4k7R    ==  4.7kR
@@ -595,8 +597,8 @@ child block instantiated under it. A nested block's body begins sectionless and 
 its own markers to itself; its instantiation site takes the enclosing section exactly as
 a component does.
 
-`manta fmt` emits a marker as `--- TITLE` at body indentation, with a blank line above
-unless it opens the body.
+`manta fmt` indents a marker line to body depth like any statement (§17); the blank
+lines around it are the author's.
 
 ---
 
@@ -865,7 +867,7 @@ part resistor-0603 {
 ### 7.4 Bindings
 
 `:` introduces a binding list and `;` separates bindings. A trailing `;` before `}` is
-permitted and is emitted by the formatter.
+permitted, and preferred in new code.
 
 ```
 S{Q1~FFET123: G=nPWR-EN; }D
@@ -1127,7 +1129,8 @@ Export requires locked strength, so that a global's value cannot be changed by w
 object happens to link last.
 
 Canonical sigil order is direction, sigil, strength for an import (`>#~`), and sigil,
-strength, direction for an export (`#!>`). The formatter rewrites any other ordering.
+strength, direction for an export (`#!>`). Other orderings are accepted and left as
+written; new code should use the canonical order.
 
 A `part` shall not export a field. Export is available to blocks only, and `#!>` inside a
 part definition is error **E-43**.
@@ -1221,8 +1224,9 @@ input and away from it for an output.
 | `SIG>` | output |
 | `<>SIG` / `SIG<>` | bidirectional |
 
-Canonical form, which the formatter emits: leading `>` at the start of a statement,
-trailing `>` at the end, and `pin=NET>` in a binding.
+Canonical form, which new code should write: leading `>` at the start of a statement,
+trailing `>` at the end, and `pin=NET>` in a binding. The formatter leaves any accepted
+form as written.
 
 ```
 >SIG-IN = I{U1~AMP012}O = AMPED-SIG>;
@@ -2017,7 +2021,7 @@ Manta uses a two-stage model.
 | `manta link` | many `.mantaO`, plus a named top-level block | one `.mantaNets` |
 | `manta annotate` | sources, plus a `.mantaNets` | rewritten sources |
 | `manta export` | one `.mantaNets` | a layout-tool netlist |
-| `manta fmt` | sources | rewritten sources |
+| `manta fmt` | sources | re-indented sources |
 
 ### 15.2 Compilation
 
@@ -2387,17 +2391,56 @@ pads exist, and the copper is routed.
 
 ## 17. Formatting
 
-`manta fmt` is normative. The formatter:
+`manta fmt` is normative, and it manages indentation only. Line structure is the
+author's: a binding list written across five lines stays five lines. The formatter
+never:
 
-- normalises whitespace and indentation
-- reflows statements freely across lines
-- never adds or removes a `;`, since statement boundaries are semantic (§11.2)
-- emits canonical sigil order (§9.4)
-- emits canonical port arrows (§10.1)
-- emits SI-substituted values (§3.2)
-- emits a trailing `;` in binding lists
-- aligns `=` within a binding block and within a pin map
-- does not alter case, comments, or the order of declarations
+- joins or splits lines
+- adds or removes blank lines
+- adds or removes a `;`, since statement boundaries are semantic (§11.2)
+- reorders, respaces or realigns anything within a line
+- alters case, comments, values, or the order of declarations
+
+The only bytes it rewrites are each line's leading whitespace, plus the file-level
+normalisation of §1.4: line endings become LF, and a file that lacks a final newline
+gains one.
+
+### 17.1 The depth rule
+
+The indent unit is four spaces; tabs are not emitted. A line's depth is the number of
+`{`, `(` and `[` still open at the start of the line, counted over tokens — a brace
+inside a string literal or a comment does not count — and each line is indented one
+unit per depth.
+
+Three refinements:
+
+- A line whose first token is `}`, `)` or `]` outdents to the matching open's depth,
+  which is the rule that puts `};` level with its opener.
+- A **continuation line** indents one unit past the depth. A line continues when it
+  begins inside an unfinished unit at the current depth: a unit — a statement, a
+  binding, or a binding-list head — becomes unfinished at its first token and
+  finishes at `;` or `:`; an opening bracket suspends it (the bracket's contents
+  take their depth from the bracket instead) and the matching close resumes it,
+  still unfinished until its own terminator.
+- A `--- TITLE` section marker (§4.7) takes plain depth, like any statement.
+
+### 17.2 Comments and blank lines
+
+A line whose first content is a comment is indented to the current depth. Interior
+lines of a multi-line block comment — every line after the one carrying the `/*` —
+are reproduced byte for byte, so aligned comment art survives. A blank line stays
+blank: no indentation, no trailing whitespace.
+
+The end-of-content marker (§2.8) and everything after it are reproduced byte for
+byte, line endings included.
+
+### 17.3 Invariants
+
+`manta fmt --check` exits non-zero if any file differs from its formatting, and
+writes nothing. The formatter refuses a file that does not parse: the depth rule
+leans on bracket balance, and rewriting a broken file would disturb the text its
+author needs to fix. Formatting is deterministic and idempotent, and a sensibly
+indented file is already canonical — the formatter changes nothing at all on it.
 
 ---
 

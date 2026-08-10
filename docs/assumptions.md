@@ -37,7 +37,7 @@ But single indices appear throughout: `GPIO[$n$]` as a substitution position,
 `DQ[0]` as a pin-delay override, `{U1}GPIO[1]` as a terminal.
 
 **Resolution.** `[i]` is accepted and means the one wire `i`. It is recorded
-distinctly from `[i:i]` so the formatter reproduces whichever was written. The
+distinctly from `[i:i]` so tooling can reproduce whichever was written. The
 production should read `range = index [ ":" index ]`.
 
 ---
@@ -90,8 +90,8 @@ and a field name containing one must be quoted — so as written this is the fie
 `r` minus the field `value`, and both are undefined.
 
 **Resolution.** The rule stands, and the example is corrected to `$"r-value"$`.
-The formatter renders an actual subtraction with spaces — `$r - value$` — so the
-two readings are never confusable on sight.
+An actual subtraction is conventionally written with spaces — `$r - value$` — so
+the two readings are never confusable on sight.
 
 ---
 

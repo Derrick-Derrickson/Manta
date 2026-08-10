@@ -53,6 +53,25 @@ if(NOT a STREQUAL b)
 endif()
 
 # --- fmt: formatting must not change what the design means -----------------
+# The spec fixtures are canonical under spec 17's indentation-only rules, so
+# '--check' has nothing to report...
+run_manta(fmt --check ${SOURCES})
+
+# ...while a mis-indented file fails '--check' with a non-zero exit, and one
+# pass of 'fmt' in place makes it canonical.
+file(WRITE "${WORK}/misindented.manta" "block b {\nGND &TYPE=GROUND;\n};\n")
+execute_process(COMMAND "${MANTA}" fmt --check "${WORK}/misindented.manta"
+                RESULT_VARIABLE check_code ERROR_QUIET)
+if(check_code EQUAL 0)
+    message(FATAL_ERROR "fmt --check exited zero on a mis-indented file")
+endif()
+run_manta(fmt "${WORK}/misindented.manta")
+run_manta(fmt --check "${WORK}/misindented.manta")
+file(READ "${WORK}/misindented.manta" misindented_after)
+if(NOT misindented_after STREQUAL "block b {\n    GND &TYPE=GROUND;\n};\n")
+    message(FATAL_ERROR "fmt did not correct indentation: ${misindented_after}")
+endif()
+
 file(MAKE_DIRECTORY "${WORK}/fmt")
 foreach(source ${SOURCES})
     get_filename_component(name "${source}" NAME)
@@ -440,8 +459,8 @@ if(NOT rendered_pages)
 endif()
 
 # --- the end-of-content marker (spec 2.8) ----------------------------------
-# 'manta fmt' rewrites whole files from the AST, so without deliberate care it
-# would delete everything after the marker. This is the check that it does not.
+# Everything from the marker on is not manta and must leave 'manta fmt'
+# byte for byte -- not reindented, line endings not normalised, not dropped.
 set(DATASHEET "${WORK}/src/datasheet.manta")
 file(READ "${DATASHEET}" datasheet_before)
 execute_process(COMMAND "${MANTA}" fmt --stdout "${DATASHEET}"

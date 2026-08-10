@@ -118,15 +118,13 @@ E-26.
 
 ## The formatter
 
-Rewrites whole files from the AST, so it cannot preserve anything the AST does
-not record. That is why `Range::single` exists: `[i]` and `[i:i]` mean the same
-thing and must round-trip differently.
-
-Comments are re-attached by **source offset**: before emitting any construct,
-every comment lying before its span is flushed. One that shared a line with
-preceding code goes back beside it; one that stood alone keeps its own line.
-That reproduces comments exactly while leaving the formatter free to reflow
-everything around them.
+Manages indentation and nothing else (spec 17). It is **lexical**: it walks the
+file a line at a time and rewrites only each line's leading whitespace, from
+token-derived state — bracket depth, plus whether an unfinished statement or
+binding is open at that depth. Line structure, blank lines, spacing within a
+line, comments and everything after the end-of-content marker are the author's,
+byte for byte. The AST is used only as a gate: a file that does not parse is
+refused, which is what entitles the depth rule to assume balanced brackets.
 
 Idempotency is a test, not a hope — `fmt(fmt(x)) == fmt(x)` over the whole
 corpus, plus the stronger guarantee that formatting does not change the netlist

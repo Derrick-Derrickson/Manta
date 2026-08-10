@@ -63,7 +63,7 @@ The two-stage model of specification §15.1:
 | `manta annotate` | sources, plus a `.mantaNets` | rewritten sources |
 | `manta export` | one `.mantaNets` | a layout tool's netlist |
 | `manta render` | one `.mantaNets` | a clickable HTML schematic |
-| `manta fmt` | sources | rewritten sources |
+| `manta fmt` | sources | re-indented sources |
 
 `link` and `check` also take `--rules <file>`: a `.mantaRules` file of
 project-specific checks — logic-level compatibility, current budgets, library
