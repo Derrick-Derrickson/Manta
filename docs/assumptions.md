@@ -288,6 +288,22 @@ reports **E-02** on this one, because ERC sees a board and the driver is not on
 it. That is honest — the board alone does have an undriven input — but it means
 a daisy-chained design carries `-Wno-E-02` or a `&STUB` on its uplink nets.
 
+### C12. Which name a flat net carries
+
+A net may be spelled differently in different scopes, and instantiating a block
+twice gives two nets both locally called `LED-ANODE`. The flat netlist needs one
+name per net and no name twice: KiCad and every other importer merge nets **by
+name**, so a duplicate would short two separate conductors on the real board.
+
+**Resolution.** A net's flat name is its outermost-scope spelling, first seen at
+that depth in source order, unprefixed. Only a net whose every spelling lives
+inside child instances takes a flat prefix — instance path plus local spelling,
+`BLK1.LED-ANODE` — mirroring how designators flatten (§13.4). Pin-derived
+fallback names use the flat designator for the same reason: two instances of one
+block both hold an `R1`, and `R1.2` twice is the same short. The block records'
+`localNets` still carry the local spellings; displaying them is what they are
+for.
+
 ---
 
 ## D. Smaller points
@@ -374,3 +390,57 @@ two bare net names joined by `=` is E-22. But a pin reference such as `U3.OUT`
 that net at that pin — and a harness identifier stands for its members. Both are
 therefore exempt, which is what makes `TP7 = U3.OUT &STUB;`,
 `extern U5.1 = GND;` and `USB = MCU-USB;` all well formed.
+
+---
+
+## E. Renderer decisions
+
+`manta render` draws a netlist, and the specification says what a netlist means,
+not how to draw one. Every choice the drawing depends on is recorded here. None
+of them affects any other tool: the netlist is the truth and the drawing is a
+view of it.
+
+### E1. Which symbol a part is drawn as
+
+Nothing in a netlist says "this is a resistor"; parts are opaque. Classification
+takes three tiers, extending C1's convention: the `@type` field (an open set per
+C9, matched case-insensitively), then the legacy `#type` user field, then — for
+an untyped two-pin part — the unit of `#value`: ohms a resistor, farads a
+capacitor, henries an inductor, hertz a crystal.
+
+A classification word is honoured only when the pins can back it up: a diode
+needs `A`/`ANODE` and `K`/`CATHODE`, a MOSFET gate/drain/source, a BJT
+base/collector/emitter, an op-amp its two inputs, output and recognisable
+supplies. When the word speaks but the pins cannot honestly carry the symbol,
+the part draws as a generic box — and the later tiers do not reinterpret it,
+because the word already said what the part is. A one-pin part is a test point;
+anything unclassified is a box, which is never wrong, only plain.
+
+### E2. What counts as a rail
+
+Rail bars and pull-ups need to know which nets are supplies. A net is a rail on
+evidence — a `&CLASS=power` directive, or a `&TYPE=POWER` source pin — or by
+spelling, matched whole-name and case-folded against the page-local display
+name: `3V3`-shaped names (`^\d+V\d*$`), the words `VBUS`, `VCC`, `VDD`, `VEE`,
+`AVDD`, `VIN`, `VOUT`, `VBAT`, and `V-<word>`. Per page, because a block's local
+`VCC` is a rail on its own page whatever its flat name became. A net sharing its
+displayed spelling with a rail or ground net takes the same mark: on a
+schematic, labels connect by name.
+
+### E3. A block definition renders once
+
+One page per block *definition*, drawn from the first instance in netlist
+order — so the parameter values shown are that instance's — with every instance
+listed on the page (`instances: BLK1, BLK2`) and each sheet symbol on the parent
+linking to the one page. The alternative, a page per instance, is exactly the
+duplication the hierarchy exists to avoid; where two instances differ, the
+netlist has both and the page says whose values it shows.
+
+### E4. There is no router
+
+Placement is a fixed set of idioms — decoupling ladders against a rail bar,
+pull-ups and pull-downs, chain runs — with one collision axis per element kind.
+A wire that still cannot be placed is not drawn: the connection keeps its net
+labels, which connect by name, exactly as on a hand-drawn schematic. A missing
+wire is therefore never a missing connection; clicking either label still
+highlights the whole net.

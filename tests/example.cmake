@@ -282,6 +282,13 @@ if(NOT blinky_html MATCHES ">instances: BLK1, BLK2<")
     message(FATAL_ERROR "the indicator page does not list its instances")
 endif()
 
+# The '--- TITLE' markers in board.manta become titled rooms on the top page.
+foreach(room "USB-C POWER IN" "3V3 REGULATOR" "MCU" "I2C" "INDICATORS")
+    if(NOT blinky_html MATCHES "class=\"roomtitle\"[^>]*>${room}<")
+        message(FATAL_ERROR "no room titled '${room}' on the rendered page")
+    endif()
+endforeach()
+
 # Rules must not perturb the netlist, and must be deterministic.
 run_manta(link --top blinky -L "${WORK}/build" --rules "${RULES}" -Werror
           -o "${WORK}/blinky2.mantaNets")
