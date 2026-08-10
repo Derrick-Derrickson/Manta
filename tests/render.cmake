@@ -1,7 +1,8 @@
 # The layout engine, end to end through the real binary: rooms from section
 # markers, a rail bar with its decoupling ladder, pull-ups and a chain on an
-# anchor, port flags where a net crosses rooms, and the determinism guarantee
-# of spec 15.8 over the whole HTML.
+# anchor, port flags where a net crosses rooms, multi-page hierarchy -- one
+# page per block definition, sheet symbols on the parent page -- and the
+# determinism guarantee of spec 15.8 over the whole HTML.
 #
 # Expects: MANTA (path to the binary), WORK (scratch dir).
 
@@ -47,6 +48,13 @@ part FIX-HDR {
     4 = D &CASUAL;
 };
 
+block sub {
+    >DRIVE;
+    >>GND;
+    DRIVE = .{R1~FIX-R}. = INNER-NODE;
+    INNER-NODE = A{D1~FIX-LED}K = GND;
+};
+
 block fixture {
     GND &TYPE=GROUND;
     3V3 &CLASS=power;
@@ -71,6 +79,9 @@ block fixture {
     {R7~FIX-R: A = LEFTY[0]; B = LEFTY[1];};
     {R8~FIX-R: A = LEFTY[0]; B = LEFTY[1];};
     {TP1~FIX-TP: T = SPI-CLK;};
+
+    --- SUBS
+    DRV[0:1] = [[{SUB%[1:2]~sub}DRIVE]];
 };
 ")
 
@@ -124,4 +135,43 @@ if(NOT html MATCHES "data-net=\"LED-K\"")
     message(FATAL_ERROR "the LED chain did not draw the LED-K wire")
 endif()
 
-message(STATUS "render: rooms, rail bars, chains and port flags all verified")
+# --- hierarchy: one page per block DEFINITION --------------------------------
+# 'sub' is instantiated twice but renders once: SUB2 gets no page of its own.
+string(REGEX MATCHALL "id=\"page-sub\"" sub_pages "${html}")
+list(LENGTH sub_pages sub_page_count)
+if(NOT sub_page_count EQUAL 1)
+    message(FATAL_ERROR "expected exactly one page for block 'sub', got ${sub_page_count}")
+endif()
+
+# Two green sheet symbols on the top page, each an anchor to the shared page;
+# the third href is the sidebar's entry for the page itself.
+string(REGEX MATCHALL "class=\"sbody\"" sheet_syms "${html}")
+list(LENGTH sheet_syms sheet_sym_count)
+if(NOT sheet_sym_count EQUAL 2)
+    message(FATAL_ERROR "expected 2 sheet symbols for SUB1 and SUB2, got ${sheet_sym_count}")
+endif()
+string(REGEX MATCHALL "href=\"#page-sub\"" sub_links "${html}")
+list(LENGTH sub_links sub_link_count)
+if(NOT sub_link_count EQUAL 3)
+    message(FATAL_ERROR "expected 3 links to page-sub (2 sheet symbols + sidebar), "
+                        "got ${sub_link_count}")
+endif()
+
+# The definition page labels by LOCAL spelling: the DRIVE port renders as a
+# port flag whose data-net is still the flat design-wide name DRV[0].
+if(NOT html MATCHES "class=\"portflag\" data-net=\"DRV\\[0\\]\"")
+    message(FATAL_ERROR "the sub page has no DRIVE port flag on net DRV[0]")
+endif()
+if(NOT html MATCHES ">DRIVE<")
+    message(FATAL_ERROR "the local port spelling DRIVE is drawn nowhere")
+endif()
+
+# The chain inside 'sub' draws its private net once, under the flat name.
+if(NOT html MATCHES "data-net=\"SUB1.INNER-NODE\"")
+    message(FATAL_ERROR "the sub page's chain wire does not carry the flat net name")
+endif()
+if(html MATCHES "data-net=\"SUB2.INNER-NODE\"")
+    message(FATAL_ERROR "SUB2's copy rendered: the 2nd instance must draw no page")
+endif()
+
+message(STATUS "render: rooms, rail bars, chains, port flags and block pages all verified")
