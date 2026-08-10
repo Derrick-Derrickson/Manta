@@ -633,15 +633,21 @@ std::uint32_t Elaborator::instantiatePart(const Instance* inst, const PartInfo& 
     }
 
     // Give every pin its own node up front; connections merge them afterwards.
+    //
+    // Spec 5.2: an unnamed node "takes the name of the first pin connected to
+    // it, written DESIGNATOR.PIN". The designator here is the *flat* one of
+    // spec 13.4 -- a local designator is unique only within its block, so two
+    // instances of one block would otherwise emit two nets both named "R1.2",
+    // and an importer that merges nets by name would short them.
+    std::string flatName = c.path.size() > 1
+                               ? flattenPath(c.path)
+                               : (c.designator.empty() ? c.identity : c.designator);
     for (std::uint32_t p = 0; p < c.pins.size(); ++p) {
         std::uint32_t node = freshNode(c.pins[p].span);
         c.pins[p].node = node;
         nodeInfo_[node].component = static_cast<std::int32_t>(index);
         nodeInfo_[node].pin = static_cast<std::int32_t>(p);
-        // Spec 5.2: an unnamed node "takes the name of the first pin connected
-        // to it, written DESIGNATOR.PIN".
-        nodeInfo_[node].name =
-            (c.designator.empty() ? c.identity : c.designator) + "." + c.pins[p].logical;
+        nodeInfo_[node].name = flatName + "." + c.pins[p].logical;
     }
 
     if (valid(inst->designator.prefix.symbol) &&
@@ -1719,7 +1725,8 @@ void Elaborator::buildNets(Design& design) {
 
     // Name each net. Spec 5.2: "Where a net is also named explicitly the two
     // are aliases, and the explicit name is used for display, netlist output
-    // and BOM."
+    // and BOM." This pass provides the pin-derived fallback and accumulates
+    // the per-node bookkeeping; explicit spellings are settled below.
     for (std::uint32_t node = 0; node < nodeInfo_.size(); ++node) {
         std::uint32_t root = uf_.find(node);
         std::uint32_t* slot = rootToNet.find(root);
@@ -1727,20 +1734,38 @@ void Elaborator::buildNets(Design& design) {
         Net& net = design.nets[*slot];
         const NodeInfo& info = nodeInfo_[node];
 
-        if (info.explicitName && net.name.empty()) net.name = info.name;
-        if (!info.explicitName && net.name.empty()) net.name = info.name;
+        if (net.name.empty()) net.name = info.name;
         net.references += info.references;
         net.global = net.global || info.global;
         if (net.direction == PortDir::None) net.direction = info.direction;
         if (!net.firstSeen.valid()) net.firstSeen = info.firstSeen;
     }
-    // A second pass so an explicit name always beats a pin-derived one.
-    for (std::uint32_t node = 0; node < nodeInfo_.size(); ++node) {
-        const NodeInfo& info = nodeInfo_[node];
-        if (!info.explicitName) continue;
+
+    // An explicit name beats a pin-derived one, and among a net's explicit
+    // spellings the outermost scope's wins: a port binding surfaces under the
+    // name the instantiating block gave it. A net spelled only inside child
+    // instances is block-local, and its flat name is the instance path plus
+    // the local spelling -- the same flattening components get (spec 13.4) --
+    // so two instances of one block cannot emit two nets under one name, which
+    // an importer merging nets by name would short together.
+    FlatMap<std::uint32_t, const std::vector<std::string>*> scopePath;
+    for (const PendingBlock& pb : pendingBlocks_) scopePath.insert(pb.scope, &pb.path);
+
+    std::vector<std::size_t> namedDepth(design.nets.size(), SIZE_MAX);
+    for (const auto& [key, node] : netNodes_) {
         std::uint32_t* slot = rootToNet.find(uf_.find(node));
         if (!slot) continue;
-        design.nets[*slot].name = info.name;
+        const std::vector<std::string>* const* path = scopePath.find(key.scope);
+        std::size_t depth = path ? (*path)->size() : 0;
+        // The first spelling seen at the outermost depth wins, and netNodes_
+        // iterates in insertion order, which is source order.
+        if (depth >= namedDepth[*slot]) continue;
+        namedDepth[*slot] = depth;
+        std::string spelling =
+            key.indexed ? std::format("{}[{}]", interner_.text(key.name), key.index)
+                        : std::string(interner_.text(key.name));
+        design.nets[*slot].name =
+            depth == 0 ? std::move(spelling) : flattenPath(**path) + "." + spelling;
     }
 
     // Attach pins.

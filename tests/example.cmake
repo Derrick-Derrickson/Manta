@@ -182,6 +182,32 @@ endfunction()
 assert_same_net(blinky_nets U2 2 BLK1_R1 1)
 assert_same_net(blinky_nets U2 3 BLK2_R1 1)
 
+# No two nets may share a name: KiCad and friends merge nets BY NAME on import,
+# so a duplicate would short the two LED channels on the real board.
+function(assert_unique_net_names netsvar)
+    string(JSON net_count LENGTH "${${netsvar}}" nets)
+    math(EXPR net_last "${net_count} - 1")
+    set(names "")
+    foreach(i RANGE ${net_last})
+        string(JSON name GET "${${netsvar}}" nets ${i} name)
+        list(FIND names "${name}" at)
+        if(NOT at EQUAL -1)
+            message(FATAL_ERROR "two nets are both named '${name}'")
+        endif()
+        list(APPEND names "${name}")
+    endforeach()
+endfunction()
+assert_unique_net_names(blinky_nets)
+
+# Each indicator's anode net is block-local, so it flattens under its instance
+# path -- while the block record still carries the local spelling 'LED-ANODE'.
+foreach(want "\"name\": \"BLK1.LED-ANODE\"" "\"name\": \"BLK2.LED-ANODE\"")
+    string(FIND "${blinky_nets}" "${want}" at)
+    if(at EQUAL -1)
+        message(FATAL_ERROR "expected a net named ${want}")
+    endif()
+endforeach()
+
 # Rules must not perturb the netlist, and must be deterministic.
 run_manta(link --top blinky -L "${WORK}/build" --rules "${RULES}" -Werror
           -o "${WORK}/blinky2.mantaNets")

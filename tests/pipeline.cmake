@@ -204,6 +204,22 @@ function(assert_same_net netsvar ref_a pin_a ref_b pin_b)
     message(FATAL_ERROR "${ref_a}.${pin_a} and ${ref_b}.${pin_b} do not share a net")
 endfunction()
 
+# No two nets may share a name: KiCad and friends merge nets BY NAME on import,
+# so a duplicate would short two distinct nets on the real board.
+function(assert_unique_net_names netsvar)
+    string(JSON net_count LENGTH "${${netsvar}}" nets)
+    math(EXPR net_last "${net_count} - 1")
+    set(names "")
+    foreach(i RANGE ${net_last})
+        string(JSON name GET "${${netsvar}}" nets ${i} name)
+        list(FIND names "${name}" at)
+        if(NOT at EQUAL -1)
+            message(FATAL_ERROR "two nets are both named '${name}'")
+        endif()
+        list(APPEND names "${name}")
+    endforeach()
+endfunction()
+
 # "BDRIVE[0:1] = [[{BLK%[1:2]~leg}IN]]" must put the parent-side pin and the
 # child-side pin on ONE net: U9.1 with BLK1's R1.1, U9.2 with BLK2's R1.1. The
 # terminal faces away from the connector, which is exactly the spelling that
@@ -214,6 +230,18 @@ assert_same_net(blocks_net U9 2 BLK2_R1 1)
 # "BSENSE = {BLK3~clamp}TAP" and "TAP{BLK4~clamp} = BFEED".
 assert_same_net(blocks_net U8 1 BLK3_R9 1)
 assert_same_net(blocks_net U8 2 BLK4_R9 1)
+
+# Block-local nets flatten as components do: 'leg' spells a BGND of its own, so
+# each instance's copy is emitted under its instance path while the top-level
+# BGND keeps its bare name -- four scopes spell one word, four distinct nets.
+assert_unique_net_names(blocks_net)
+foreach(want "\"name\": \"BGND\"" "\"name\": \"BLK1.BGND\"" "\"name\": \"BLK2.BGND\""
+        "\"name\": \"BLK1_CL1.CGND\"")
+    string(FIND "${blocks_net}" "${want}" at)
+    if(at EQUAL -1)
+        message(FATAL_ERROR "expected a net named ${want}")
+    endif()
+endforeach()
 
 # Every declared port resolved to a real net: nothing in this design leaves a
 # port dangling, so a '-1' means the resolution went wrong.
