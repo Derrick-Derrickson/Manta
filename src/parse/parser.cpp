@@ -56,6 +56,9 @@ void Parser::recoverToStatementEnd() {
         TokenKind k = cur().kind;
         if (k == TokenKind::LBrace || k == TokenKind::LParen || k == TokenKind::LBracket) ++depth;
         if (k == TokenKind::RBrace && depth == 0) return;  // let the body loop close it
+        // A section marker starts a fresh section; do not swallow it with the
+        // bad statement. The body loop consumes it.
+        if (k == TokenKind::SectionMarker && depth <= 0) return;
         if (k == TokenKind::RBrace || k == TokenKind::RParen || k == TokenKind::RBracket) --depth;
         ++pos_;
         if (k == TokenKind::Semi && depth <= 0) return;
@@ -1325,9 +1328,38 @@ MemberDecl* Parser::parseMemberDecl() {
 // Bodies
 // ---------------------------------------------------------------------------
 
-void Parser::parseBlockBody(std::vector<BodyEntry>& out) {
+// Reports a section marker found in a body that does not admit one, spanning
+// the whole marker, and consumes the token so the body loop makes progress.
+void Parser::rejectSectionMarker() {
+    error(sectionMarkerSpan(cur()), "a section marker is only legal in a block body");
+    advance();
+}
+
+void Parser::parseBlockBody(std::vector<BodyEntry>& out, bool allowSections) {
     while (!at(TokenKind::RBrace) && !atEnd()) {
         std::size_t before = pos_;
+        if (at(TokenKind::SectionMarker)) {
+            const Token& t = cur();
+            if (!allowSections) {
+                rejectSectionMarker();
+            } else if (t.length == 0) {
+                // A bare '---' inside a block. At the top level that shape
+                // ends the file's manta content (spec 2.8); here a section
+                // marker needs a name to render under.
+                error(sectionMarkerSpan(t), "a section marker needs a title: '--- TITLE'");
+                advance();
+            } else {
+                auto* s = arena_.make<SectionMarker>();
+                s->name = intern(text(t));
+                s->span = sectionMarkerSpan(t);
+                advance();
+                BodyEntry e;
+                e.kind = BodyKind::Section;
+                e.section = s;
+                out.push_back(e);
+            }
+            continue;
+        }
         if (atItemStart()) {
             BodyEntry e;
             e.kind = BodyKind::Item;
@@ -1351,6 +1383,10 @@ void Parser::parseBlockBody(std::vector<BodyEntry>& out) {
 void Parser::parsePartBody(std::vector<BodyEntry>& out) {
     while (!at(TokenKind::RBrace) && !atEnd()) {
         std::size_t before = pos_;
+        if (at(TokenKind::SectionMarker)) {
+            rejectSectionMarker();
+            continue;
+        }
         if (looksLikeFieldDecl()) {
             BodyEntry e;
             e.kind = BodyKind::Field;
@@ -1375,6 +1411,10 @@ void Parser::parsePartBody(std::vector<BodyEntry>& out) {
 void Parser::parseHarnessBody(std::vector<BodyEntry>& out) {
     while (!at(TokenKind::RBrace) && !atEnd()) {
         std::size_t before = pos_;
+        if (at(TokenKind::SectionMarker)) {
+            rejectSectionMarker();
+            continue;
+        }
         if (at(TokenKind::Amp)) {
             // Spec 12.5: a harness type may carry directives, which apply to
             // every identifier assigned that type.
@@ -1400,6 +1440,10 @@ void Parser::parseHarnessBody(std::vector<BodyEntry>& out) {
 void Parser::parseNetclassBody(std::vector<BodyEntry>& out) {
     while (!at(TokenKind::RBrace) && !atEnd()) {
         std::size_t before = pos_;
+        if (at(TokenKind::SectionMarker)) {
+            rejectSectionMarker();
+            continue;
+        }
         BodyEntry e;
         e.kind = BodyKind::Directive;
         e.directive = parseDirective();
@@ -1416,6 +1460,10 @@ void Parser::parseNetclassBody(std::vector<BodyEntry>& out) {
 void Parser::parseMatchBody(std::vector<BodyEntry>& out) {
     while (!at(TokenKind::RBrace) && !atEnd()) {
         std::size_t before = pos_;
+        if (at(TokenKind::SectionMarker)) {
+            rejectSectionMarker();
+            continue;
+        }
         if (at(TokenKind::Word) && curText() == "match") {
             // Spec 11.4: a match group may contain another.
             BodyEntry e;
@@ -1456,7 +1504,7 @@ Item* Parser::parseBlock(bool isStatic, Span startSpan) {
         return item;
     }
     std::vector<BodyEntry> body;
-    parseBlockBody(body);
+    parseBlockBody(body, /*allowSections=*/true);
     item->body = commit(body);
     expect(TokenKind::RBrace, "closing a block body");
     expect(TokenKind::Semi, "after a block declaration");
@@ -1482,7 +1530,7 @@ Item* Parser::parseCable(bool isStatic, Span startSpan) {
         return item;
     }
     std::vector<BodyEntry> body;
-    parseBlockBody(body);
+    parseBlockBody(body, /*allowSections=*/false);
     item->body = commit(body);
     expect(TokenKind::RBrace, "closing a cable body");
     expect(TokenKind::Semi, "after a cable declaration");

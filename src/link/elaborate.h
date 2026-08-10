@@ -102,6 +102,10 @@ private:
         // Harness identifier -> the type assigned to it (spec 12.1).
         FlatMap<SymbolId, SymbolId> harnessTypes;
         std::string flatFormat;
+        // The '--- TITLE' render section in force (revision 1.3): empty at
+        // body start, set by each marker, copied onto whatever the statements
+        // beneath it instantiate. A nested block's own body starts afresh.
+        std::string activeSection;
     };
 
     // ---- element evaluation ----------------------------------------------
@@ -166,12 +170,17 @@ private:
     // ---- nodes ---------------------------------------------------------------
     std::uint32_t netNode(Scope& scope, SymbolId name, std::int64_t index, bool indexed, Span at,
                           bool countReference = true);
+    // Joins a '>>' node to the design-wide net of its spelling (spec 10.3).
+    void bindGlobal(std::uint32_t node);
     std::uint32_t freshNode(Span at);
     void unite(std::uint32_t a, std::uint32_t b);
     void uniteBundles(const Bundle& a, const Bundle& b, Span at);
 
     // ---- naming and finishing -------------------------------------------------
     void buildNets(Design& design);
+    // Resolves the block instances recorded during elaboration against the
+    // root-to-net mapping buildNets leaves behind. Must run after it.
+    void collectBlockInstances(Design& design);
     void applyStatementDirectives(const Stmt* stmt, std::span<const std::uint32_t> nodes,
                                   Scope& scope);
     void collectMatchGroups(Design& design);
@@ -193,6 +202,14 @@ private:
     UnionFind uf_;
     std::vector<NodeInfo> nodeInfo_;
     FlatMap<NetKey, std::uint32_t> netNodes_;
+    // Spec 10.3: "a global export is visible design-wide". One representative
+    // node per '>>' spelling; every scope's '>>NAME' unites with it, which is
+    // what makes the import/export pairing order-independent.
+    FlatMap<SymbolId, std::uint32_t> globalNets_;
+    // Union-find root -> Design::nets index, filled by buildNets so that data
+    // recorded against node handles during elaboration can be resolved after
+    // the merge is done.
+    FlatMap<std::uint32_t, std::uint32_t> rootToNet_;
 
     std::vector<Component> components_;
     // Block instances written with '?'. A block is not a component, so it has no
@@ -232,6 +249,28 @@ private:
         Span at;
     };
     std::vector<PendingMatchUse> pendingMatches_;
+
+    // A port declaration seen during elaboration: the arrow-carrying net of
+    // spec 4.4, recorded where the arrow is applied. Node handles are resolved
+    // to net indices after buildNets.
+    struct PendingPort {
+        std::uint32_t scope;
+        std::uint32_t node;
+        PortDir dir;
+    };
+    std::vector<PendingPort> pendingPorts_;
+
+    // A child block instance, recorded as instantiation begins so the order is
+    // the order instances are encountered. The ports and local nets belonging
+    // to it are found later by scope id.
+    struct PendingBlock {
+        std::uint32_t scope;
+        std::vector<std::string> path;
+        std::string block;
+        // The section active at the instantiation site, in the parent.
+        std::string section;
+    };
+    std::vector<PendingBlock> pendingBlocks_;
 
     // Netclass name -> its directives (spec 11.9).
     FlatMap<SymbolId, std::vector<const Directive*>> netclasses_;

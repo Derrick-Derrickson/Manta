@@ -64,6 +64,7 @@ Command commandFromName(std::string_view name) {
     if (name == "annotate") return Command::Annotate;
     if (name == "fmt") return Command::Format;
     if (name == "export") return Command::Export;
+    if (name == "render") return Command::Render;
     return Command::None;
 }
 
@@ -75,6 +76,7 @@ std::string_view commandName(Command c) {
         case Command::Annotate: return "annotate";
         case Command::Format: return "fmt";
         case Command::Export: return "export";
+        case Command::Render: return "render";
         case Command::None: return "";
     }
     return "";
@@ -302,6 +304,15 @@ ParseOutcome parseOptions(const std::vector<std::string>& args, Options& out) {
                 if (!err.empty()) break;
                 break;
 
+            case Command::Render:
+                if (takeValue(c, "--output", "-o", value, err)) { out.output = value; continue; }
+                if (!err.empty()) break;
+                if (takeValue(c, "--title", "", value, err)) { out.title = value; continue; }
+                if (!err.empty()) break;
+                if (takeValue(c, "--pdf", "", value, err)) { out.pdfPath = value; continue; }
+                if (!err.empty()) break;
+                break;
+
             case Command::None:
                 break;
         }
@@ -399,6 +410,7 @@ Commands:
   annotate   Assign designators in source, from a netlist.
   fmt        Format sources in place.
   export     Convert a netlist to a layout tool's format.
+  render     Render a netlist as a clickable HTML schematic.
 
 Run 'manta <command> --help' for the options of one command.
 )";
@@ -482,6 +494,17 @@ Equivalent to 'manta link --no-emit'. Accepts the same options.
   --footprint-lib <nick>
                         Library nickname for any footprint the map does not
                         cover and that names no library itself. KiCad only.
+)";
+            break;
+
+        case Command::Render:
+            out = R"(Usage: manta render [options] <netlist.mantaNets>
+
+  -o, --output <file>   HTML output path. Default: derived from the input name.
+  --title <text>        Title-block text. Default: the design's top block.
+  --pdf <file>          Also print the sheets to PDF, through a headless
+                        Chromium found on PATH. The HTML is deterministic;
+                        the PDF is whatever the browser makes of it.
 )";
             break;
     }

@@ -1,6 +1,6 @@
 # manta
 
-A compiler for the Manta Schematic Definition Language, specification revision 1.2.
+A compiler for the Manta Schematic Definition Language, specification revision 1.3.
 
 Manta is a plain-text language for describing electronic schematics: the
 components on one printed circuit board, their interconnections, the electrical
@@ -62,7 +62,8 @@ The two-stage model of specification §15.1:
 | `manta check` | the same | nothing; runs every stage including ERC |
 | `manta annotate` | sources, plus a `.mantaNets` | rewritten sources |
 | `manta export` | one `.mantaNets` | a layout tool's netlist |
-| `manta fmt` | sources | rewritten sources |
+| `manta render` | one `.mantaNets` | a clickable HTML schematic |
+| `manta fmt` | sources | re-indented sources |
 
 `link` and `check` also take `--rules <file>`: a `.mantaRules` file of
 project-specific checks — logic-level compatibility, current budgets, library
@@ -77,7 +78,13 @@ manta compile -o build/ src/*.manta
 manta link --top power-and-signal -L build/ --bom build/bom.csv -o build/board.mantaNets
 manta annotate -n build/board.mantaNets --swaps src/*.manta
 manta export --format kicad --footprint-map board.fpmap -o build/board.net build/board.mantaNets
+manta render -o build/board.html build/board.mantaNets
 ```
+
+`render` draws the netlist as a clickable schematic: one HTML file, one sheet
+per block definition, with any `--- TITLE` section markers in the source as
+titled rooms. Click a net to trace it across pages. `--pdf board.pdf` also
+prints the sheets through a headless Chromium.
 
 A loom is a separate thing to build, and links on its own:
 
@@ -126,8 +133,8 @@ be enabled, silenced or re-graded by code or by mnemonic: `-Wno-W-03` and
                                                                 │
   .mantaO × N ──link: resolve ▸ elaborate ▸ substitute ▸ net-build ▸ ERC──▶ .mantaNets
                                                                 │
-                            ┌───────────────────────────────────┼──────────────┐
-                        annotate                              export           fmt
+                            ┌──────────────┬────────────────────┼──────────────┐
+                        annotate         render               export           fmt
 ```
 
 | Directory | Contents |
@@ -142,6 +149,7 @@ be enabled, silenced or re-graded by code or by mnemonic: `-Wno-W-03` and
 | `src/link` | Symbol table, field scopes, substitution, elaborator, netlist, mating |
 | `src/erc` | The §16 rules |
 | `src/fmt`, `src/annotate`, `src/export` | The three source- and output-side tools |
+| `src/render` | The schematic renderer: classification, rooms, layout idioms, SVG in HTML |
 
 Longer notes live beside the code: `src/README.md` for the architecture,
 `AGENTS.md` and `src/AGENTS.md` for the rules a change has to respect, and
@@ -172,7 +180,8 @@ Four decisions shape the implementation, and are documented where they live:
 microcontroller, an I²C bus and two LEDs through a replicated block — plus the
 USB-C lead that plugs into it, with its own wires and crimps. It passes
 `fmt --check`, `check -Werror`, `link`, the mating checks and all four exports
-with nothing to report. The specification's own worked example is an excerpt that does not
+with nothing to report, and `manta render` draws it as five titled rooms plus
+one shared page for the indicator block. The specification's own worked example is an excerpt that does not
 pass ERC, so this is what a clean build actually looks like. See
 `examples/README.md`.
 

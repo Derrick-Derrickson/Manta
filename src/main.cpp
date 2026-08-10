@@ -45,6 +45,7 @@ int main(int argc, char** argv) {
             case Command::Annotate: return runAnnotate(opts);
             case Command::Format: return runFormat(opts);
             case Command::Export: return runExport(opts);
+            case Command::Render: return runRender(opts);
             case Command::None: break;
         }
         writeStdout(helpText(Command::None));

@@ -116,6 +116,10 @@ parameters produces two elaborations from one source:
 >SIG-B = {BLK2~rc-filter: #r-value=47; }OUT = FILTERED-B>;
 ```
 
+A `--- TITLE` line inside a block body names a render section: purely
+presentational, no effect on connectivity or checks. `manta render <netlist>`
+draws the schematic as clickable HTML, with each section as a titled room.
+
 ## Cables
 
 A loom is not on the board, so it is not in the board's block. A `cable` is its

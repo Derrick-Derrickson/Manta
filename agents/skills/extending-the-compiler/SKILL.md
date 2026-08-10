@@ -33,9 +33,10 @@ in `src/AGENTS.md` says which stage owns what.
 
 **A new language construct** — lexer if it needs a token, `src/ast/ast.h` for
 the node, parser to build it, `src/obj/mantao.cpp` for **both** directions of
-serialisation, `src/fmt/formatter.cpp` to print it, and the elaborator to give
-it meaning. The object round-trip test will fail immediately if you update the
-writer and forget the reader, which is the point of it.
+serialisation, and the elaborator to give it meaning. The formatter is lexical
+and needs a change only for a token with special line placement. The object
+round-trip test will fail immediately if you update the writer and forget the
+reader, which is the point of it.
 
 **A new ERC rule** — `src/erc/erc.cpp`, one method, called from `run()`.
 

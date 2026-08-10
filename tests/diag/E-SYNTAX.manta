@@ -1,0 +1,7 @@
+// A section marker with no title (revision 1.3). At the top level a bare
+// '---' line ends the file's manta content (spec 2.8); inside a block it is a
+// render section marker and must carry a title.
+block b {
+    ---
+    A == B;
+};

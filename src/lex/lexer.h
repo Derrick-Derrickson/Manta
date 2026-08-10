@@ -35,8 +35,8 @@ struct TokenStream {
 
     // Byte offset of the end-of-content marker line, or kNoContentEnd when the
     // file has none. Everything from here on is not manta and was never
-    // tokenised, but the offset has to survive: 'manta fmt' rewrites whole
-    // files from the AST, so without it a reformat would delete the text.
+    // tokenised, but the offset has to survive: 'manta fmt' rewrites files a
+    // line at a time, and from here on it must reproduce bytes untouched.
     static constexpr std::uint32_t kNoContentEnd = 0xFFFFFFFFu;
     std::uint32_t contentEnd = kNoContentEnd;
 
@@ -62,6 +62,7 @@ private:
     void scanWord(TokenStream& out);
     void scanExprWord(TokenStream& out);
     void scanString(TokenStream& out);
+    void scanSectionMarker(TokenStream& out);
     bool skipTrivia(TokenStream& out);
 
     void push(TokenStream& out, TokenKind k, std::uint32_t start, std::uint32_t len,
@@ -90,6 +91,11 @@ private:
 
     // True when positioned at a line consisting of exactly '---'.
     [[nodiscard]] bool atEndMarker() const;
+
+    // True when positioned at a render section marker (revision 1.3): '---' as
+    // the first non-whitespace on its line, inside a declaration. Unlike the
+    // end-of-content marker, leading indentation is allowed.
+    [[nodiscard]] bool atSectionMarker() const;
 };
 
 }  // namespace manta

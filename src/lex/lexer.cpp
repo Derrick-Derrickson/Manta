@@ -64,6 +64,7 @@ std::string_view tokenKindName(TokenKind k) noexcept {
         case TokenKind::Le: return "'<='";
         case TokenKind::Ge: return "'>='";
         case TokenKind::BangEq: return "'!='";
+        case TokenKind::SectionMarker: return "section marker";
         case TokenKind::Invalid: return "invalid character";
     }
     return "token";
@@ -89,6 +90,49 @@ bool Lexer::atEndMarker() const {
         if (text_[i] != ' ' && text_[i] != '\t' && text_[i] != '\r') return false;
     }
     return true;  // the marker is the last line of the file
+}
+
+// '---' as the first non-whitespace on its line, with the line's end or
+// whitespace after it. Leading indentation is allowed -- fmt indents block
+// bodies -- which is what separates this from atEndMarker's column-0 rule.
+// '----' and '---TITLE' are not markers; the separator is required.
+bool Lexer::atSectionMarker() const {
+    if (text_.compare(pos_, 3, "---") != 0) return false;
+    if (pos_ + 3 < text_.size() && !isSpace(text_[pos_ + 3])) return false;
+
+    for (std::size_t i = pos_; i-- > 0;) {
+        char c = text_[i];
+        if (c == '\n') break;
+        if (c != ' ' && c != '\t' && c != '\r') return false;
+    }
+    return true;
+}
+
+// The title is raw text to the end of the line, trailing whitespace trimmed.
+// '//' inside it is NOT a comment: everything after the '---' names the
+// section, so "--- I/O // left side" is all one title, not a title and an
+// aside. The token covers the trimmed title -- a bare '---' yields a
+// zero-length token, which the parser turns into a clean "needs a name" error.
+void Lexer::scanSectionMarker(TokenStream& out) {
+    std::size_t markerStart = pos_;
+    pos_ += 3;
+    while (!atEnd() && (peek() == ' ' || peek() == '\t')) ++pos_;
+
+    std::size_t titleStart = pos_;
+    std::size_t titleEnd = pos_;
+    while (!atEnd() && peek() != '\n') {
+        if (peek() != ' ' && peek() != '\t' && peek() != '\r') titleEnd = pos_ + 1;
+        ++pos_;
+    }
+    if (titleEnd == titleStart) titleStart = titleEnd = markerStart + 3;  // empty title
+
+    // The distance back to the '---' travels in `flags` so that diagnostics
+    // can span the whole marker. It saturates rather than wraps; a title
+    // preceded by 64KiB of spaces spans a little short, nothing worse.
+    std::size_t distance = titleStart - markerStart;
+    auto flags = static_cast<std::uint16_t>(distance < 0xFFFF ? distance : 0xFFFF);
+    push(out, TokenKind::SectionMarker, static_cast<std::uint32_t>(titleStart),
+         static_cast<std::uint32_t>(titleEnd - titleStart), flags);
 }
 
 // Returns true if any trivia was consumed.
@@ -429,6 +473,13 @@ TokenStream Lexer::run() {
         if (braceDepth_ == 0 && atEndMarker()) {
             out.contentEnd = static_cast<std::uint32_t>(pos_);
             break;
+        }
+
+        // Revision 1.3: the same shape *inside* a declaration is a render
+        // section marker, indentation allowed.
+        if (braceDepth_ > 0 && atSectionMarker()) {
+            scanSectionMarker(out);
+            continue;
         }
 
         std::size_t before = pos_;

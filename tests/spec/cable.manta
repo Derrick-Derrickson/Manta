@@ -35,6 +35,6 @@ cable jumper-8way {
     // Out of the first housing, through a crimp, a wire and a crimp, into the
     // second. Eight conductors, one statement.
     {J1~JST-PH-8-PLUG}P[1:8]
-         = [[.{C%[1:8]~JST-PH-8-CRIMP}. = .{W%[1:8]~WIRE-22AWG-RED}. = .{C%[9:16]~JST-PH-8-CRIMP}.]]
-         = P[1:8]{J2~JST-PH-8-PLUG};
+        = [[.{C%[1:8]~JST-PH-8-CRIMP}. = .{W%[1:8]~WIRE-22AWG-RED}. = .{C%[9:16]~JST-PH-8-CRIMP}.]]
+        = P[1:8]{J2~JST-PH-8-PLUG};
 };

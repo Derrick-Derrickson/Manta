@@ -53,6 +53,25 @@ if(NOT a STREQUAL b)
 endif()
 
 # --- fmt: formatting must not change what the design means -----------------
+# The spec fixtures are canonical under spec 17's indentation-only rules, so
+# '--check' has nothing to report...
+run_manta(fmt --check ${SOURCES})
+
+# ...while a mis-indented file fails '--check' with a non-zero exit, and one
+# pass of 'fmt' in place makes it canonical.
+file(WRITE "${WORK}/misindented.manta" "block b {\nGND &TYPE=GROUND;\n};\n")
+execute_process(COMMAND "${MANTA}" fmt --check "${WORK}/misindented.manta"
+                RESULT_VARIABLE check_code ERROR_QUIET)
+if(check_code EQUAL 0)
+    message(FATAL_ERROR "fmt --check exited zero on a mis-indented file")
+endif()
+run_manta(fmt "${WORK}/misindented.manta")
+run_manta(fmt --check "${WORK}/misindented.manta")
+file(READ "${WORK}/misindented.manta" misindented_after)
+if(NOT misindented_after STREQUAL "block b {\n    GND &TYPE=GROUND;\n};\n")
+    message(FATAL_ERROR "fmt did not correct indentation: ${misindented_after}")
+endif()
+
 file(MAKE_DIRECTORY "${WORK}/fmt")
 foreach(source ${SOURCES})
     get_filename_component(name "${source}" NAME)
@@ -106,19 +125,33 @@ endif()
 # how an un-annotated block once reached the netlist unreported.
 set(BLOCKSRC "${WORK}/blocks.manta")
 file(WRITE "${BLOCKSRC}" "\
-part BR-1k { @~footprint = R-0603; #value = 1kR; 1 = A &CASUAL; 2 = B &CASUAL; };
+part BR-1k { @~footprint = R-0603; #value = 1kR; 1 = A &CASUAL; 2 = B &CASUAL; 3 = SHIELD; };
+
+block clamp {
+    >TAP;
+    TAP = .{R9~BR-1k}. = CGND;
+};
 
 block leg {
     >IN;
-    IN = .{R1~BR-1k}. = BGND;
+    IN = .{R1~BR-1k: SHIELD = ?;}. = BGND;
+    {CL1~clamp: TAP = BGND;};
 };
 
 block blocktop {
     BGND &TYPE=GROUND &STUB;
     BPWR>>;
+    {U9~BR-1k: A = BDRIVE[0]; B = BDRIVE[1]; SHIELD = ?;};
+
+    --- LEGS
     BDRIVE[0:1] = [[{BLK%[1:2]~leg}IN]];
     BDRIVE[0] == BPWR;
     BDRIVE[1] == BPWR;
+
+    --- SENSE
+    {U8~BR-1k: A = BSENSE; B = BFEED; SHIELD = ?;};
+    BSENSE = {BLK3~clamp}TAP;
+    TAP{BLK4~clamp} = BFEED;
 };
 ")
 run_manta(compile -o "${WORK}/blockbuild/" "${BLOCKSRC}")
@@ -137,6 +170,166 @@ endforeach()
 file(STRINGS "${WORK}/blocks.mantaNets" bad REGEX "BLK[?]")
 if(bad)
     message(FATAL_ERROR "a range-designated block was treated as unassigned: ${bad}")
+endif()
+
+# --- block instance records (revision 1.3) ---------------------------------
+# The netlist carries one record per child block instance -- 'leg' twice, and
+# the 'clamp' nested inside each copy -- so a renderer can rebuild the
+# hierarchy. In a CMake regex '.' matches newline, so a pattern can span the
+# pretty-printed JSON.
+file(READ "${WORK}/blocks.mantaNets" blocks_net)
+
+string(REGEX MATCHALL "\"block\": \"leg\"" legs "${blocks_net}")
+list(LENGTH legs leg_count)
+string(REGEX MATCHALL "\"block\": \"clamp\"" clamps "${blocks_net}")
+list(LENGTH clamps clamp_count)
+# Four clamps: one nested in each 'leg' copy, plus BLK3 and BLK4 at the top.
+if(NOT leg_count EQUAL 2 OR NOT clamp_count EQUAL 4)
+    message(FATAL_ERROR "expected 2 'leg' and 4 'clamp' block records, "
+                        "got ${leg_count} and ${clamp_count}")
+endif()
+
+# A nested instance carries the full path from the top.
+if(NOT blocks_net MATCHES "\"BLK1\",[\r\n ]+\"CL1\"")
+    message(FATAL_ERROR "the nested clamp does not carry its full instance path")
+endif()
+
+# --- a chain terminal on a block instance binds its port ---------------------
+# Two pins share one net in a .mantaNets held in the named variable. Walked
+# with string(JSON) rather than a regex: a pin's logical name may contain the
+# ']' or '}' any textual bound would lean on.
+function(assert_same_net netsvar ref_a pin_a ref_b pin_b)
+    string(JSON net_count LENGTH "${${netsvar}}" nets)
+    math(EXPR net_last "${net_count} - 1")
+    foreach(i RANGE ${net_last})
+        string(JSON pins GET "${${netsvar}}" nets ${i} pins)
+        string(JSON pin_count LENGTH "${pins}")
+        if(pin_count EQUAL 0)
+            continue()
+        endif()
+        set(has_a FALSE)
+        set(has_b FALSE)
+        math(EXPR pin_last "${pin_count} - 1")
+        foreach(p RANGE ${pin_last})
+            string(JSON d GET "${pins}" ${p} designator)
+            string(JSON n GET "${pins}" ${p} pin)
+            if(d STREQUAL ref_a AND n STREQUAL pin_a)
+                set(has_a TRUE)
+            endif()
+            if(d STREQUAL ref_b AND n STREQUAL pin_b)
+                set(has_b TRUE)
+            endif()
+        endforeach()
+        if(has_a AND has_b)
+            return()
+        endif()
+    endforeach()
+    message(FATAL_ERROR "${ref_a}.${pin_a} and ${ref_b}.${pin_b} do not share a net")
+endfunction()
+
+# No two nets may share a name: KiCad and friends merge nets BY NAME on import,
+# so a duplicate would short two distinct nets on the real board.
+function(assert_unique_net_names netsvar)
+    string(JSON net_count LENGTH "${${netsvar}}" nets)
+    math(EXPR net_last "${net_count} - 1")
+    set(names "")
+    foreach(i RANGE ${net_last})
+        string(JSON name GET "${${netsvar}}" nets ${i} name)
+        list(FIND names "${name}" at)
+        if(NOT at EQUAL -1)
+            message(FATAL_ERROR "two nets are both named '${name}'")
+        endif()
+        list(APPEND names "${name}")
+    endforeach()
+endfunction()
+
+# "BDRIVE[0:1] = [[{BLK%[1:2]~leg}IN]]" must put the parent-side pin and the
+# child-side pin on ONE net: U9.1 with BLK1's R1.1, U9.2 with BLK2's R1.1. The
+# terminal faces away from the connector, which is exactly the spelling that
+# once united nothing and left every child port floating.
+assert_same_net(blocks_net U9 1 BLK1_R1 1)
+assert_same_net(blocks_net U9 2 BLK2_R1 1)
+# ...and the scalar spellings, exit-terminal and entry-terminal:
+# "BSENSE = {BLK3~clamp}TAP" and "TAP{BLK4~clamp} = BFEED".
+assert_same_net(blocks_net U8 1 BLK3_R9 1)
+assert_same_net(blocks_net U8 2 BLK4_R9 1)
+
+# --- '--- TITLE' section markers (revision 1.3) ------------------------------
+# The section in force at an instantiation site travels onto what it makes: a
+# part before any marker carries none, a part under a marker carries it, and a
+# child block's *record* takes the site's section while the child's own body
+# starts sectionless -- so the parts inside 'leg' carry nothing.
+if(blocks_net MATCHES "\"designator\": \"U9\",[^{]*\"section\"")
+    message(FATAL_ERROR "U9 precedes every marker and must carry no section")
+endif()
+if(NOT blocks_net MATCHES "\"designator\": \"U8\",[^{]*\"section\": \"SENSE\"")
+    message(FATAL_ERROR "U8 is under '--- SENSE' and must carry that section")
+endif()
+if(blocks_net MATCHES "\"designator\": \"BLK1_R1\",[^{]*\"section\"")
+    message(FATAL_ERROR "a nested block's body starts sectionless, but BLK1's R1 "
+                        "inherited the enclosing '--- LEGS'")
+endif()
+string(REGEX MATCHALL "\"block\": \"leg\",[\r\n ]+\"section\": \"LEGS\"" leg_sections
+       "${blocks_net}")
+list(LENGTH leg_sections leg_section_count)
+if(NOT leg_section_count EQUAL 2)
+    message(FATAL_ERROR "expected both 'leg' records to carry section LEGS, "
+                        "got ${leg_section_count}")
+endif()
+string(REGEX MATCHALL "\"block\": \"clamp\",[\r\n ]+\"section\": \"SENSE\"" clamp_sections
+       "${blocks_net}")
+list(LENGTH clamp_sections clamp_section_count)
+string(REGEX MATCHALL "\"block\": \"clamp\",[\r\n ]+\"ports\"" bare_clamps "${blocks_net}")
+list(LENGTH bare_clamps bare_clamp_count)
+if(NOT clamp_section_count EQUAL 2 OR NOT bare_clamp_count EQUAL 2)
+    message(FATAL_ERROR "expected BLK3/BLK4 to carry section SENSE and the two clamps "
+                        "nested in 'leg' to carry none, got ${clamp_section_count} "
+                        "and ${bare_clamp_count}")
+endif()
+
+# Block-local nets flatten as components do: 'leg' spells a BGND of its own, so
+# each instance's copy is emitted under its instance path while the top-level
+# BGND keeps its bare name -- four scopes spell one word, four distinct nets.
+assert_unique_net_names(blocks_net)
+foreach(want "\"name\": \"BGND\"" "\"name\": \"BLK1.BGND\"" "\"name\": \"BLK2.BGND\""
+        "\"name\": \"BLK1_CL1.CGND\"")
+    string(FIND "${blocks_net}" "${want}" at)
+    if(at EQUAL -1)
+        message(FATAL_ERROR "expected a net named ${want}")
+    endif()
+endforeach()
+
+# Every declared port resolved to a real net: nothing in this design leaves a
+# port dangling, so a '-1' means the resolution went wrong.
+string(REGEX MATCHALL "\"name\": \"IN\",[\r\n ]+\"direction\": \"in\",[\r\n ]+\"net\": [0-9]+"
+       in_ports "${blocks_net}")
+list(LENGTH in_ports in_port_count)
+if(NOT in_port_count EQUAL 2)
+    message(FATAL_ERROR "expected 2 resolved 'IN' ports, got ${in_port_count}")
+endif()
+if(blocks_net MATCHES "\"net\": -1")
+    message(FATAL_ERROR "a block port resolved to no net")
+endif()
+
+# The local spelling of each instance's nets survives, which is what lets a
+# renderer label a child page with 'BGND' rather than the parent-flat name.
+foreach(local BGND CGND TAP)
+    if(NOT blocks_net MATCHES "\"localNets\":[^]]*\"name\": \"${local}\"")
+        message(FATAL_ERROR "'${local}' is missing from a block's localNets")
+    endif()
+endforeach()
+
+# Per-component pin lists, in declaration order. R1's SHIELD is unbound with
+# '&NET=?', so it sits on no net at all and the component entry is the only
+# place it survives; R9's is merely unconnected and gets a one-pin net.
+if(NOT blocks_net MATCHES "\"pin\": \"1\",[\r\n ]+\"name\": \"A\"")
+    message(FATAL_ERROR "a component entry carries no declared pin list")
+endif()
+if(NOT blocks_net MATCHES "\"pin\": \"2\",[\r\n ]+\"name\": \"B\"[^]]*\"pin\": \"3\",[\r\n ]+\"name\": \"SHIELD\"")
+    message(FATAL_ERROR "the declared pin list is not in declaration order")
+endif()
+if(blocks_net MATCHES "R1.SHIELD")
+    message(FATAL_ERROR "an unbound pin surfaced as a net")
 endif()
 
 # The same design left un-annotated must fail the link.
@@ -239,9 +432,35 @@ if(map_code EQUAL 0)
     message(FATAL_ERROR "a map entry with no library was accepted")
 endif()
 
+# --- render ----------------------------------------------------------------
+# The HTML schematic is inside the determinism guarantee (spec 15.8); --pdf is
+# not exercised here because it needs a browser on PATH.
+run_manta(render -o "${WORK}/board.html" "${WORK}/ann.mantaNets")
+run_manta(render -o "${WORK}/board2.html" "${WORK}/ann.mantaNets")
+file(SHA256 "${WORK}/board.html" a)
+file(SHA256 "${WORK}/board2.html" b)
+if(NOT a STREQUAL b)
+    message(FATAL_ERROR "render is not deterministic")
+endif()
+
+# The interactivity contract: nets carry data-net, symbols data-c, and each
+# sheet is a section a sidebar anchor can reach.
+file(STRINGS "${WORK}/board.html" rendered_nets REGEX "data-net=")
+if(NOT rendered_nets)
+    message(FATAL_ERROR "the rendered schematic has no data-net elements")
+endif()
+file(STRINGS "${WORK}/board.html" rendered_syms REGEX "data-c=")
+if(NOT rendered_syms)
+    message(FATAL_ERROR "the rendered schematic has no data-c symbols")
+endif()
+file(STRINGS "${WORK}/board.html" rendered_pages REGEX "id=\"page-")
+if(NOT rendered_pages)
+    message(FATAL_ERROR "the rendered schematic has no page sections")
+endif()
+
 # --- the end-of-content marker (spec 2.8) ----------------------------------
-# 'manta fmt' rewrites whole files from the AST, so without deliberate care it
-# would delete everything after the marker. This is the check that it does not.
+# Everything from the marker on is not manta and must leave 'manta fmt'
+# byte for byte -- not reindented, line endings not normalised, not dropped.
 set(DATASHEET "${WORK}/src/datasheet.manta")
 file(READ "${DATASHEET}" datasheet_before)
 execute_process(COMMAND "${MANTA}" fmt --stdout "${DATASHEET}"
@@ -281,6 +500,10 @@ if(NOT a STREQUAL b)
     message(FATAL_ERROR "linking a cable is not deterministic")
 endif()
 
+# A cable renders too: a loom has no footprints and its parts are wires and
+# crimps, which must not trip the schematic renderer.
+run_manta(render -o "${WORK}/loom.html" "${WORK}/loom.mantaNets")
+
 # A loom's BOM carries its wires and crimps, which is the whole reason a cable
 # is a first-class thing rather than a comment.
 file(STRINGS "${WORK}/loom.csv" wires REGEX ",wire,")
@@ -289,8 +512,11 @@ if(NOT wires OR NOT crimps)
     message(FATAL_ERROR "a cable BOM lists no wires or no crimps")
 endif()
 
-# The board alone: the mating is checked, the cable is not emitted.
-set(QUIET -Wno-W-04 -Wno-W-09 -Wno-E-02)
+# The board alone: the mating is checked, the cable is not emitted. E-01 is
+# quieted as the bad-* fixtures already do: U2's TX and J1's outbound TXD pin
+# are one net -- the card re-declares the signal's direction at its boundary,
+# which the on-board driver count reads as a second driver.
+set(QUIET -Wno-W-04 -Wno-W-09 -Wno-E-01 -Wno-E-02)
 run_manta(link --top sensor-card -L "${WORK}/cable" ${QUIET} -o "${WORK}/card.mantaNets")
 
 # '--assembly' writes the loom beside the board and never merges the two.

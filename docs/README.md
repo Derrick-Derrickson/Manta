@@ -1,14 +1,17 @@
 # Documentation
 
-**`spec.md`** — the Manta Schematic Definition Language, revision 1.2. This is
+**`spec.md`** — the Manta Schematic Definition Language, revision 1.3. This is
 the authority: when the implementation and this document disagree, the document
 is right and the implementation has a bug.
 
-Revision 1.2 adds the `cable` declaration and mating of §12A, the `@type` system
+Revision 1.3 adds the render section marker of §4.7 — `--- TITLE` inside a
+block body names a purely presentational grouping — along with `manta render`
+(§15.5) and the netlist's hierarchy records (§15.4). Revision 1.2 added the
+`cable` declaration and mating of §12A, the `@type` system
 field of §9.7 and the area unit of §3.2. Revision 1.1 added one construct, the
 end-of-content marker of §2.8: a line of
 exactly `---` ends the manta content of a file, so a part can carry its datasheet
-below its declaration. A 1.0 source is a valid 1.1 source.
+below its declaration. A 1.0 source is a valid 1.3 source.
 
 It also carries six editorial corrections against 1.0 as published, listed
 in the note at its head. Two grammar productions were written more narrowly than

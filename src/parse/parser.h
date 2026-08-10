@@ -74,7 +74,9 @@ private:
     Item* parseCable(bool isStatic, Span startSpan);
 
     // ---- bodies -----------------------------------------------------------
-    void parseBlockBody(std::vector<BodyEntry>& out);
+    // Section markers (revision 1.3) are legal only in a true block body;
+    // a cable shares the grammar but not the markers.
+    void parseBlockBody(std::vector<BodyEntry>& out, bool allowSections);
     void parsePartBody(std::vector<BodyEntry>& out);
     void parseHarnessBody(std::vector<BodyEntry>& out);
     void parseNetclassBody(std::vector<BodyEntry>& out);
@@ -82,6 +84,14 @@ private:
 
     PinMap* parsePinMap();
     MemberDecl* parseMemberDecl();
+
+    // The span of a whole section marker, '---' included. The token itself
+    // covers only the title; its flags hold the distance back (see token.h).
+    [[nodiscard]] Span sectionMarkerSpan(const Token& t) const {
+        return Span{file_.id(), t.offset - t.flags, t.length + t.flags};
+    }
+    // Handles a SectionMarker token in a body that does not admit one.
+    void rejectSectionMarker();
 
     // ---- statements -------------------------------------------------------
     Stmt* parseStatement();

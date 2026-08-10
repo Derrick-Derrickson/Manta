@@ -77,8 +77,8 @@ attributes are `#` fields, which are already legal manta, so a decorated design
 needs no rules file to compile.
 
 **`fmt/`, `annotate/`, `export/`** — the three tools that consume the pipeline's
-output. The formatter rewrites whole files from the AST; the annotator makes
-surgical byte-range edits and never reformats. `export/footprint_map` translates
+output. The formatter rewrites only each line's leading indentation, from the
+token stream; the annotator makes surgical byte-range edits and never reformats. `export/footprint_map` translates
 a package name into whatever a layout tool calls it, and `export/uuid` gives a
 component an identity that survives re-annotation, over the SHA-1 in `base/`.
 

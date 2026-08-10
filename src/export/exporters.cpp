@@ -51,18 +51,41 @@ bool readNetlist(const JsonValue& root, DiagEngine& diags, Design& out) {
             if (const JsonValue* path = c->arr("path")) {
                 for (const JsonPtr& p : path->array) component.path.push_back(p->text);
             }
+            component.section = std::string(c->str("section"));
             if (const JsonValue* fields = c->find("fields");
                 fields && fields->kind == JsonKind::Object) {
                 for (const auto& [name, value] : fields->object) {
                     component.fields.emplace_back(name, value->text);
                 }
             }
+            // The declared pin list (revision 1.3), in declaration order and
+            // including unconnected and NC pins. The nets loop below attaches
+            // net indices to these by physical pin; a netlist written before
+            // the key existed has none, and the pins are rebuilt from the net
+            // side instead.
+            if (const JsonValue* pins = c->arr("pins")) {
+                for (const JsonPtr& p : pins->array) {
+                    ComponentPin pin;
+                    pin.physical = std::string(p->str("pin"));
+                    pin.logical = std::string(p->str("name"));
+                    if (std::string_view type = p->str("type"); !type.empty()) {
+                        PinType parsed{};
+                        bool caseError = false;
+                        if (lookupPinType(type, parsed, caseError)) pin.type = parsed;
+                    }
+                    if (std::string_view dir = p->str("direction"); !dir.empty()) {
+                        PortDir parsed{};
+                        if (lookupPortDir(dir, parsed)) pin.direction = parsed;
+                    }
+                    pin.declOrder = static_cast<std::int32_t>(component.pins.size());
+                    component.pins.push_back(std::move(pin));
+                }
+            }
             out.components.push_back(std::move(component));
         }
     }
 
-    // Pins are recorded per net, so the components' pin lists are rebuilt from
-    // the net side. A component index is needed to attach them.
+    // A component index is needed to attach net pins to their components.
     FlatMap<std::string, std::uint32_t> byDesignator;
     for (std::uint32_t i = 0; i < out.components.size(); ++i) {
         byDesignator.insert(out.components[i].designator, i);
@@ -77,24 +100,45 @@ bool readNetlist(const JsonValue& root, DiagEngine& diags, Design& out) {
                     const std::uint32_t* ci = byDesignator.find(std::string(p->str("designator")));
                     if (!ci) continue;
                     Component& component = out.components[*ci];
-                    ComponentPin pin;
-                    pin.physical = std::string(p->str("pin"));
-                    pin.logical = std::string(p->str("logical"));
-                    // Both are optional: a netlist written before spec 15.4
-                    // carried them has no such key, and the defaults on
-                    // ComponentPin are what it meant.
-                    if (std::string_view type = p->str("type"); !type.empty()) {
-                        PinType parsed{};
-                        bool caseError = false;
-                        if (lookupPinType(type, parsed, caseError)) pin.type = parsed;
+
+                    // A declared pin list carries the pin already; the net side
+                    // only attaches the net index. A physical pin sits on one
+                    // net at most, so matching by it is unambiguous.
+                    std::string_view physical = p->str("pin");
+                    std::uint32_t pinIndex = UINT32_MAX;
+                    for (std::uint32_t k = 0; k < component.pins.size(); ++k) {
+                        if (component.pins[k].physical == physical &&
+                            component.pins[k].net < 0) {
+                            pinIndex = k;
+                            break;
+                        }
                     }
-                    if (std::string_view dir = p->str("direction"); !dir.empty()) {
-                        PortDir parsed{};
-                        if (lookupPortDir(dir, parsed)) pin.direction = parsed;
+
+                    if (pinIndex == UINT32_MAX) {
+                        // A netlist written before the per-component pin list
+                        // existed: rebuild the pin from the net side.
+                        ComponentPin pin;
+                        pin.physical = std::string(physical);
+                        pin.logical = std::string(p->str("logical"));
+                        // Both are optional: a netlist written before spec 15.4
+                        // carried them has no such key, and the defaults on
+                        // ComponentPin are what it meant.
+                        if (std::string_view type = p->str("type"); !type.empty()) {
+                            PinType parsed{};
+                            bool caseError = false;
+                            if (lookupPinType(type, parsed, caseError)) pin.type = parsed;
+                        }
+                        if (std::string_view dir = p->str("direction"); !dir.empty()) {
+                            PortDir parsed{};
+                            if (lookupPortDir(dir, parsed)) pin.direction = parsed;
+                        }
+                        pinIndex = static_cast<std::uint32_t>(component.pins.size());
+                        pin.declOrder = static_cast<std::int32_t>(pinIndex);
+                        component.pins.push_back(std::move(pin));
                     }
-                    pin.net = static_cast<std::int32_t>(out.nets.size());
-                    auto pinIndex = static_cast<std::uint32_t>(component.pins.size());
-                    component.pins.push_back(std::move(pin));
+
+                    component.pins[pinIndex].net = static_cast<std::int32_t>(out.nets.size());
+                    component.pins[pinIndex].connected = true;
                     net.pins.push_back(PinRef{*ci, pinIndex});
                 }
             }
@@ -106,6 +150,38 @@ bool readNetlist(const JsonValue& root, DiagEngine& diags, Design& out) {
                 }
             }
             out.nets.push_back(std::move(net));
+        }
+    }
+
+    // Block instance records (revision 1.3). Optional: a flat netlist simply
+    // has no hierarchy to reconstruct.
+    if (const JsonValue* blocks = root.arr("blocks")) {
+        for (const JsonPtr& b : blocks->array) {
+            BlockInstance instance;
+            instance.block = std::string(b->str("block"));
+            instance.section = std::string(b->str("section"));
+            if (const JsonValue* path = b->arr("path")) {
+                for (const JsonPtr& p : path->array) instance.path.push_back(p->text);
+            }
+            if (const JsonValue* ports = b->arr("ports")) {
+                for (const JsonPtr& p : ports->array) {
+                    BlockPort port;
+                    port.name = std::string(p->str("name"));
+                    if (std::string_view dir = p->str("direction"); !dir.empty()) {
+                        PortDir parsed{};
+                        if (lookupPortDir(dir, parsed)) port.direction = parsed;
+                    }
+                    port.net = static_cast<std::int32_t>(p->integer("net", -1));
+                    instance.ports.push_back(std::move(port));
+                }
+            }
+            if (const JsonValue* locals = b->arr("localNets")) {
+                for (const JsonPtr& l : locals->array) {
+                    instance.localNets.emplace_back(std::string(l->str("name")),
+                                                    static_cast<std::int32_t>(l->integer("net")));
+                }
+            }
+            out.blocks.push_back(std::move(instance));
         }
     }
 
@@ -351,11 +427,14 @@ std::string exportOrCad(const Design& design, const ExportOptions& options) {
         out += std::format(" ( {} {} {}\n", footprint.empty() ? "UNKNOWN" : footprint,
                            flatName(c, options.flatFormat), value);
         for (const ComponentPin& pin : c.pins) {
-            std::string_view netName;
-            if (pin.net >= 0 && static_cast<std::size_t>(pin.net) < design.nets.size()) {
-                netName = design.nets[static_cast<std::size_t>(pin.net)].name;
+            // A pin on no net -- NC, or declared and never connected -- is
+            // omitted, as it always was when the pin list was rebuilt from the
+            // net side; a pin line with a blank net is not a connection.
+            if (pin.net < 0 || static_cast<std::size_t>(pin.net) >= design.nets.size()) {
+                continue;
             }
-            out += std::format("  ( {} {} )\n", pin.physical, netName);
+            out += std::format("  ( {} {} )\n", pin.physical,
+                               design.nets[static_cast<std::size_t>(pin.net)].name);
         }
         out += " )\n";
     }
