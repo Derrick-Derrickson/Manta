@@ -52,6 +52,9 @@ bool readNetlist(const JsonValue& root, DiagEngine& diags, Design& out) {
                 for (const JsonPtr& p : path->array) component.path.push_back(p->text);
             }
             component.section = std::string(c->str("section"));
+            // Optional (revision 1.5): absent from every netlist written
+            // before '&EDGE' existed, and absent since unless it was written.
+            component.edge = std::string(c->str("edge"));
             if (const JsonValue* fields = c->find("fields");
                 fields && fields->kind == JsonKind::Object) {
                 for (const auto& [name, value] : fields->object) {

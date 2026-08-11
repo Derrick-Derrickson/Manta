@@ -1,8 +1,20 @@
 # The Manta Schematic Definition Language
 
-**Specification, revision 1.4**
+**Specification, revision 1.5**
 
 > **Corrected against a reference implementation.**
+>
+> **1.5 says what a net and a connector are for the page.** Two directives, one
+> revision. `&RAIL` (§11.3) marks a net as a power rail for rendering, whatever
+> its name or class: the renderer's rail heuristics remain, and the directive is
+> the explicit override for the nets they miss. `&EDGE=LEFT|RIGHT|TOP|BOTTOM`
+> (§11.10) declares which sheet edge a connector faces, written bare in the
+> instance's binding list — the first directive with instance scope. 1.5 is
+> purely additive: both directives were error E-13 under 1.4, so no source that
+> compiled before means anything different now. One defect is fixed alongside:
+> a directive written bare in a binding list was accepted and silently ignored;
+> it is now checked against the instance context, so the forms that used to do
+> nothing are the errors they always should have been (E-13).
 >
 > **1.4 lets a binding carry a chain.** The right-hand side of a binding (§7.4)
 > was a single net name; it is now an ordinary segment. A decoupling capacitor, a
@@ -38,10 +50,11 @@
 > **1.1 added one construct**: the end-of-content marker of §2.8, which lets a
 > file carry documentation after its declarations.
 >
-> Each revision is a superset of the one before. A 1.0 source is a valid 1.4
+> Each revision is a superset of the one before. A 1.0 source is a valid 1.5
 > source, and a toolchain reads any object whose revision is no newer than its
-> own. 1.4 is purely additive: every form it adds was a syntax error before it,
-> so no construct that compiled under an earlier revision has changed meaning.
+> own. Every form a revision adds was an error before it — a syntax error for
+> 1.4's chain bindings, error E-13 for 1.5's directives — so no construct that
+> compiled under an earlier revision has changed meaning.
 >
 > The remaining changes are editorial.
 >
@@ -1395,12 +1408,20 @@ scope unit, reflowing a statement across lines never changes its constraints.
 | `&SHIELD` | net name | Net that shall shield this one. |
 | `&TYPE` | `GROUND` | Marks a ground net (§5.3). |
 | `&STUB` | *(none)* | This net is deliberately referenced once (§11.8). |
+| `&RAIL` | *(none)* | Marks a power rail for rendering, whatever the net's name or class. |
 
 ```
 USB-DP == MCU-DP &IMP=90RD;
 3V3 &CURRENT=3A &VOLTAGE=5V;
 CLK &MAXDELAY=600ps &SHIELD=GND;
+VSYS-PROT &RAIL &CURRENT=2A;
 ```
+
+`&RAIL` is display-only: it adds no electrical claim and brings no check with
+it. A renderer decides which nets are supplies by evidence and by spelling —
+`&CLASS=power`, a `&TYPE=POWER` source pin, a `3V3`-shaped name — and those
+heuristics remain; `&RAIL` is the explicit override for a rail they miss, such
+as a switched or divided supply under a project-local name.
 
 An unknown directive name is error **E-13**.
 
@@ -1631,6 +1652,33 @@ netclass power {
 5V  &CLASS=power;
 12V &CLASS=power &CURRENT=8A;      // overrides the class current
 ```
+
+### 11.10 Instance directives
+
+A directive written bare in an instance's binding list — no pin in front of it —
+annotates the instance itself. Instance scope exists as of revision 1.5, and one
+directive has it.
+
+| Directive | Value | Meaning |
+|---|---|---|
+| `&EDGE` | `LEFT`, `RIGHT`, `TOP` or `BOTTOM` | Which sheet edge the connector faces. |
+
+```
+{J1~CONN-6P: &EDGE=LEFT; VIN = VPOS; GND = GND; };
+```
+
+The value set is fixed, so it is upper case (§2.6); `&EDGE=left` is error
+**E-34**. `&EDGE` is display-only, exactly as `&RAIL` is: it changes what a
+renderer draws and nothing that any check reads. It travels on the component's
+`edge` key in the netlist (§15.4), emitted only when written.
+
+Directives take the strength ladder at instance scope as everywhere else
+(§11.1): a stronger `&EDGE` replaces a weaker one, and two at equal strength
+with different values are error **E-12**. Any other directive written bare in a
+binding list is error **E-13** — including every directive that is legal on a
+net or a pin, since none of them says anything about an instance. Before 1.5
+such a directive was accepted and ignored; no meaning has been removed, because
+the form never had one.
 
 ---
 
@@ -2155,6 +2203,12 @@ declaration order, so a pin on no net survives into the interchange — and a
 spellings a definition page displays. The `version` field names the language
 revision the emitting toolchain implements.
 
+Revision 1.5 adds one optional key of the same display-only kind: a component
+carries `edge` — `LEFT`, `RIGHT`, `TOP` or `BOTTOM` — when its instance wrote
+`&EDGE` (§11.10), and no such key otherwise. A value-less net directive such as
+`&STUB` or `&RAIL` appears in a net's `directives` object with an empty string
+as its value.
+
 ```json
 {
   "version": "1.0",
@@ -2540,7 +2594,7 @@ indented file is already canonical — the formatter changes nothing at all on i
 | `%` | per-copy value; designator range | 8.5, 13.3 |
 | `#` | user field | 9.1 |
 | `@` | system field | 9.1 |
-| `&` | directive, on a net or a pin | 11.1 |
+| `&` | directive, on a net, a pin or an instance | 11.1 |
 | `>` `<` `<>` | port direction | 10.1 |
 | `>>` | global scope | 10.3 |
 | `$ $` | substitution | 14.2 |

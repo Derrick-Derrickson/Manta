@@ -1,0 +1,29 @@
+// Revision 1.5 -- '&RAIL' and '&EDGE'.
+//
+// Spec 11.3: '&RAIL' marks a net as a power rail for rendering, whatever its
+// name or class -- the explicit override for a rail no heuristic would catch.
+// Spec 11.10: '&EDGE' is written bare in an instance's binding list and
+// declares which sheet edge the connector faces.
+
+part HNT-CONN-6 {
+    @~footprint = HDR-1x6;
+    @!type      = boardconnector;
+    1     = VIN<>;
+    2     = GNDP<>;
+    [3:6] = S[0:3]<>;
+};
+
+block hints-demo {
+    HGND &TYPE=GROUND;
+
+    // A switched rail under a project-local name: exactly what the spelling
+    // heuristics miss and '&RAIL' exists for.
+    HSYS-PROT &RAIL &CURRENT=2A;
+    HSYS-PROT == .{C1~100nF-0603: . = HGND;};
+
+    // The connector faces the left sheet edge.
+    {J1~HNT-CONN-6: &EDGE=LEFT; VIN = HSYS-PROT; GNDP = HGND; S[0:3] = HSIG[0:3]; };
+
+    // The far ends, one resistor per signal (spec 8.3, 13.3).
+    HSIG[0:3] = [[.{R%[1:4]~10kR-0603}.]] =* HGND;
+};

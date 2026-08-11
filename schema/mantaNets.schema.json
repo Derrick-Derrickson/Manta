@@ -9,7 +9,7 @@
   "properties": {
     "version": {
       "description": "The language revision this netlist targets.",
-      "enum": ["1.0", "1.1", "1.2", "1.3", "1.4"]
+      "enum": ["1.0", "1.1", "1.2", "1.3", "1.4", "1.5"]
     },
     "kind": { "const": "mantaNets" },
     "top": {
@@ -50,6 +50,11 @@
           "section": {
             "description": "Schematic sheet section, for 'manta render'. Absent when unassigned.",
             "type": "string"
+          },
+          "edge": {
+            "description": "Which sheet edge a connector faces, from '&EDGE' (section 11.10, revision 1.5). Absent when the directive was not written.",
+            "type": "string",
+            "enum": ["LEFT", "RIGHT", "TOP", "BOTTOM"]
           },
           "fields": {
             "description": "User fields, carried through untouched (section 9.1). Values are rendered per section 14.7.",
@@ -130,7 +135,7 @@
             }
           },
           "directives": {
-            "description": "Every directive in force on the net, after the strength ladder and any net class have been applied (sections 11.1, 11.9).",
+            "description": "Every directive in force on the net, after the strength ladder and any net class have been applied (sections 11.1, 11.9). A value-less directive -- '&STUB', '&RAIL' (revision 1.5) -- appears with an empty string as its value.",
             "type": "object",
             "additionalProperties": { "type": "string" }
           }

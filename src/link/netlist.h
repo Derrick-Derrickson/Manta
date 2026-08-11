@@ -91,6 +91,9 @@ struct Component {
     std::vector<std::pair<std::string, std::string>> fields;  // user fields, source order
     // Schematic sheet section, for 'manta render'. Empty until assigned.
     std::string section;
+    // Which sheet edge a connector faces, from '&EDGE' (spec 11.10, revision
+    // 1.5). One of LEFT, RIGHT, TOP, BOTTOM; empty when unset.
+    std::string edge;
     std::vector<ComponentPin> pins;
     Span span;
 };

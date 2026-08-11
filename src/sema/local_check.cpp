@@ -84,6 +84,30 @@ void LocalChecker::checkValueType(const Directive* d, ValueType expected) {
             return;
         }
 
+        case ValueType::Edge: {
+            if (v->kind != ValueKind::Identifier) {
+                diags_.report(DiagId::Type, v->span,
+                              std::format("'&{}' takes a sheet edge", name));
+                return;
+            }
+            EdgeSide side{};
+            bool caseError = false;
+            std::string_view spelled = interner_.text(v->text);
+            if (!lookupEdgeSide(spelled, side, caseError)) {
+                diags_.report(DiagId::Type, v->span,
+                              std::format("'{}' is not a sheet edge; write LEFT, RIGHT, "
+                                          "TOP or BOTTOM",
+                                          spelled));
+                return;
+            }
+            if (caseError) {
+                // Spec 2.6, exactly as "&TYPE=power": a fixed-set directive
+                // value shall be upper case.
+                diags_.report(DiagId::E34, v->span, spelled, edgeSideName(side));
+            }
+            return;
+        }
+
         case ValueType::None:
             if (v) {
                 diags_.report(DiagId::Type, v->span,
@@ -253,7 +277,12 @@ void LocalChecker::checkDevice(const Device* dev) {
             continue;
         }
         if (b->kind == BindingKind::Directive) {
-            checkDirective(b->directive, DirCtx::Pin);
+            // Revision 1.5: a directive written bare in a binding list -- no
+            // pin in front of it -- annotates the *instance*, so it is checked
+            // against the Instance context. Before 1.5 such a binding was
+            // checked as if it sat on a pin and then applied to nothing at
+            // all; see docs/assumptions.md, F2.
+            checkDirective(b->directive, DirCtx::Instance);
             continue;
         }
         for (const Directive* d : b->pinDirectives) checkDirective(d, DirCtx::Pin);
