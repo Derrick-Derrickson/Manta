@@ -32,6 +32,13 @@
   exactly as that statement would be: a directive on the statement holding the
   instance does not reach the nets of a binding's chain.
 
+- A device declared inside a binding's chain is an ordinary instance of the
+  enclosing body, so `manta annotate` numbers one written `C?` in source order
+  along with everything else, after the instance whose binding list holds it.
+  **W-01** counts a chain-bound pin as bound, and **E-08** — a pin used as a
+  chain terminal shall not also appear in the binding list — fires whether the
+  binding carries a single net or a chain.
+
 - **Nothing that compiled before compiles differently.** Every form 1.4 adds was
   a syntax error in 1.3, so the change is purely additive. `PIN = NET` is the
   degenerate case of the new rule and is unchanged; `PIN = ?` still unbinds a

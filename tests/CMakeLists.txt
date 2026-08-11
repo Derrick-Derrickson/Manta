@@ -20,6 +20,17 @@ add_test(NAME pipeline
                  -DWORK=${CMAKE_CURRENT_BINARY_DIR}/pipeline-work
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/pipeline.cmake)
 
+# Revision 1.4, spec 7.4: a binding is a chain rooted at a pin. The property
+# under test is the rule itself -- the binding-list form and the hand-hoisted
+# form must link to byte-identical netlists.
+add_test(NAME bindings
+         COMMAND ${CMAKE_COMMAND}
+                 -DMANTA=$<TARGET_FILE:manta>
+                 -DDIR=${CMAKE_CURRENT_SOURCE_DIR}/bindings
+                 -DSPEC_DIR=${CMAKE_CURRENT_SOURCE_DIR}/spec
+                 -DWORK=${CMAKE_CURRENT_BINARY_DIR}/bindings-work
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/bindings.cmake)
+
 # Spec 15.4: ".mantaO and .mantaNets are JSON, validated against a published
 # JSON Schema". Runs after `pipeline`, over the artifacts it produced.
 find_package(Python3 COMPONENTS Interpreter QUIET)

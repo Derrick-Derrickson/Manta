@@ -302,6 +302,13 @@ TEST_CASE("rev 1.3: section markers round-trip through .mantaO") {
     checkRoundTrip("sections.manta");
 }
 
+TEST_CASE("rev 1.4: a binding's connector and chain round-trip through .mantaO") {
+    // Spec 7.4: a binding is a chain rooted at a pin. The connector it opens
+    // with and the whole segment after it are part of the design, so an object
+    // that dropped either would link to a different board than it compiled.
+    checkRoundTrip("bindings.manta");
+}
+
 TEST_CASE("a range value survives the object round trip") {
     // '1:20' inside a list is what keeps a twenty-way pin map to one pair. A
     // range may descend -- that is how a reversed map is written -- so the

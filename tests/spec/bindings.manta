@@ -35,9 +35,10 @@ block bindings-demo {
         // A binding chain may run over as many lines as it needs.
         FB   == .{R3~10kR-0603: . = 5V;}
             == .{R4~10kR-0603: . = GND;};
-        // The pre-1.4 spelling, unchanged: one bare net after '='.
+        // A series element between the pin and a net.
         EN   = .{R5~100kR-0603}. = VPOS-PROT;
         COMP = .{C2~100nF-0603}. == GND;
+        // The pre-1.4 spelling, unchanged: one bare net after '='.
         GND  = GND;
     };
 
@@ -52,9 +53,15 @@ block bindings-demo {
         LANE[0]   = LANE-COMMON &~PINDELAY=8ps;
     };
 
-    // '.' takes the first unassigned pin, with a chain on the right of it
-    // like any other binding (spec 7.3).
-    VPOS-PROT = .{R7~0R-0603: . = .{C5~10uF-0805: . = GND;};}. = VPOS;
+    // A series element between two nets, and the bulk cap on the protected
+    // side. '.' takes the first unassigned pin of R7 and C5 alike (spec 7.3).
+    VPOS-PROT = .{R7~0R-0603}. = VPOS;
+    VPOS-PROT == .{C5~10uF-0805: . = GND;};
 
-    VPOS = .{TP1~board-supply}VOUT;
+    // An RC snubber written entirely inside one binding chain, whose capacitor
+    // is left unassigned: 'manta annotate' has to reach into a binding list to
+    // rewrite it (spec 7.4, 13).
+    VPOS-PROT == .{R8~10kR-0603: . = .{C?~100nF-0603: . = GND;};};
+
+    VPOS = {TP1~board-supply}VOUT;
 };
