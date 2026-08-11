@@ -101,19 +101,30 @@ private:
     }
 
     void device(const Device* dev, std::int64_t copies) {
-        if (!dev || !dev->instance || !dev->instance->declares) return;
-        const Designator& d = dev->instance->designator;
-        if (!valid(d.prefix.symbol)) return;
+        if (!dev || !dev->instance) return;
+        if (dev->instance->declares) {
+            const Designator& d = dev->instance->designator;
+            if (valid(d.prefix.symbol)) {
+                Site site;
+                site.fileIndex = fileIndex_;
+                site.span = d.assignmentSpan;
+                site.prefix = std::string(in_.text(d.prefix.symbol));
+                site.kind = d.kind;
+                site.number = d.number;
+                site.parts.assign(d.parts.begin(), d.parts.end());
+                site.copies = copies;
+                out_.push_back(std::move(site));
+            }
+        }
 
-        Site site;
-        site.fileIndex = fileIndex_;
-        site.span = d.assignmentSpan;
-        site.prefix = std::string(in_.text(d.prefix.symbol));
-        site.kind = d.kind;
-        site.number = d.number;
-        site.parts.assign(d.parts.begin(), d.parts.end());
-        site.copies = copies;
-        out_.push_back(std::move(site));
+        // Spec 7.4: a binding may carry a chain, and "a device declared inside a
+        // binding is an ordinary instance of the enclosing body ... annotated
+        // with everything else (13)". Its designator is written after the
+        // enclosing instance's, so it is collected after it and numbers fall in
+        // source order (spec 13.3).
+        for (const Binding* b : dev->instance->bindings) {
+            if (b->kind == BindingKind::PinNet && b->rhs) segment(b->rhs, copies);
+        }
     }
 
     std::size_t fileIndex_;
