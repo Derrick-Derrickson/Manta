@@ -64,6 +64,18 @@ private:
     void recoverToStatementEnd();
     void recoverToDeclEnd();
 
+    // The '{' nesting depth immediately before the current token, counted from
+    // the start of the file. pos_ never moves backwards, so the scan behind it
+    // is amortised to one pass over the token stream.
+    [[nodiscard]] int braceDepth();
+
+    // Restores the nesting a body loop is entitled to. Every body entry leaves
+    // the brace depth as it found it; one that does not was cut short with a
+    // '{' consumed and never closed -- a binding list that failed mid-parse --
+    // and continuing at body level would read the rest of that device as
+    // statements of the enclosing block, one bogus diagnostic per line.
+    void resyncToDepth(int depth);
+
     // ---- declarations -----------------------------------------------------
     Item* parseItem();
     Item* parseBlock(bool isStatic, Span startSpan);
@@ -161,6 +173,9 @@ private:
     DiagEngine& diags_;
     std::size_t pos_ = 0;
     int errorBudget_ = 200;  // stop reporting after a cascade; keep parsing
+    // How far braceDepth() has counted, and what it counted to.
+    std::size_t depthCursor_ = 0;
+    int depthAtCursor_ = 0;
 };
 
 }  // namespace manta
