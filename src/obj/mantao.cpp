@@ -371,9 +371,22 @@ private:
                         else name("pin", b->pin);
                         writeRange("range", b->pinRange);
                         if (b->unbind) w_.field("unbind", true);
+                        // Revision 1.4. Both keys are written only when they
+                        // carry something: a binding that says what every
+                        // binding said before 1.4 -- one bare net reached
+                        // through '=' -- serialises to exactly the bytes 1.3
+                        // wrote, and a 1.3 object read back sets neither.
+                        if (b->connector != Connector::Advance) {
+                            w_.field("connector", connectorName(b->connector));
+                        }
                         if (b->net) {
                             w_.key("net");
                             writeNet(b->net);
+                        } else if (b->rhs) {
+                            // The binding is a chain rooted at this pin, so its
+                            // right-hand side is a segment like any other.
+                            w_.key("rhs");
+                            writeSegment(b->rhs);
                         }
                         writeDirectives("directives", b->pinDirectives);
                         writeFields("fields", b->pinFields);
@@ -957,6 +970,15 @@ private:
         return n;
     }
 
+    // The inverse of ObjectWriter::connectorName. An absent key reads as '=',
+    // which is what a pre-1.4 object means and what the AST defaults to.
+    static Connector readConnector(std::string_view s) {
+        if (s == "==") return Connector::Same;
+        if (s == "=*") return Connector::Gather;
+        if (s == "*=") return Connector::Broadcast;
+        return Connector::Advance;
+    }
+
     static Strength readStrength(std::string_view s) {
         if (s == "weak") return Strength::Weak;
         if (s == "locked") return Strength::Locked;
@@ -1070,15 +1092,34 @@ private:
                                 : k == "directive" ? BindingKind::Directive
                                                    : BindingKind::PinNet;
                 switch (binding->kind) {
-                    case BindingKind::PinNet:
+                    case BindingKind::PinNet: {
                         binding->pinIsDot = b->boolean_("dot");
                         if (!binding->pinIsDot) binding->pin = readName(b->find("pin"));
                         binding->pinRange = readRange(b->find("range"));
                         binding->unbind = b->boolean_("unbind");
-                        binding->net = readNet(b->find("net"));
+                        // Absent in every object written before revision 1.4,
+                        // and absent from the common case since, so the default
+                        // is what an omitted key must mean.
+                        binding->connector = readConnector(b->str("connector"));
+                        // 'net' and 'rhs' are two spellings of one slot: a bare
+                        // net keeps the pre-1.4 encoding, anything else is a
+                        // segment. Setting both would leave the AST invariant
+                        // -- at most one of them -- broken, so refuse it.
+                        const JsonValue* netJson = b->find("net");
+                        const JsonValue* rhsJson = b->find("rhs");
+                        bool hasNet = netJson && netJson->kind == JsonKind::Object;
+                        bool hasRhs = rhsJson && rhsJson->kind == JsonKind::Object;
+                        if (hasNet && hasRhs) {
+                            fail("binding carries both 'net' and 'rhs' in object");
+                        } else if (hasRhs) {
+                            binding->rhs = readSegment(rhsJson);
+                        } else {
+                            binding->net = readNet(netJson);
+                        }
                         binding->pinDirectives = readDirectives(b->arr("directives"));
                         binding->pinFields = readFields(b->arr("fields"));
                         break;
+                    }
                     case BindingKind::Field:
                         binding->field = readField(b->find("field"));
                         break;
@@ -1163,12 +1204,7 @@ private:
         s->elements = commit(elements);
         std::vector<Connector> connectors;
         if (const JsonValue* a = o->arr("connectors")) {
-            for (const JsonPtr& c : a->array) {
-                connectors.push_back(c->text == "==" ? Connector::Same
-                                     : c->text == "=*" ? Connector::Gather
-                                     : c->text == "*=" ? Connector::Broadcast
-                                                       : Connector::Advance);
-            }
+            for (const JsonPtr& c : a->array) connectors.push_back(readConnector(c->text));
         }
         s->connectors = commit(connectors);
         s->span = readSpan(*o);
