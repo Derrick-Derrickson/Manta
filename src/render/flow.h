@@ -44,6 +44,12 @@ struct InterRoomFlow {
     // counts[a][b]: signal nets touching both room a and room b of the page,
     // square and symmetric, rooms in page order. Empty from the stub.
     std::vector<std::vector<std::uint32_t>> counts;
+    // Per room, page order: where the room wants to sit in the reading
+    // direction. Negative pulls left (a room of sources: connectors facing
+    // in, &EDGE=LEFT/TOP), positive pulls right (sinks, &EDGE=RIGHT/BOTTOM),
+    // zero is indifferent; magnitude is how many parts say so. Counts alone
+    // cannot carry this -- they are symmetric, and reading order is not.
+    std::vector<int> pull;
 };
 
 // Real implementation (later WP): collapse series strings, rank the vertex

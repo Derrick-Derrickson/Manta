@@ -83,6 +83,9 @@ bool classSaysPower(std::string_view v) {
 // Rail by evidence on the Net itself; the name heuristic is applied per page,
 // over the page-local spelling.
 bool isRailNet(const Design& d, const Net& n) {
+    // '&RAIL' (spec 11.3, revision 1.5) is the explicit override; the
+    // heuristics below catch the rails nobody marked.
+    if (n.directives.find("RAIL")) return true;
     if (const NetDirective* c = n.directives.find("CLASS"); c && classSaysPower(c->value))
         return true;
     for (const PinRef& p : n.pins) {
