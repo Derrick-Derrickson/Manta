@@ -41,6 +41,8 @@ file(MAKE_DIRECTORY "${WORK}")
 #                                                 too wide for any trunk
 #   UNCLAIMED U1.4, SW1.1, J2.1                   one pin on each of three
 #                                                 bodies: the idiom declines it
+#   STRUNG   U1.9, R5.1, C4.2                     a tap that carries on into a
+#                                                 second part before it lands
 #
 # A tap to a rail stands ABOVE the trunk and one to ground hangs below, so
 # NODE3 is a divider read the way a divider is drawn.
@@ -51,6 +53,7 @@ netclass power { &CURRENT=1A; };
 part FIX-R { @!type = resistor; @~footprint = R-0603; #value = 10kR; 1 = A &CASUAL; 2 = B &CASUAL; };
 part FIX-C { @!type = capacitor; @~footprint = C-0603; #value = 100nF; 1 = A &CASUAL; 2 = B &CASUAL; };
 part FIX-L { @!type = inductor; @~footprint = L-0805; #value = 4u7H; 1 = A &CASUAL; 2 = B &CASUAL; };
+part FIX-LED { @!type = led; @~footprint = R-0603; #value = red; 1 = A; 2 = K; };
 part FIX-SW {
     @!type = switch;
     @~footprint = SW-SMD;
@@ -67,6 +70,7 @@ part FIX-U {
     6 = SW>;
     7 = WIDEPIN;
     8 = GND< &TYPE=POWER &~NET=GND;
+    9 = STR>;
 };
 
 block fixture {
@@ -80,7 +84,15 @@ block fixture {
         FB = NODE3;
         SW = NODE4;
         WIDEPIN = WIDE;
+        STR = STRUNG;
     };
+
+    // STRUNG: one tap carries on through a second part before it lands, the
+    // way an LED and its series resistor do. STR-MID is inside that string,
+    // so it must be a drawn conductor and never a label.
+    {R5~FIX-R: A = STRUNG; B = STR-MID;};
+    {D1~FIX-LED: A = STR-MID; K = GND;};
+    {C4~FIX-C: A = GND; B = STRUNG;};
 
     // NODE3: a divider tap. R1 goes up to the rail, C1 down to ground.
     {R1~FIX-R: A = 3V3; B = NODE3;};
@@ -219,6 +231,34 @@ count_matches(un_labels "${html}" "class=\"netlabel\"[^>]*data-net=\"UNCLAIMED\"
 if(un_labels LESS 3)
     message(FATAL_ERROR "UNCLAIMED is claimed by no idiom, so each of its three "
                         "pins keeps a label; got ${un_labels}")
+endif()
+
+# --- a tap carries on as a string, it does not stop at the first part --------
+# STRUNG's R5 tap continues through D1 to ground. A tap that stopped at R5
+# would put a terminal mark on STR-MID and leave D1 to be drawn on its own,
+# which is exactly how a trunk can un-draw a chain that was already fine. So
+# STR-MID must be a drawn conductor carrying no mark of any kind.
+if(html MATCHES "class=\"netlabel\"[^>]*data-net=\"STR-MID\"")
+    message(FATAL_ERROR "STR-MID is inside a tap's string and must not be labelled")
+endif()
+if(NOT html MATCHES "class=\"wire\"[^>]*data-net=\"STR-MID\"")
+    message(FATAL_ERROR "STR-MID is inside a tap's string and must be drawn")
+endif()
+# Both parts of the string are on the sheet, and the string lands on ground.
+foreach(part "R5" "D1")
+    if(NOT html MATCHES ">${part}<")
+        message(FATAL_ERROR "${part} belongs to a drawn tap string but is not on the sheet")
+    endif()
+endforeach()
+# Every pin of STRUNG is on the trunk, so it needs no mark of its own.
+if(html MATCHES "class=\"netlabel\"[^>]*data-net=\"STRUNG\"")
+    message(FATAL_ERROR "STRUNG joins three pins and is drawn: it must carry no label")
+endif()
+# Two taps, and the trunk stops dead on the second: one T, one corner.
+count_matches(st_dots "${html}" "class=\"dot\"[^>]*data-net=\"STRUNG\"")
+if(NOT st_dots EQUAL 1)
+    message(FATAL_ERROR "STRUNG has one T and one corner, so exactly one junction "
+                        "dot; got ${st_dots}")
 endif()
 
 # --- the two-pin idioms still own the pairs ----------------------------------

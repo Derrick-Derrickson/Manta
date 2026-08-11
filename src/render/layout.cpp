@@ -195,10 +195,17 @@ struct Run {
 
 // One two-terminal part hanging off a node's trunk by the pin on the node's
 // net; the far pin carries the mark for whatever net it lands on.
+// One string of two-terminal parts hanging off a node's trunk, walked the way
+// a chain run is: `elems[0]` sits on the node's net, each part after it
+// continues through a private net, and `endNet` is where the string lands.
+// A tap is a whole run and not a single part because the string a trunk
+// interrupts -- a divider, an LED and its resistor -- is one drawn path in
+// every reference sheet, and cutting it at the first part would put a label
+// back in the middle of a conductor that was already drawn.
 struct NodeTap {
-    std::size_t cand = 0;       // index into the room's candidate list
-    std::uint32_t nearPin = 0;  // the component pin on the node's net
-    bool up = false;            // a tap to a rail stands above the trunk
+    std::vector<RunElem> elems;  // trunk-end first
+    std::int32_t endNet = -1;
+    bool up = false;  // a string landing on a rail stands above the trunk
 };
 
 // A net joining three or more pins, drawn as one conductor: legs out of an
@@ -518,9 +525,11 @@ void RoomLayout::claimNodes() {
         if (bestPins.empty()) continue;
 
         // Taps: the room's unclaimed two-terminal parts with exactly one pin
-        // on the net. A part with both pins on it is a short, not a tap.
-        std::vector<NodeTap> taps;
-        for (std::size_t ci = 0; ci < cands.size() && taps.size() < kMaxTaps; ++ci) {
+        // on the net. A part with both pins on it is a short, not a tap. The
+        // first part is claimed here; the string past it is walked below, so
+        // nothing is consumed until the tap is certain to exist.
+        std::vector<std::size_t> heads;
+        for (std::size_t ci = 0; ci < cands.size() && heads.size() < kMaxTaps; ++ci) {
             const Cand& c = cands[ci];
             if (c.consumed) continue;
             const Component& cc = d.components[c.comp];
@@ -528,20 +537,40 @@ void RoomLayout::claimNodes() {
             bool on0 = cc.pins[0].net == net;
             bool on1 = cc.pins[1].net == net;
             if (on0 == on1) continue;
-            taps.push_back(NodeTap{ci, on0 ? 0u : 1u, false});
+            heads.push_back(ci);
         }
-        if (bestPins.size() + taps.size() < 2) continue;  // nothing to join
+        if (bestPins.size() + heads.size() < 2) continue;  // nothing to join
 
         Node node;
         node.net = net;
         node.anchor = anchors[bestA];
         node.rootPins = std::move(bestPins);
-        for (NodeTap& t : taps) {
-            Cand& c = cands[t.cand];
-            c.consumed = true;
-            std::int32_t far = d.components[c.comp].pins[t.nearPin == 0 ? 1 : 0].net;
-            t.up = far >= 0 && markKindFor(pg, far) == MarkKind::RailFlag;
-            node.taps.push_back(t);
+        for (std::size_t ci : heads) {
+            const Component& cc = d.components[cands[ci].comp];
+            std::uint32_t nearPin = cc.pins[0].net == net ? 0u : 1u;
+            NodeTap t;
+            cands[ci].consumed = true;
+            t.elems.push_back(RunElem{ci, nearPin});
+            // The string continues exactly as a chain run does: on through
+            // each private net into the next unclaimed part, stopping at a
+            // ground, a rail, or anything another idiom already holds.
+            std::uint32_t comp = cands[ci].comp;
+            std::uint32_t exit = nearPin == 0 ? 1u : 0u;
+            std::int32_t link = d.components[comp].pins[exit].net;
+            while (!isGround(pg, link) && !isRail(pg, link) && isPrivate(link)) {
+                PinRef other = otherEnd(link, comp, exit);
+                Cand* nx = consumable(other);
+                if (!nx) break;
+                nx->consumed = true;
+                t.elems.push_back(
+                    RunElem{static_cast<std::size_t>(candOf[other.component]), other.pin});
+                comp = other.component;
+                exit = other.pin == 0 ? 1u : 0u;
+                link = d.components[comp].pins[exit].net;
+            }
+            t.endNet = link;
+            t.up = link >= 0 && markKindFor(pg, link) == MarkKind::RailFlag;
+            node.taps.push_back(std::move(t));
         }
 
         // The trunk may drop its mark only when the drawing already holds
@@ -564,10 +593,12 @@ RoomLayout::NodeMetrics RoomLayout::nodeMetrics(const Node& node) const {
     NodeMetrics mt;
     mt.pitch = 3 * P;
     for (const NodeTap& t : node.taps) {
-        std::int32_t far = d.components[cands[t.cand].comp].pins[t.nearPin == 0 ? 1 : 0].net;
+        // Only the mark at the string's far end sits under the tap column; the
+        // bodies above it are narrow, so the widest name is what sets the pitch.
         int w = 3 * P;
-        if (far >= 0 && markKindFor(pg, far) != MarkKind::Ground) {
-            w = textW(netName(pg, far));
+        if (t.endNet >= 0 && markKindFor(pg, t.endNet) != MarkKind::Ground &&
+            markKindFor(pg, t.endNet) != MarkKind::NoConnect) {
+            w = textW(netName(pg, t.endNet));
         }
         mt.pitch = std::max(mt.pitch, w + P);
     }
@@ -609,34 +640,48 @@ bool RoomLayout::placeNode(const Node& node, const PlacedSymbol& anchor, int ext
     const int minY = ys.front(), maxY = ys.back();
 
     // Tap bodies, measured before a trunk row is chosen: the strip's height
-    // needs the tallest body on each side of it.
-    struct TapGeom {
+    // needs the tallest string on each side of it. Each element of a string
+    // walks one step further from the trunk, so its own entry pin faces back
+    // towards it.
+    struct ElemGeom {
         SymbolGeom geom;
         Rot rot = Rot::R0;
         int h = 0;
-        std::int32_t farNet = -1;
+        std::uint32_t entryPin = 0;  // the pin facing the trunk
+    };
+    struct TapGeom {
+        std::vector<ElemGeom> elems;
+        std::int32_t endNet = -1;
         bool up = false;
+        int reach = 0;  // trunk row to the far side of the end mark
     };
     std::vector<TapGeom> tg;
     int upH = 0, dnH = 0;
     for (const NodeTap& t : node.taps) {
-        const Cand& c = cands[t.cand];
         TapGeom e;
         e.up = t.up;
-        e.farNet = d.components[c.comp].pins[t.nearPin == 0 ? 1 : 0].net;
-        e.geom = buildSymbol(d.components[c.comp], m.kinds[c.comp]);
-        // Every tap is measured before anything is drawn, so a geometry that
-        // does not expose the tapped pin fails the node here -- where the
-        // fallback can still hand every claimed part back whole.
-        if (geomPinFor(e.geom, t.nearPin) < 0) return false;
-        // verticalRot puts the named pin on top: a tap standing above the
-        // trunk wants its FAR pin up, one hanging below wants its near pin up.
-        std::uint32_t farPin = t.nearPin == 0 ? 1u : 0u;
-        e.rot = verticalRot(e.geom, e.up ? farPin : t.nearPin);
-        e.h = rotatedH(e.geom, e.rot);
-        int reach = P + e.h + P + 16;  // stub, body, stub, the far mark's text
-        if (e.up) upH = std::max(upH, reach);
-        else dnH = std::max(dnH, reach);
+        e.endNet = t.endNet;
+        e.reach = P + 16;  // the last stub and the end mark's text
+        for (const RunElem& re : t.elems) {
+            const Cand& c = cands[re.cand];
+            ElemGeom eg;
+            eg.entryPin = re.entryPin;
+            eg.geom = buildSymbol(d.components[c.comp], m.kinds[c.comp]);
+            // Every element is measured before anything is drawn, so a
+            // geometry that does not expose the pin fails the node here --
+            // where the fallback can still hand every claimed part back whole.
+            if (geomPinFor(eg.geom, eg.entryPin) < 0) return false;
+            // verticalRot puts the named pin on top: an element of a string
+            // hanging below wants its own entry pin up, one standing above
+            // wants its exit pin up so the entry still faces the trunk.
+            std::uint32_t exitPin = eg.entryPin == 0 ? 1u : 0u;
+            eg.rot = verticalRot(eg.geom, e.up ? exitPin : eg.entryPin);
+            eg.h = rotatedH(eg.geom, eg.rot);
+            e.reach += P + eg.h;  // the gap wire above it, then the body
+            e.elems.push_back(std::move(eg));
+        }
+        if (e.up) upH = std::max(upH, e.reach);
+        else dnH = std::max(dnH, e.reach);
         tg.push_back(std::move(e));
     }
 
@@ -699,32 +744,47 @@ bool RoomLayout::placeNode(const Node& node, const PlacedSymbol& anchor, int ext
         segs.push_back(Seg{spineX, stripY, endX, stripY});
     }
 
+    // Each tap walks away from the trunk one part at a time: a gap wire, a
+    // body, then the next gap on whatever net that body exits onto, so a
+    // string's inner nets are drawn conductors and never labels. Only the last
+    // gap carries a mark.
     for (int k = 0; k < nTaps; ++k) {
         const TapGeom& e = tg[static_cast<std::size_t>(k)];
         const NodeTap& t = node.taps[static_cast<std::size_t>(k)];
         int tapX = spineX + dir * (mt.firstTap + k * mt.pitch);
         int sgn = e.up ? -1 : 1;
-        buf.wire({tapX, stripY, tapX, stripY + sgn * P}, node.net);
-        segs.push_back(Seg{tapX, stripY, tapX, stripY + sgn * P});
 
-        PlacedSymbol s;
-        s.component = cands[t.cand].comp;
-        s.geom = e.geom;
-        s.rot = e.rot;
-        int gp = geomPinFor(s.geom, t.nearPin);
-        int lx = 0, ly = 0, rx = 0, ry = 0;
-        localPin(s.geom, s.geom.pins[static_cast<std::size_t>(gp)], lx, ly);
-        rotatePoint(s.geom, s.rot, lx, ly, rx, ry);
-        s.x = tapX - rx;
-        s.y = e.up ? stripY - P - e.h : stripY + P;
-        int farY = e.up ? s.y : s.y + e.h;
-        int markY = farY + sgn * P;
-        buf.wire({tapX, farY, tapX, markY}, e.farNet);
-        if (e.farNet >= 0) {
-            buf.mark(markKindFor(pg, e.farNet), tapX, markY, e.up ? Side::Top : Side::Bottom,
-                     e.farNet);
+        int cursor = stripY;
+        std::int32_t link = node.net;
+        for (std::size_t i = 0; i < e.elems.size(); ++i) {
+            const ElemGeom& eg = e.elems[i];
+            buf.wire({tapX, cursor, tapX, cursor + sgn * P}, link);
+            if (i == 0) segs.push_back(Seg{tapX, cursor, tapX, cursor + sgn * P});
+            cursor += sgn * P;
+
+            PlacedSymbol s;
+            s.component = cands[t.elems[i].cand].comp;
+            s.geom = eg.geom;
+            s.rot = eg.rot;
+            int gp = geomPinFor(s.geom, eg.entryPin);
+            int lx = 0, ly = 0, rx = 0, ry = 0;
+            localPin(s.geom, s.geom.pins[static_cast<std::size_t>(gp)], lx, ly);
+            rotatePoint(s.geom, s.rot, lx, ly, rx, ry);
+            // The entry pin lands on the cursor; ry is 0 hanging below and the
+            // body's height standing above, which is the same expression.
+            s.x = tapX - rx;
+            s.y = cursor - ry;
+            cursor += sgn * eg.h;
+            std::uint32_t exitPin = eg.entryPin == 0 ? 1u : 0u;
+            link = d.components[s.component].pins[exitPin].net;
+            buf.symbols.push_back(std::move(s));
         }
-        buf.symbols.push_back(std::move(s));
+
+        buf.wire({tapX, cursor, tapX, cursor + sgn * P}, e.endNet);
+        if (e.endNet >= 0) {
+            buf.mark(markKindFor(pg, e.endNet), tapX, cursor + sgn * P,
+                     e.up ? Side::Top : Side::Bottom, e.endNet);
+        }
     }
 
     if (node.terminal) {
@@ -1354,7 +1414,11 @@ int RoomLayout::placeBand1(int y) {
                     buf.reserve(side == Side::Left ? Rect{px - e, py - 6, px, py + 6}
                                                   : Rect{px, py - 6, px + e, py + 6});
                 }
-                for (const NodeTap& t : nd->taps) orphans.push_back(cands[t.cand].comp);
+                // Every part of every string goes back, not just the one that
+                // touched the trunk: a string the node walked is claimed whole.
+                for (const NodeTap& t : nd->taps) {
+                    for (const RunElem& re : t.elems) orphans.push_back(cands[re.cand].comp);
+                }
             }
         }
 
