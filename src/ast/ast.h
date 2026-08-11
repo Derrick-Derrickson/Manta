@@ -255,6 +255,13 @@ struct Designator {
     Span assignmentSpan;
 };
 
+enum class Connector : std::uint8_t {
+    Advance,    // '='   connect and advance the node (spec 6.2)
+    Same,       // '=='  everything in the run is one net (spec 6.3)
+    Gather,     // '=*'  array on the left shorted to one net (spec 6.5)
+    Broadcast,  // '*='  one net fanned out to every element (spec 6.5)
+};
+
 enum class BindingKind : std::uint8_t { PinNet, Field, Directive };
 
 struct Binding {
@@ -263,7 +270,16 @@ struct Binding {
     bool pinIsDot = false;
     Name pin;
     Range pinRange;
+    // The connector written after the pin. Only '=' was legal before revision
+    // 1.4; a binding may now open with any of spec 6's connectors.
+    Connector connector = Connector::Advance;
+    // A binding whose right-hand side is a single bare net keeps using 'net',
+    // so every design written before revision 1.4 takes exactly the path it
+    // always did. 'rhs' carries the general case: the binding is then a chain
+    // rooted at this pin, equivalent to hoisting "<designator>.<pin> <connector>
+    // <rhs>" into the enclosing body (spec 7.4). At most one of the two is set.
     NetExpr* net = nullptr;
+    Segment* rhs = nullptr;
     bool unbind = false;  // "GNDB=?": deliberately floating (spec 11.6)
     // Directives written against the pin rather than the instance, as in
     // "{U5~ddr-chip: DQ[0] &PINDELAY=18ps; }" (spec 11.5). A binding *is* a
@@ -300,13 +316,6 @@ struct Device {
 // ---------------------------------------------------------------------------
 // Chains (spec 6, 8)
 // ---------------------------------------------------------------------------
-
-enum class Connector : std::uint8_t {
-    Advance,    // '='   connect and advance the node (spec 6.2)
-    Same,       // '=='  everything in the run is one net (spec 6.3)
-    Gather,     // '=*'  array on the left shorted to one net (spec 6.5)
-    Broadcast,  // '*='  one net fanned out to every element (spec 6.5)
-};
 
 enum class MultKind : std::uint8_t {
     None,
