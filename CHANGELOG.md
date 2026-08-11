@@ -1,5 +1,58 @@
 # Changelog
 
+## 1.4.0 — 2026-08-11
+
+### Language, revision 1.4
+
+- **A binding may carry a chain.** The right-hand side of a binding was a single
+  net name, so the components belonging to a pin — a decoupling capacitor, a
+  feedback divider, a pull-up — had to be hoisted into statements of their own,
+  away from the pin they support:
+
+  ```
+  VBAT = VIN{U5~ldo: GND=GND; }VOUT = 3V3;
+  U5.EN = .{R7~100kR-0603}. = VBAT;
+  ```
+
+  They can now be written where the pin is, meaning the same thing:
+
+  ```
+  VBAT = VIN{U5~ldo: GND=GND; EN = .{R7~100kR-0603}. = VBAT; }VOUT = 3V3;
+  ```
+
+  A binding is now defined as a chain rooted at a pin of its instance: a pin, a
+  connector and a segment mean exactly what that connector and segment mean in a
+  statement of the enclosing body written after a reference to the pin. Any of
+  the four connectors — `=`, `==`, `=*`, `*=` — may open a binding, where only
+  `=` was accepted before, and grouping, replication and further instances are
+  all available inside one. `^` does not appear in a binding, which is one
+  segment rather than a chain of them.
+
+  Because a binding means the hoisted statement, it is its own directive scope,
+  exactly as that statement would be: a directive on the statement holding the
+  instance does not reach the nets of a binding's chain.
+
+- **Nothing that compiled before compiles differently.** Every form 1.4 adds was
+  a syntax error in 1.3, so the change is purely additive. `PIN = NET` is the
+  degenerate case of the new rule and is unchanged; `PIN = ?` still unbinds a
+  pin and is still written only with `=`; and `&`, `#` and `@` items written
+  after a binding's right-hand side still attach to the pin, not to the chain.
+
+- The §19 grammar for a binding was rewritten to admit all of this, and in doing
+  so picked up two forms the language always accepted but the production did not
+  spell out: a pin carrying directives with no right-hand side
+  (`DQ[0] &PINDELAY=18ps`) and the unbind `PIN = ?`.
+
+### Fixed: one bad binding no longer buries the rest of the file
+
+A syntax error inside a binding list unwound the parser all the way to the top
+level, so every statement after it in the block was read as though it were a new
+top-level declaration. One mistyped binding produced a wall of errors — among
+them `expected 'block', 'part', 'harness', 'netclass', 'match' or 'cable'`
+reported against later statements that were perfectly valid — and the single
+real error was lost in it. Recovery now stops at the end of the binding or of
+the statement containing it, so what is reported is the mistake that was made.
+
 ## 1.3.0 — 2026-08-10
 
 ### Language, revision 1.3

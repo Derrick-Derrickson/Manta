@@ -444,3 +444,66 @@ A wire that still cannot be placed is not drawn: the connection keeps its net
 labels, which connect by name, exactly as on a hand-drawn schematic. A missing
 wire is therefore never a missing connection; clicking either label still
 highlights the whole net.
+
+---
+
+## F. Language design decisions
+
+Where a revision adds a construct, the shape it took was a choice among workable
+alternatives. The reasoning is recorded here, so a later reader can tell what was
+weighed rather than re-deriving it.
+
+### F1. A binding is a chain rooted at a pin
+
+Revision 1.4 lets the right-hand side of a binding be a segment rather than a
+single net name (§7.4). The problem is that the components belonging to a pin —
+a decoupling capacitor, a feedback divider, a pull-up, a boot-strap cap — could
+not be written where the pin is. Three shapes were available.
+
+**Leave authors to hoist by hand.** Nothing is added to the language: each
+supporting component goes in its own statement, reaching back to the pin by a
+dotted reference. This already worked, and it is what the new form compiles to.
+But it scatters one device's support across a body, and the scattered statements
+are ordered by nothing. A regulator with six such pins reads as six unrelated
+statements plus one instantiation, and the association a schematic makes obvious
+is carried only by the designator spelling.
+
+**A nested statement construct.** Give the binding list a statement grammar of
+its own, so a binding could hold something statement-shaped with its own
+terminator and its own directive scope. This is the general answer, and it is
+too general: it introduces a second place where connectivity is written, with
+its own scoping question at every level of nesting, and it invites a syntax for
+things a binding has no business declaring — ports, fields at block scope,
+sections. It also has no obvious stopping point, since a nested statement
+containing an instance would nest again.
+
+**Resolution.** A binding is a chain rooted at a pin of the enclosing instance,
+and `PIN` *connector* *segment* is defined to mean what `D.PIN` *connector*
+*segment*`;` means in the enclosing body. That definition is the whole feature:
+it adds no scoping rule, no second connectivity syntax and no new kind of
+element, only a position where an existing one may be written.
+
+The equivalence is what makes it cheap. Because a binding's chain is exactly the
+hoisted statement, directive scope needs no rule beyond the one §11.2 already
+states — a statement is the scope unit, so a binding is its own scope and the
+enclosing statement's directives do not reach into it. ERC sees ordinary nets
+and ordinary pins, so E-22, E-26, E-27 and the rest apply unchanged. A device
+declared inside a binding is an instance of the enclosing body, so it takes that
+body's active render section (§4.7) and is annotated with everything else, with
+no traversal that knows about bindings. `PIN = NET`, the only form legal before
+1.4, is the degenerate case where the segment is one net element, and takes the
+same path it always did.
+
+The restrictions follow from the same equivalence rather than from taste. A
+binding is one segment, so `^` — which partitions a *statement* into segments —
+has nothing to partition and does not appear. All four connectors of §6 open a
+binding because a segment admits all four. And `PIN = NET` does not trip E-22
+for the reason §6.2 already gives: the left side is a pin reference, and a pin
+is a device terminal.
+
+The §19 production was widened at the same time to admit two forms the language
+had always accepted and the grammar did not: a pin carrying directives or fields
+with no right-hand side (`DQ[0] &PINDELAY=18ps`, §11.5) and the unbind
+`PIN = ?` (§11.6). Both are of the kind recorded in section A — the wording was
+narrower than the language — and are corrected here rather than listed there
+because the production they belong to was being rewritten anyway.
