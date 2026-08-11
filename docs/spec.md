@@ -1,8 +1,19 @@
 # The Manta Schematic Definition Language
 
-**Specification, revision 1.3**
+**Specification, revision 1.4**
 
 > **Corrected against a reference implementation.**
+>
+> **1.4 lets a binding carry a chain.** The right-hand side of a binding (§7.4)
+> was a single net name; it is now an ordinary segment. A decoupling capacitor, a
+> feedback divider or a series resistor can be written at the pin it belongs to
+> rather than hoisted into a statement of its own. The rule is an equivalence: a
+> pin, a connector and a segment in the binding list of instance `D` mean exactly
+> what that connector and segment mean in the enclosing body written after
+> `D.PIN`. All four connectors of §6 may open a binding, where only `=` was
+> accepted before; §8's grouping and replication are available inside one; and a
+> binding is its own directive scope, exactly as the hoisted statement would be.
+> `PIN = NET` is the degenerate case, and is unchanged in meaning.
 >
 > **1.3 puts the design on a page.** A `--- TITLE` line inside a block body
 > (§4.7) names a render section: a purely presentational grouping of the
@@ -27,9 +38,10 @@
 > **1.1 added one construct**: the end-of-content marker of §2.8, which lets a
 > file carry documentation after its declarations.
 >
-> Each revision is a superset of the one before. A 1.0 source is a valid 1.3
+> Each revision is a superset of the one before. A 1.0 source is a valid 1.4
 > source, and a toolchain reads any object whose revision is no newer than its
-> own.
+> own. 1.4 is purely additive: every form it adds was a syntax error before it,
+> so no construct that compiled under an earlier revision has changed meaning.
 >
 > The remaining changes are editorial.
 >
@@ -704,6 +716,9 @@ extern U5.1 = GND;                   // a pin reference (§6.6)
 USB = MCU-USB;                       // harnesses, assigned member-wise (§12.1)
 ```
 
+This is also why a binding may open with `=` against a bare net: a binding is rooted at a
+pin (§7.4), and a pin is a device terminal.
+
 ### 6.3 `==` — same net
 
 Every element in a run of consecutive `==` lies on one net.
@@ -874,12 +889,69 @@ S{Q1~FFET123: G=nPWR-EN; }D
 I{U5~AMP012: EN=AMP-EN; PWR=PWR-SWITCHED; GND=GND; }O
 ```
 
-A binding connects a pin of the instance to a net named elsewhere. Nets reached through a
-binding are not part of the chain and are not covered by the statement's directives
-(§11.2).
+**A binding is a chain rooted at a pin of the enclosing instance.** A binding is written as
+a pin of the instance, a connector, and a segment. It means exactly what that connector and
+that segment mean in a statement of the enclosing body whose leading element is a reference
+to the pin: the pin takes the place of that leading element, and everything after the
+connector is an ordinary segment (§19), with all of §6's connectors and all of §8's
+grouping and replication available.
 
-A binding is a pin-scoped `&NET` (§11.6); `GND=AGND` and `GND &NET=AGND` are one
-mechanism.
+```
+VBAT = VIN{U5~ldo: GND=GND; EN = .{R7~100kR-0603}. = VBAT; }VOUT = 3V3;
+```
+
+The `EN` binding is the second of these two statements, written where the pin is:
+
+```
+VBAT = VIN{U5~ldo: GND=GND; }VOUT = 3V3;
+U5.EN = .{R7~100kR-0603}. = VBAT;
+```
+
+`PIN = NET` is the degenerate case of the same rule, where the segment is a single net
+element. It joins two names with `=` and is not **E-22**, for the reason §6.2 gives: the
+left side is a pin reference, and a pin is a device terminal.
+
+Any of the four connectors of §6 may open a binding — `=`, `==`, `=*`, `*=` — each with its
+usual meaning. `^` (§6.4) does not appear in a binding: a binding is one segment, not a
+chain of `^`-separated segments. Where two unconnected things belong to one pin, write two
+bindings or a separate statement.
+
+```
+{U2~buck-3a:
+    VIN  = VPOS == .{C1~10uF-0805: .=GND; };
+    FB   == .{R3~51kR-0603: .=5V; } == .{R4~10kR-0603: .=GND; };
+    COMP = .{C2~1nF-0603}. == GND;
+};
+```
+
+`VIN` sits on `VPOS`, which carries `C1` to ground. `FB` is one node with the junction of
+`R3` and `R4`. `COMP` reaches ground through `C2`.
+
+A binding forms its own scope, exactly as the equivalent hoisted statement does. The nets
+of a binding's chain are not part of the enclosing chain and are not covered by the
+directives of the statement that contains the instance (§11.2); directives written inside a
+binding do not reach the enclosing chain either.
+
+A segment ends at the first token that is not a connector or an element, so a `&`, `#` or
+`@` item written after a binding's right-hand side is never part of its chain. Such an item
+attaches to the pin, as it always has (§11.5, §11.6), and a pin may carry one with no
+right-hand side at all.
+
+```
+{U1~ddr-chip: DQ[0] = MEM-D0 &PINDELAY=18ps; DQ[1] &PINDELAY=18ps; }
+```
+
+`&PINDELAY` attaches to `DQ[0]`, not to `MEM-D0`.
+
+A binding whose right-hand side is a single net is a pin-scoped `&NET` (§11.6); `GND=AGND`
+and `GND &NET=AGND` are one mechanism. `PIN = ?` unbinds a pin (§11.6) and is written only
+with `=`.
+
+A device declared inside a binding is an ordinary instance of the enclosing body: it takes
+that body's active render section (§4.7) and is annotated with everything else (§13).
+
+A pin used as a terminal shall not also appear in the binding list (**E-08**, §7.3),
+whether that binding carries a single net or a chain.
 
 A device with no bindings is written bare.
 
@@ -1295,7 +1367,7 @@ A directive covers every net in the declared chain, without exception:
 
 It does not cover:
 
-- nets reached through a `:` binding
+- the nets of a `:` binding's chain, which is its own scope (§7.4)
 - nodes internal to a part or block
 
 ```
@@ -2520,7 +2592,8 @@ designator      = identifier ( "?" | integer | desig_range ) ;
 desig_range     = "%" "[" desig_part { "," desig_part } "]" ;
 desig_part      = integer [ ":" integer ] ;
 terminal        = "." | identifier [ "[" range "]" ] ;
-binding         = ( pin_ref "=" net_expr ) | field_decl | directive ;
+binding         = pin_ref [ connector segment | "=" "?" ] { directive | field_decl }
+                | field_decl | directive ;
 pin_ref         = identifier [ "[" range "]" ] | "." ;
 
 net_expr        = [ arrow ] net_name [ arrow ] ;
