@@ -88,6 +88,9 @@ rect.room { fill: none; stroke: var(--wire); stroke-width: 1; }
 .roomtitle { font-size: 12px; fill: var(--wire); letter-spacing: 2px;
              font-family: Georgia, serif; }
 text.nc { fill: var(--nc); }
+/* the no-connect cross, in the grey that already de-emphasises a NC pin's
+   number and name, so the whole pin reads as one deliberately dead thing */
+line.noconn { stroke: var(--nc); stroke-width: 1; }
 .sheetnote { font-size: 10px; font-style: italic; fill: var(--frame);
              font-family: Georgia, serif; }
 
