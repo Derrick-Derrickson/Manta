@@ -354,7 +354,7 @@ void emitSheetSym(std::string& out, const RenderModel& m, const SheetSymItem& c)
     out += "</a>\n";
     for (std::size_t i = 0; i < b.ports.size(); ++i) {
         const BlockPort& p = b.ports[i];
-        int py = c.y + kSheetSymHeader + (static_cast<int>(i) + 1) * kPinPitch;
+        int py = c.y + sheetSymPortY(static_cast<int>(i));
         out += std::format("<g data-net=\"{}\">\n", esc(flatOf(m, p.net)));
         out += "<polygon class=\"ptab\" points=\"";
         if (p.direction == PortDir::Out) {

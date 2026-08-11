@@ -66,10 +66,25 @@ bool railName(std::string_view name) {
     return false;
 }
 
+// A CLASS value whose '-'/'_'-separated tokens contain "power" declares a
+// supply: "power" and "raw-power" qualify, "powerful" does not -- the token
+// must stand whole, not merely prefix the value.
+bool classSaysPower(std::string_view v) {
+    std::size_t at = 0;
+    while (at <= v.size()) {
+        std::size_t end = v.find_first_of("-_", at);
+        if (end == std::string_view::npos) end = v.size();
+        if (v.substr(at, end - at) == "power") return true;
+        at = end + 1;
+    }
+    return false;
+}
+
 // Rail by evidence on the Net itself; the name heuristic is applied per page,
 // over the page-local spelling.
 bool isRailNet(const Design& d, const Net& n) {
-    if (const NetDirective* c = n.directives.find("CLASS"); c && c->value == "power") return true;
+    if (const NetDirective* c = n.directives.find("CLASS"); c && classSaysPower(c->value))
+        return true;
     for (const PinRef& p : n.pins) {
         const ComponentPin& pin = d.components[p.component].pins[p.pin];
         if (pin.type == PinType::Power && pin.direction == PortDir::Out) return true;

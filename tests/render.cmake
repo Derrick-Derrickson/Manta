@@ -26,6 +26,8 @@ set(SRC "${WORK}/rooms.manta")
 file(WRITE "${SRC}" "\
 netclass power { &CURRENT=1A; };
 
+netclass raw-power { &CURRENT=2A; };
+
 part FIX-R { @!type = resistor; @~footprint = R-0603; #value = 10kR; 1 = A &CASUAL; 2 = B &CASUAL; };
 part FIX-C { @!type = capacitor; @~footprint = C-0603; #value = 100nF; 1 = A &CASUAL; 2 = B &CASUAL; };
 part FIX-LED { @!type = led; @~footprint = R-0603; #value = red; 1 = A; 2 = K; };
@@ -65,6 +67,7 @@ block sub {
 block fixture {
     GND &TYPE=GROUND;
     3V3 &CLASS=power;
+    RAWPWR &CLASS=raw-power &STUB;
     PROBE &STUB;
     
 
@@ -88,6 +91,7 @@ block fixture {
     {R8~FIX-R: A = LEFTY[0]; B = LEFTY[1];};
     {TP1~FIX-TP: T = SPI-CLK;};
     {TP2~FIX-TP: T = PROBE;};
+    {TP3~FIX-TP: T = RAWPWR;};
     {U4~FIX-NC: IN = SPI-CLK; OUT = LED-A; SPARE = DEAD-PIN;};
 
     --- SUBS
@@ -105,6 +109,18 @@ file(SHA256 "${WORK}/fixture.html" a)
 file(SHA256 "${WORK}/fixture2.html" b)
 if(NOT a STREQUAL b)
     message(FATAL_ERROR "render is not deterministic")
+endif()
+
+# --- TEMPORARY (WP7 removes this): the pipeline flag -------------------------
+# '--layout=flow' selects the Flow pipeline, whose stub delegates to the
+# classic engine, so its output must be byte-identical to the default. This
+# assertion proves the flag and the delegation; it dies when the flow placer
+# lands and the outputs legitimately diverge.
+run_manta(render --layout=flow -o "${WORK}/fixture-flow.html" "${WORK}/fixture.mantaNets")
+file(SHA256 "${WORK}/fixture-flow.html" f)
+if(NOT a STREQUAL f)
+    message(FATAL_ERROR "--layout=flow must render byte-identically to the default "
+                        "while its stub delegates to the classic engine")
 endif()
 
 file(READ "${WORK}/fixture.html" html)
@@ -128,12 +144,28 @@ if(NOT bar_count EQUAL 2)
     message(FATAL_ERROR "expected rail bars for 3V3 and VBAT, got ${bar_count}")
 endif()
 
-# --- port flags: SPI-CLK spans the MCU, IO and MISC rooms --------------------
-string(REGEX MATCHALL "class=\"portflag\" data-net=\"SPI-CLK\"" flags "${html}")
-list(LENGTH flags flag_count)
-if(flag_count LESS 2)
-    message(FATAL_ERROR "SPI-CLK crosses rooms and must appear as a port flag in "
-                        "each, got ${flag_count}")
+# --- room-crossing nets: a plain label, not a port flag ----------------------
+# SPI-CLK spans the MCU, IO and MISC rooms. Crossing a room boundary is not
+# crossing a page: only a block-port net (direction != None) earns the flag,
+# so SPI-CLK labels each appearance and flies no flag anywhere.
+string(REGEX MATCHALL "class=\"netlabel\"[^>]*data-net=\"SPI-CLK\"" labels "${html}")
+list(LENGTH labels label_count)
+if(label_count LESS 2)
+    message(FATAL_ERROR "SPI-CLK crosses rooms and must appear as a plain label in "
+                        "each, got ${label_count}")
+endif()
+if(html MATCHES "class=\"portflag\" data-net=\"SPI-CLK\"")
+    message(FATAL_ERROR "a merely room-crossing net must not fly a port flag")
+endif()
+
+# --- rail classification by CLASS token --------------------------------------
+# A CLASS value containing the token 'power' ('raw-power') is a rail, so
+# RAWPWR renders as a rail flag, never a plain label.
+if(NOT html MATCHES "class=\"rail\" data-net=\"RAWPWR\"")
+    message(FATAL_ERROR "a net of class 'raw-power' must render a rail flag")
+endif()
+if(html MATCHES "class=\"netlabel\"[^>]*data-net=\"RAWPWR\"")
+    message(FATAL_ERROR "a rail net must not carry a plain label")
 endif()
 
 # --- the drawn idioms actually drew ------------------------------------------

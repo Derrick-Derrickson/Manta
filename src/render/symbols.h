@@ -69,6 +69,11 @@ struct SymbolGeom {
 // "2" < "10", "A2" < "A10". Ties fall back to plain byte order.
 [[nodiscard]] bool naturalLess(std::string_view a, std::string_view b);
 
-[[nodiscard]] SymbolGeom buildSymbol(const Component& c, SymbolKind kind);
+// A pin-side assignment planned by the Flow pipeline (sides.h). nullptr --
+// and an empty plan -- mean the builtin heuristic, byte-identically.
+struct SidePlan;
+
+[[nodiscard]] SymbolGeom buildSymbol(const Component& c, SymbolKind kind,
+                                     const SidePlan* plan = nullptr);
 
 }  // namespace manta::render

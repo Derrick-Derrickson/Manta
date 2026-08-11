@@ -4,6 +4,8 @@
 
 #include <algorithm>
 
+#include "render/sides.h"
+
 namespace manta::render {
 
 namespace {
@@ -48,7 +50,10 @@ void placeColumn(const Component& c, const std::vector<std::uint32_t>& idx, Side
     }
 }
 
-SymbolGeom buildGeneric(const Component& c) {
+SymbolGeom buildGeneric(const Component& c, const SidePlan* plan) {
+    // WP2 places pins by `plan`; until then only the heuristic below runs,
+    // and a null (or empty) plan must keep it byte-identical.
+    (void)plan;
     std::vector<std::uint32_t> left, right, top, bottom, nc;
     for (std::uint32_t i = 0; i < c.pins.size(); ++i) {
         const ComponentPin& p = c.pins[i];
@@ -91,10 +96,12 @@ SymbolGeom buildGeneric(const Component& c) {
     int topW = nT > 0 ? g.topReserve + vPitch * (nT - 1) + rightW + 15 : 0;
     int botW = nB > 0 ? g.botReserve + vPitch * (nB - 1) + rightW + 15 : 0;
     g.w = std::max({6 * kPinPitch, nameW, topW, botW});
-    g.h = kPinPitch * std::max({nL, nR, 1}) + 2 * kPinPitch;
+    // Left/Right rows sit at double pitch so a routed wire can jog between
+    // two adjacent pins without shaving either one's stub.
+    g.h = kPinPitch * (2 * std::max({nL, nR, 1}) + 1);
 
-    placeColumn(c, left, Side::Left, kPinPitch, kPinPitch, g);
-    placeColumn(c, right, Side::Right, kPinPitch, kPinPitch, g);
+    placeColumn(c, left, Side::Left, kPinPitch, 2 * kPinPitch, g);
+    placeColumn(c, right, Side::Right, kPinPitch, 2 * kPinPitch, g);
     placeColumn(c, top, Side::Top, g.topReserve, vPitch, g);
     placeColumn(c, bottom, Side::Bottom, g.botReserve, vPitch, g);
     return g;
@@ -382,7 +389,9 @@ SymbolGeom buildOpAmp(const Component& c) {
     return g;
 }
 
-SymbolGeom buildConnector(const Component& c) {
+SymbolGeom buildConnector(const Component& c, const SidePlan* plan) {
+    // As for buildGeneric: `plan` is WP2's, the null path is today's exactly.
+    (void)plan;
     std::vector<std::uint32_t> rows;
     for (std::uint32_t i = 0; i < c.pins.size(); ++i) rows.push_back(i);
     naturalSort(c, rows);
@@ -391,8 +400,9 @@ SymbolGeom buildConnector(const Component& c) {
     g.botReserve = std::max(3 * kPinPitch,
                             kCharWidth * static_cast<int>(c.partName.size()) + kPinPitch);
     g.w = std::max(4 * kPinPitch, kCharWidth * maxNameLen(c, rows) + 2 * kPinPitch);
-    g.h = kPinPitch * std::max(1, static_cast<int>(rows.size())) + 2 * kPinPitch;
-    placeColumn(c, rows, Side::Right, kPinPitch, kPinPitch, g);
+    // Double pitch, matching the generic box's Left/Right rows.
+    g.h = kPinPitch * (2 * std::max(1, static_cast<int>(rows.size())) + 1);
+    placeColumn(c, rows, Side::Right, kPinPitch, 2 * kPinPitch, g);
     return g;
 }
 
@@ -422,9 +432,9 @@ bool naturalLess(std::string_view a, std::string_view b) {
     return (a.size() - i) < (b.size() - j);
 }
 
-SymbolGeom buildSymbol(const Component& c, SymbolKind kind) {
+SymbolGeom buildSymbol(const Component& c, SymbolKind kind, const SidePlan* plan) {
     switch (kind) {
-        case SymbolKind::Connector: return buildConnector(c);
+        case SymbolKind::Connector: return buildConnector(c, plan);
         case SymbolKind::Resistor: return buildResistor(c);
         case SymbolKind::Capacitor: return buildCapacitor(c);
         case SymbolKind::CapacitorPolarised: return buildCapacitorPolarised(c);
@@ -448,7 +458,7 @@ SymbolGeom buildSymbol(const Component& c, SymbolKind kind) {
         case SymbolKind::Crimp: return buildCrimp(c);
         case SymbolKind::Generic: break;
     }
-    return buildGeneric(c);
+    return buildGeneric(c, plan);
 }
 
 }  // namespace manta::render

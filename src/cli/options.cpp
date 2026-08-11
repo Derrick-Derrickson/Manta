@@ -311,6 +311,18 @@ ParseOutcome parseOptions(const std::vector<std::string>& args, Options& out) {
                 if (!err.empty()) break;
                 if (takeValue(c, "--pdf", "", value, err)) { out.pdfPath = value; continue; }
                 if (!err.empty()) break;
+                // Experimental, deliberately absent from the help text.
+                if (takeValue(c, "--layout", "", value, err)) {
+                    if (value != "classic" && value != "flow") {
+                        result.ok = false;
+                        result.exitCode = kExitUsage;
+                        result.error = "--layout takes 'classic' or 'flow'";
+                        return result;
+                    }
+                    out.layout = value;
+                    continue;
+                }
+                if (!err.empty()) break;
                 break;
 
             case Command::None:
