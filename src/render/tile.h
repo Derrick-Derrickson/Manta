@@ -22,6 +22,11 @@ struct RoomExtent {
 
 struct RoomPlace {
     int x = 0, y = 0;  // top-left of the room's outer rectangle, sheet coords
+    // The outer rectangle as placed, never smaller than the extent handed in.
+    // A tiler stretches rooms -- content stays anchored top-left, the frame
+    // grows -- so that the placed rectangles partition their bounding box
+    // exactly: borders meet, and no paper between rooms is outside every room.
+    int w = 0, h = 0;
 };
 
 // Parallel to `rooms` (page order) when non-empty. `targetW` is the same
