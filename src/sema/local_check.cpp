@@ -259,14 +259,22 @@ void LocalChecker::checkDevice(const Device* dev) {
         for (const Directive* d : b->pinDirectives) checkDirective(d, DirCtx::Pin);
         for (const FieldDecl* f : b->pinFields) checkFieldDecl(f, false, false);
 
+        // Spec 7.4: a binding's right-hand side is "an ordinary segment (19),
+        // with all of 6's connectors and all of 8's grouping and replication
+        // available", so every check a segment gets applies inside one too --
+        // including the devices it declares and their own binding lists.
+        if (b->rhs) checkSegment(b->rhs);
+
         if (b->pinIsDot) continue;
         std::string_view pin = text(b->pin);
         if (pin.empty()) continue;
 
         // A binding that only carries directives or fields annotates the pin
         // rather than connecting it, so it is not a second connection to a pin
-        // the chain already passes through.
-        bool connects = b->net != nullptr || b->unbind;
+        // the chain already passes through. A binding that carries a chain does
+        // connect it (spec 7.4), so E-08 applies to it exactly as it does to
+        // "PIN = NET".
+        bool connects = b->net != nullptr || b->rhs != nullptr || b->unbind;
         if (!connects) continue;
 
         for (const PinRefSpan& t : terminals) {

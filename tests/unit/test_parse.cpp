@@ -40,9 +40,7 @@ std::shared_ptr<ParseResult> parse(std::string text) {
     return r;
 }
 
-// Reads one of the spec fixture files from tests/spec/.
-std::string readFixture(const char* name) {
-    std::string path = std::string(MANTA_TEST_DIR) + "/spec/" + name;
+std::string readAt(const std::string& path) {
     std::FILE* f = std::fopen(path.c_str(), "rb");
     if (!f) return {};
     std::string out;
@@ -51,6 +49,16 @@ std::string readFixture(const char* name) {
     while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) out.append(buf, n);
     std::fclose(f);
     return out;
+}
+
+// Reads one of the spec fixture files from tests/spec/.
+std::string readFixture(const char* name) {
+    return readAt(std::string(MANTA_TEST_DIR) + "/spec/" + name);
+}
+
+// ...and one of the conformance fixtures from tests/diag/.
+std::string readDiagFixture(const char* name) {
+    return readAt(std::string(MANTA_TEST_DIR) + "/diag/" + name);
 }
 
 void expectClean(const std::shared_ptr<ParseResult>& r, const char* what) {
@@ -409,6 +417,187 @@ TEST_CASE("spec 2.2: identifiers are case sensitive") {
     CHECK_EQ(inst->bindings.size(), std::size_t{3});
     CHECK(inst->bindings[0]->pin.symbol != inst->bindings[1]->pin.symbol);
     CHECK(inst->bindings[1]->pin.symbol != inst->bindings[2]->pin.symbol);
+}
+
+// ---------------------------------------------------------------------------
+// Revision 1.4 -- a binding is a chain rooted at a pin (spec 7.4)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// The instance of the device that is the first element of body entry `stmt`.
+const Instance* instanceIn(const std::shared_ptr<ParseResult>& r, std::size_t stmt) {
+    return r->unit.items[0]->body[stmt].stmt->chain->segments[0]->elements[0]->device->instance;
+}
+
+}  // namespace
+
+TEST_CASE("rev 1.4: 'PIN = NET' keeps exactly the shape it had") {
+    // The degenerate case of the new rule, and the only one that existed
+    // before it. It must still arrive through Binding::net, with no chain.
+    auto r = parse("block b { {U1~p: GND = AGND; }; };");
+    expectClean(r, "bare net binding");
+    const Binding* b = instanceIn(r, 0)->bindings[0];
+    CHECK(b->connector == Connector::Advance);
+    CHECK(b->net != nullptr);
+    CHECK(b->rhs == nullptr);
+    CHECK_FALSE(b->unbind);
+}
+
+TEST_CASE("rev 1.4: a binding opens with any connector and carries a chain") {
+    auto r = parse(
+        "block b {"
+        "  {U1~p:"
+        "    VIN       = VPOS == .{C1~c: . = GND;};"
+        "    SW        == K{D2~d: A = GND;} == .{C3~c: . = BST;};"
+        "    LANE[0:3] =* COMMON;"
+        "    REF       *= FANOUT[0:3];"
+        "    EN        = .{R5~r}. = VPOS;"
+        "    NC        = ?;"
+        "  };"
+        "};");
+    expectClean(r, "chain bindings");
+    const Instance* inst = instanceIn(r, 0);
+    CHECK_EQ(inst->bindings.size(), std::size_t{6});
+
+    // "VIN = VPOS == .{C1~c: . = GND;}": '=' roots the chain at VIN, and what
+    // follows is a two-element segment whose shunt has a binding list of its own.
+    const Binding* vin = inst->bindings[0];
+    CHECK(vin->connector == Connector::Advance);
+    CHECK(vin->net == nullptr);
+    CHECK(vin->rhs != nullptr);
+    CHECK_EQ(vin->rhs->elements.size(), std::size_t{2});
+    CHECK(vin->rhs->connectors[0] == Connector::Same);
+    CHECK(vin->rhs->elements[1]->kind == ElementKind::Device);
+    CHECK_EQ(vin->rhs->elements[1]->device->instance->bindings.size(), std::size_t{1});
+
+    // '==' opens a binding as it opens a statement (spec 6.3), and both
+    // elements of this one are devices with terminals of their own.
+    const Binding* sw = inst->bindings[1];
+    CHECK(sw->connector == Connector::Same);
+    CHECK(sw->rhs != nullptr);
+    CHECK_EQ(sw->rhs->elements.size(), std::size_t{2});
+    CHECK(sw->rhs->elements[0]->device->hasEntry);
+
+    // '=*' and '*=' (spec 6.5). A lone net still lands in 'rhs': only the
+    // '=' spelling is the pre-1.4 form.
+    CHECK(inst->bindings[2]->connector == Connector::Gather);
+    CHECK(inst->bindings[2]->net == nullptr);
+    CHECK(inst->bindings[2]->rhs != nullptr);
+    CHECK_EQ(inst->bindings[2]->rhs->elements.size(), std::size_t{1});
+    CHECK(inst->bindings[3]->connector == Connector::Broadcast);
+    CHECK(inst->bindings[3]->rhs != nullptr);
+
+    // A device with a net after it is a chain, not a bare net.
+    CHECK(inst->bindings[4]->net == nullptr);
+    CHECK_EQ(inst->bindings[4]->rhs->elements.size(), std::size_t{2});
+
+    // Spec 11.6 is untouched: "= ?" is an unbind, not a segment.
+    CHECK(inst->bindings[5]->unbind);
+    CHECK(inst->bindings[5]->net == nullptr);
+    CHECK(inst->bindings[5]->rhs == nullptr);
+}
+
+TEST_CASE("rev 1.4: a trailing '&' or '#' still belongs to the pin") {
+    // "{U1~x: VIN = NET &STUB;}" writes a *pin* directive, not a directive on
+    // the chain: a segment stops at anything that is not a connector, so the
+    // binding's own directive loop gets it either way.
+    auto r = parse(
+        "block b {"
+        "  {U1~p:"
+        "    VIN = NET &STUB;"
+        "    SW  == .{C1~c: . = GND;} &~PINDELAY=8ps;"
+        "    FB  = NET2 #VOH=3V0;"
+        "    DQ[0] &PINDELAY=18ps;"
+        "  };"
+        "};");
+    expectClean(r, "pin directives after a binding");
+    const Instance* inst = instanceIn(r, 0);
+
+    CHECK(inst->bindings[0]->net != nullptr);
+    CHECK(inst->bindings[0]->rhs == nullptr);
+    CHECK_EQ(inst->bindings[0]->pinDirectives.size(), std::size_t{1});
+
+    CHECK(inst->bindings[1]->rhs != nullptr);
+    CHECK_EQ(inst->bindings[1]->rhs->elements.size(), std::size_t{1});
+    CHECK_EQ(inst->bindings[1]->pinDirectives.size(), std::size_t{1});
+
+    CHECK(inst->bindings[2]->net != nullptr);
+    CHECK_EQ(inst->bindings[2]->pinFields.size(), std::size_t{1});
+
+    // A pin carrying nothing but a directive has no right-hand side at all.
+    CHECK(inst->bindings[3]->net == nullptr);
+    CHECK(inst->bindings[3]->rhs == nullptr);
+    CHECK_FALSE(inst->bindings[3]->unbind);
+    CHECK_EQ(inst->bindings[3]->pinDirectives.size(), std::size_t{1});
+}
+
+TEST_CASE("rev 1.4: '.' as the pin takes a chain, and nests") {
+    auto r = parse("block b { A = .{U1~p: . == .{C1~c: . = .{C2~c: . = GND;};}; }. = B; };");
+    expectClean(r, "dot pin with a chain");
+    const Instance* inst =
+        r->unit.items[0]->body[0].stmt->chain->segments[0]->elements[1]->device->instance;
+    const Binding* b = inst->bindings[0];
+    CHECK(b->pinIsDot);
+    CHECK(b->connector == Connector::Same);
+    CHECK(b->rhs != nullptr);
+
+    // ...and the device inside it holds a device inside that.
+    const Instance* shunt = b->rhs->elements[0]->device->instance;
+    CHECK(shunt->bindings[0]->rhs != nullptr);
+    CHECK(shunt->bindings[0]->rhs->elements[0]->kind == ElementKind::Device);
+}
+
+TEST_CASE("rev 1.4: the whole range of chain bindings parses") {
+    auto r = parse(readFixture("bindings.manta"));
+    expectClean(r, "bindings.manta");
+}
+
+TEST_CASE("rev 1.4: a chain binding leaves E-09 and the trailing ';' alone") {
+    // An empty binding list is still E-09, whatever the bindings could have been.
+    auto empty = parse("block b { A = .{L1~ind:}. = B; };");
+    CHECK(empty->report.find("E-09") != std::string::npos);
+
+    // A ';' before the '}' is permitted and is what the formatter emits.
+    auto trailing = parse("block b { {U1~p: A == .{C1~c: . = GND;}; }; };");
+    expectClean(trailing, "trailing semicolon after a chain binding");
+    CHECK_EQ(instanceIn(trailing, 0)->bindings.size(), std::size_t{1});
+}
+
+TEST_CASE("rev 1.4: one bad binding is reported once, not once per line after it") {
+    // The device's '{' is consumed before its binding list is read, so a
+    // binding that fails mid-parse leaves that brace open. Resuming at
+    // block-body level from inside the binding list turned one mistake into a
+    // page of diagnostics on lines that were never wrong.
+    auto r = parse(readDiagFixture("E-SYNTAX-cascade.manta"));
+    CHECK(r->diags->errorCount() > 0);
+    if (r->diags->errorCount() > 3) {
+        ::mantatest::fail(__FILE__, __LINE__,
+                          "one bad binding cascaded into " +
+                              std::to_string(r->diags->errorCount()) + " errors:\n" + r->report);
+    }
+    // The give-away of the old behaviour: the braces closing the block and the
+    // file were read as the start of a declaration.
+    CHECK(r->report.find("expected 'block', 'part'") == std::string::npos);
+
+    // The statement after the device parses as a statement of the block, which
+    // it could not do if the parser were still adrift inside the binding list.
+    const Item* b = r->unit.items[0];
+    CHECK_EQ(b->body.size(), std::size_t{3});
+    const BodyEntry& last = b->body[2];
+    CHECK(last.kind == BodyKind::Stmt);
+    CHECK(last.stmt->kind == StmtKind::Chain);
+    CHECK_EQ(last.stmt->chain->segments[0]->elements.size(), std::size_t{2});
+    CHECK(last.stmt->chain->segments[0]->connectors[0] == Connector::Same);
+}
+
+TEST_CASE("rev 1.4: only '=' takes the unbind '?'") {
+    // The other three connectors join a run of elements and there is no run to
+    // join to nothing, so "A == ?" is a syntax error -- reported, and contained.
+    auto r = parse(readDiagFixture("E-SYNTAX-binding.manta"));
+    CHECK(r->diags->errorCount() > 0);
+    CHECK(r->report.find("expected a name") != std::string::npos);
+    CHECK(r->report.find("expected 'block', 'part'") == std::string::npos);
 }
 
 // ---------------------------------------------------------------------------

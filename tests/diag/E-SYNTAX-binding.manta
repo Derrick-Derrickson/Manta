@@ -1,0 +1,11 @@
+// The syntax errors a chain binding can produce (revision 1.4, spec 7.4).
+//
+// A binding is "PIN <connector> <segment>", so what follows a connector has
+// to be a segment. '?' is not one: spec 11.6 spells the deliberate float
+// "PIN = ?" and only '=' takes it, because the other three connectors join a
+// run of elements and there is no run to join to nothing.
+block binding-syntax {
+    {U1~SOME-PART:
+        A == ?;
+    };
+};

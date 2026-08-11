@@ -192,13 +192,74 @@ std::int64_t Elaborator::terminalWidth(const Terminal& t, const PartInfo* part, 
     return elements.empty() ? 1 : static_cast<std::int64_t>(elements.size());
 }
 
+// Spec 5.2: "A pin belongs to exactly one net, so 'U1.GPIO1' denotes that net
+// whether read as the pin or as the net at the pin." A two-segment path whose
+// head is a designator in scope therefore resolves to that component's pins,
+// joining the reference to the real pin rather than inventing a net that happens
+// to share its spelling.
+//
+// A dotted name that is *not* a designator is a harness member, implied if never
+// declared (spec 12.3), and is simply a net whose name contains a dot; the
+// caller falls through to naming it.
+//
+// Shared by evaluation and by width inference so that the two can never disagree
+// about how wide "U2.LANE" is.
+const std::uint32_t* Elaborator::referencedPins(const NetExpr* net, Scope& scope,
+                                                std::vector<std::uint32_t>& matched) {
+    if (net->path.size() != 2 || net->hasMemberList) return nullptr;
+    SymbolId head = resolve(net->path[0], scope);
+    SymbolId tail = resolve(net->path[1], scope);
+    std::uint32_t* ci = scope.instances.find(head);
+    if (!ci) return nullptr;
+
+    const Component& c = components_[*ci];
+    for (std::uint32_t i = 0; i < c.pins.size(); ++i) {
+        if (c.pins[i].base == tail) matched.push_back(i);
+    }
+    if (matched.empty()) {
+        std::string_view wanted = interner_.text(tail);
+        for (std::uint32_t i = 0; i < c.pins.size(); ++i) {
+            const ComponentPin& p = c.pins[i];
+            // An element of a pin array is addressed without brackets: spec 5.2
+            // writes "U1.GPIO1" for the pin the part declares as
+            // "[3:11] = GPIO[1:9]", and spec 20.7 uses "U1.GPIO9".
+            if (p.isArrayElement &&
+                wanted == std::string(interner_.text(p.base)) + std::to_string(p.index)) {
+                matched.push_back(i);
+                break;
+            }
+            // A pin may also be addressed by its physical number, since spec 2.3
+            // permits an integer as a pin name.
+            if (p.physical == wanted) {
+                matched.push_back(i);
+                break;
+            }
+        }
+    }
+    return matched.empty() ? nullptr : ci;
+}
+
 std::int64_t Elaborator::staticWidth(const Element* el, Scope& scope) {
     switch (el->kind) {
         case ElementKind::Net: {
             const NetExpr* n = el->net;
             if (n->hasMemberList) return static_cast<std::int64_t>(n->memberList.size());
             if (n->hasPerCopyList) return static_cast<std::int64_t>(n->perCopyList.size());
-            if (!n->range.present) return -1;  // inferred from the other side (spec 8.1)
+            if (!n->range.present) {
+                // A reference to a pin is as wide as the pins it names, which is
+                // what makes "U2.LANE = SIDE-BUS" infer the width that the
+                // binding "LANE = SIDE-BUS" infers from its own pins (spec 7.4).
+                // Interpolated names are left alone: resolving one here would
+                // report any failure a second time.
+                if (n->path.size() == 2 && !n->path[0].isInterpolated() &&
+                    !n->path[1].isInterpolated()) {
+                    std::vector<std::uint32_t> matched;
+                    if (referencedPins(n, scope, matched)) {
+                        return static_cast<std::int64_t>(matched.size());
+                    }
+                }
+                return -1;  // inferred from the other side (spec 8.1)
+            }
             bool ok = true;
             std::int64_t lo = subst_.resolveIndex(n->range.lo, *scope.fields, ok);
             std::int64_t hi = subst_.resolveIndex(n->range.hi, *scope.fields, ok);
@@ -226,25 +287,40 @@ std::int64_t Elaborator::staticWidth(const Element* el, Scope& scope) {
 
 // Propagates widths along a segment until a fixed point. Spec 8.1: "Where one
 // side omits its range it is inferred from the other."
-void Elaborator::inferWidths(const Segment* seg, Scope& scope, std::vector<ElemWidth>& widths) {
-    std::size_t n = seg->elements.size();
+void Elaborator::inferWidths(const Segment* seg, Scope& scope, std::vector<ElemWidth>& widths,
+                             std::int64_t seedWidth, Connector seedConn) {
+    // A seeded leading element occupies widths[0], so element k of the segment
+    // is widths[k + off] and the connector between combined i and i+1 is
+    // seedConn for i == 0 and seg->connectors[i - off] beyond it.
+    const std::size_t off = seedWidth > 0 ? 1u : 0u;
+    std::size_t n = seg->elements.size() + off;
     widths.assign(n, ElemWidth{});
+    if (off != 0) {
+        // Spec 5.2: a pin and its net are one thing, so the seed is as wide as
+        // the binding has pins, and that width cannot be inferred away.
+        widths[0].in = seedWidth;
+        widths[0].out = seedWidth;
+        widths[0].fixed = true;
+    }
+    auto connectorAt = [&](std::size_t i) {
+        return i < off ? seedConn : seg->connectors[i - off];
+    };
+    auto elementAt = [&](std::size_t i) { return seg->elements[i - off]; };
 
-    for (std::size_t i = 0; i < n; ++i) {
-        std::int64_t w = staticWidth(seg->elements[i], scope);
+    for (std::size_t i = off; i < n; ++i) {
+        std::int64_t w = staticWidth(elementAt(i), scope);
         if (w > 0) {
             widths[i].in = w;
             widths[i].out = w;
             widths[i].fixed = true;
         }
-        if (seg->elements[i]->kind == ElementKind::Replication &&
-            seg->elements[i]->replication->counted) {
-            widths[i].in = seg->elements[i]->replication->inWidth;
-            widths[i].out = seg->elements[i]->replication->outWidth;
+        if (elementAt(i)->kind == ElementKind::Replication && elementAt(i)->replication->counted) {
+            widths[i].in = elementAt(i)->replication->inWidth;
+            widths[i].out = elementAt(i)->replication->outWidth;
             widths[i].fixed = true;
         }
-        if (seg->elements[i]->kind == ElementKind::Device) {
-            const Device* d = seg->elements[i]->device;
+        if (elementAt(i)->kind == ElementKind::Device) {
+            const Device* d = elementAt(i)->device;
             if (d->instance && d->instance->declares) {
                 SymbolId partName = resolve(d->instance->partOrBlock, scope);
                 if (const PartInfo* part = partInfoFor(partName, scope.objectIndex, d->span)) {
@@ -259,7 +335,7 @@ void Elaborator::inferWidths(const Segment* seg, Scope& scope, std::vector<ElemW
     // is across adjacent connectors.
     for (int pass = 0; pass < 4; ++pass) {
         for (std::size_t i = 0; i + 1 < n; ++i) {
-            Connector c = seg->connectors[i];
+            Connector c = connectorAt(i);
             if (c == Connector::Gather) {
                 if (widths[i + 1].in < 0) widths[i + 1].in = 1;
                 if (widths[i + 1].out < 0) widths[i + 1].out = 1;
@@ -274,9 +350,9 @@ void Elaborator::inferWidths(const Segment* seg, Scope& scope, std::vector<ElemW
             if (widths[i + 1].in > 0 && widths[i].out < 0) widths[i].out = widths[i + 1].in;
         }
         // A bare net has one width, so entry and exit agree.
-        for (std::size_t i = 0; i < n; ++i) {
-            if (seg->elements[i]->kind != ElementKind::Net &&
-                seg->elements[i]->kind != ElementKind::Group) {
+        for (std::size_t i = off; i < n; ++i) {
+            if (elementAt(i)->kind != ElementKind::Net &&
+                elementAt(i)->kind != ElementKind::Group) {
                 continue;
             }
             if (widths[i].in > 0 && widths[i].out < 0) widths[i].out = widths[i].in;
@@ -284,7 +360,7 @@ void Elaborator::inferWidths(const Segment* seg, Scope& scope, std::vector<ElemW
         }
         for (std::size_t k = n; k-- > 1;) {
             std::size_t i = k - 1;
-            Connector c = seg->connectors[i];
+            Connector c = connectorAt(i);
             if (c == Connector::Gather || c == Connector::Broadcast) continue;
             if (widths[i + 1].in > 0 && widths[i].out < 0) widths[i].out = widths[i + 1].in;
             if (widths[i].out > 0 && widths[i + 1].in < 0) widths[i + 1].in = widths[i].out;
@@ -393,56 +469,23 @@ Elaborator::ElemValue Elaborator::evalNet(const NetExpr* net, Scope& scope,
         return value;
     }
 
-    // Spec 5.2: "A pin belongs to exactly one net, so 'U1.GPIO1' denotes that
-    // net whether read as the pin or as the net at the pin. This holds
-    // everywhere, not only for unnamed nodes." So a two-segment path whose head
-    // is a designator in scope resolves to that component's pin, joining the
-    // reference to the real pin rather than inventing a net that happens to
-    // share its spelling.
-    //
-    // A dotted name that is *not* a designator is a harness member, implied if
-    // never declared (spec 12.3), and is simply a net whose name contains a dot.
-    if (net->path.size() == 2 && !net->hasMemberList) {
-        SymbolId head = resolve(net->path[0], scope);
-        SymbolId tail = resolve(net->path[1], scope);
-        if (const std::uint32_t* ci = scope.instances.find(head)) {
+    // Spec 5.2: "U1.GPIO1" denotes the net at that pin, so a two-segment path
+    // whose head is a designator in scope joins the reference to the real pin
+    // rather than inventing a net that happens to share its spelling.
+    {
+        std::vector<std::uint32_t> matched;
+        if (const std::uint32_t* ci = referencedPins(net, scope, matched)) {
             Component& c = components_[*ci];
-            std::vector<std::uint32_t> matched;
-            for (std::uint32_t i = 0; i < c.pins.size(); ++i) {
-                if (c.pins[i].base == tail) matched.push_back(i);
+            for (std::uint32_t i : matched) {
+                value.entry.push_back(c.pins[i].node);
+                c.pins[i].connected = true;
+                ++nodeInfo_[uf_.find(c.pins[i].node)].references;
+                touched.push_back(c.pins[i].node);
             }
-            if (matched.empty()) {
-                std::string_view wanted = interner_.text(tail);
-                for (std::uint32_t i = 0; i < c.pins.size(); ++i) {
-                    const ComponentPin& p = c.pins[i];
-                    // An element of a pin array is addressed without brackets:
-                    // spec 5.2 writes "U1.GPIO1" for the pin the part declares
-                    // as "[3:11] = GPIO[1:9]", and spec 20.7 uses "U1.GPIO9".
-                    if (p.isArrayElement &&
-                        wanted == std::string(interner_.text(p.base)) + std::to_string(p.index)) {
-                        matched.push_back(i);
-                        break;
-                    }
-                    // A pin may also be addressed by its physical number, since
-                    // spec 2.3 permits an integer as a pin name.
-                    if (p.physical == wanted) {
-                        matched.push_back(i);
-                        break;
-                    }
-                }
-            }
-            if (!matched.empty()) {
-                for (std::uint32_t i : matched) {
-                    value.entry.push_back(c.pins[i].node);
-                    c.pins[i].connected = true;
-                    ++nodeInfo_[uf_.find(c.pins[i].node)].references;
-                    touched.push_back(c.pins[i].node);
-                }
-                value.exit = value.entry;
-                value.hasEntry = value.hasExit = true;
-                value.isBareNet = false;  // this names a device terminal
-                return value;
-            }
+            value.exit = value.entry;
+            value.hasEntry = value.hasExit = true;
+            value.isBareNet = false;  // this names a device terminal
+            return value;
         }
     }
 
@@ -707,10 +750,17 @@ void Elaborator::applyDefaultNets(Component& component, const PartInfo& part, Sc
     }
 }
 
-void Elaborator::applyBindings(const Instance* inst, Component& component, Scope& scope,
+void Elaborator::applyBindings(const Instance* inst, std::uint32_t componentIndex, Scope& scope,
                                std::vector<std::uint32_t>& touched) {
+    // Spec 15.8: bindings are elaborated in source order, and each segment in
+    // its own written order, so the components a design creates are created in
+    // one order on every run.
     for (const Binding* b : inst->bindings) {
         if (b->kind != BindingKind::PinNet) continue;
+        // Re-fetched each iteration and never held across elaborateSegment: a
+        // chain binding instantiates devices, which grows components_ and
+        // invalidates any reference into it.
+        Component& component = components_[componentIndex];
 
         // Spec 19 gives 'pin_ref = identifier [ "[" range "]" ] | "."', and
         // spec 20.7 writes "{C?~100nF-0603: .=GND}": a '.' binding takes the
@@ -820,6 +870,41 @@ void Elaborator::applyBindings(const Instance* inst, Component& component, Scope
             for (std::uint32_t i : targets) component.pins[i].unbound = true;
             continue;
         }
+
+        // Spec 7.4: "PIN <connector> <segment>" in the binding list of D means
+        // exactly what "D.PIN <connector> <segment>" means in the enclosing
+        // body. The pins are already resolved, so all that is left is to run the
+        // segment with them seeded as its leading element -- which puts the pin
+        // inside any '==' run that spans it, and lets width inference see it.
+        if (b->rhs) {
+            if (targets.empty()) continue;
+
+            ElemValue seed;
+            seed.span = b->pinIsDot ? b->span : b->pin.span;
+            for (std::uint32_t i : targets) seed.entry.push_back(component.pins[i].node);
+            // Spec 5.2: a pin and the net at it are the same thing, so the seed
+            // presents the same nodes on both terminals.
+            seed.exit = seed.entry;
+            seed.hasEntry = seed.hasExit = true;
+            // Naming a pin is naming a device terminal, not a bare net, so '='
+            // against it is never E-22 (spec 6.2, 7.4).
+            seed.isBareNet = false;
+
+            // Recorded before the segment runs: elaborating it may reallocate
+            // components_ and invalidate 'component'.
+            for (std::uint32_t i : targets) {
+                component.pins[i].connected = true;
+                ++nodeInfo_[uf_.find(component.pins[i].node)].references;
+            }
+
+            // Spec 7.4 and 11.2: "A binding forms its own scope", so the nets it
+            // touches are not covered by the directives of the statement holding
+            // the instance. The throwaway list is what keeps them apart.
+            std::vector<std::uint32_t> bindingScope;
+            elaborateSegment(b->rhs, scope, -1, -1, bindingScope, &seed, b->connector);
+            continue;
+        }
+
         if (!b->net) continue;
 
         std::vector<std::uint32_t> dummy;  // bindings are outside the directive scope
@@ -1017,10 +1102,13 @@ Elaborator::ElemValue Elaborator::evalDevice(const Device* dev, Scope& scope,
     if (!part) return value;
 
     std::uint32_t index = instantiatePart(inst, *part, scope, *scope.fields);
-    Component& c = components_[index];
     value.component = static_cast<std::int32_t>(index);
 
-    applyBindings(inst, c, scope, touched);
+    applyBindings(inst, index, scope, touched);
+
+    // Bound only now: a chain binding (spec 7.4) instantiates devices of its
+    // own, and every one of them may have reallocated components_.
+    Component& c = components_[index];
 
     // Spec 7.3, resolution order: bindings consume their named pins, then
     // explicitly named terminals consume theirs, then each '.' takes the next
@@ -1267,26 +1355,42 @@ Elaborator::ElemValue Elaborator::evalElement(const Element* el, Scope& scope,
 Elaborator::ElemValue Elaborator::elaborateSegment(const Segment* seg, Scope& scope,
                                                    std::int64_t expectedIn,
                                                    std::int64_t expectedOut,
-                                                   std::vector<std::uint32_t>& touched) {
+                                                   std::vector<std::uint32_t>& touched,
+                                                   const ElemValue* seedLead,
+                                                   Connector seedConn) {
     ElemValue result;
     if (!seg || seg->elements.empty()) return result;
     result.span = seg->span;
 
+    // Spec 7.4: the seed is a leading element the segment does not spell -- the
+    // pin a binding is rooted at. Combined index i is the seed for i < off and
+    // seg->elements[i - off] beyond it, so one pass of the connector loop below
+    // sees the pin and the written elements as a single run.
+    const std::size_t off = seedLead ? 1u : 0u;
+    const std::size_t total = seg->elements.size() + off;
+    auto elementAt = [&](std::size_t i) -> const Element* {
+        return i < off ? nullptr : seg->elements[i - off];
+    };
+    auto connectorAt = [&](std::size_t i) {
+        return i < off ? seedConn : seg->connectors[i - off];
+    };
+
     std::vector<ElemWidth> widths;
-    inferWidths(seg, scope, widths);
+    inferWidths(seg, scope, widths,
+                seedLead ? static_cast<std::int64_t>(seedLead->entry.size()) : -1, seedConn);
     if (expectedIn > 0 && !widths.empty() && !widths.front().fixed) widths.front().in = expectedIn;
     if (expectedOut > 0 && !widths.empty() && !widths.back().fixed) widths.back().out = expectedOut;
 
     std::vector<ElemValue> values;
-    values.reserve(seg->elements.size());
-    for (std::size_t i = 0; i < seg->elements.size(); ++i) {
-        values.push_back(
-            evalElement(seg->elements[i], scope, widths[i].in, widths[i].out, touched));
+    values.reserve(total);
+    if (seedLead) values.push_back(*seedLead);
+    for (std::size_t i = off; i < total; ++i) {
+        values.push_back(evalElement(elementAt(i), scope, widths[i].in, widths[i].out, touched));
     }
 
     // Apply the connectors of spec 6.
-    for (std::size_t i = 0; i + 1 < seg->elements.size(); ++i) {
-        Connector c = seg->connectors[i];
+    for (std::size_t i = 0; i + 1 < total; ++i) {
+        Connector c = connectorAt(i);
         // An element with a single terminal passes the chain through it: a pin
         // and its net are one (spec 5.2), so the node is the same on either
         // side. This is what binds "FEED = {B1~inner}IN", where the block's one
@@ -1303,10 +1407,13 @@ Elaborator::ElemValue Elaborator::elaborateSegment(const Segment* seg, Scope& sc
                 // (spec 5.2) and so is not bare; a harness identifier stands for
                 // its members and is not bare either (spec 12.1).
                 if (values[i].isBareNet && values[i + 1].isBareNet) {
-                    const Element* le = seg->elements[i];
-                    const Element* re = seg->elements[i + 1];
+                    const Element* le = elementAt(i);
+                    const Element* re = elementAt(i + 1);
                     auto plainNet = [&](const Element* e) {
-                        if (e->kind != ElementKind::Net) return false;
+                        // A seeded pin has no element and is not a bare net
+                        // anyway: it is a device terminal (spec 6.2), which is
+                        // why "PIN = NET" is not E-22 (spec 7.4).
+                        if (!e || e->kind != ElementKind::Net) return false;
                         if (e->net->path.size() != 1 || e->net->hasMemberList) return false;
                         SymbolId n = resolve(e->net->path[0], scope);
                         return !scope.harnessTypes.contains(n);
@@ -1322,7 +1429,7 @@ Elaborator::ElemValue Elaborator::elaborateSegment(const Segment* seg, Scope& sc
                 // one net", so an element with '==' on both sides has its own
                 // two terminals joined -- which is what shorts a two-terminal
                 // device and raises W-02.
-                if (i + 1 < seg->connectors.size() && seg->connectors[i + 1] == Connector::Same) {
+                if (i + 2 < total && connectorAt(i + 1) == Connector::Same) {
                     uniteBundles(values[i + 1].entry, values[i + 1].exit, at);
                     // A two-terminal device with '==' on both sides has its
                     // pads bridged. Spec 6.3 says this "is legal and generates

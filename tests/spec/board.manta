@@ -81,6 +81,11 @@ block power-and-signal {
     // ---- a part instantiated in another object -----------------------
     extern U9.1 = GND;
 
+    // ---- chain bindings (revision 1.4, spec 7.4) ---------------------
+    // Instantiated so the pipeline elaborates it: a design the compiler only
+    // parses proves nothing about what its bindings connect.
+    {BND1~bindings-demo};
+
     // ---- multi-unit package ------------------------------------------
     SIG-A-IN = INA{U20~LM324: v-pos=3V3; v-neg=GND; }OUTA = SIG-A-OUT;
     SIG-B-IN = INB{U20}OUTB = SIG-B-OUT;

@@ -1,0 +1,22 @@
+// A syntax error inside a binding list must be reported once.
+//
+// The device's '{' is consumed before its binding list is read, so a binding
+// that fails mid-parse leaves that brace open forever. The parser used to
+// carry on at block-body level from wherever it stood -- inside the binding
+// list -- and read every remaining binding as a statement of the enclosing
+// block: E-22 on each of them, E-32 on the stray word, then "expected
+// 'block', 'part', ..." on the braces that close the block and the file.
+// One mistake, a page of diagnostics, none of them where the mistake is.
+block cascade-demo {
+    GND &TYPE=GROUND;
+
+    {U2~SOME-PART:
+        VIN  = VPOS PROT;
+        GND  = GND;
+        EP   = GND;
+        SW   = SW-NODE;
+    };
+
+    // Nothing below the bad binding is at fault, and parsing must reach here.
+    RAIL == GND;
+};

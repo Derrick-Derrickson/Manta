@@ -30,8 +30,9 @@ namespace manta {
 // The language revision this implementation targets. 1.1 adds the
 // end-of-content marker of spec 2.8; 1.2 adds the 'cable' declaration, the
 // '@type' system field and the area unit; 1.3 adds the render section marker
-// inside a block body. Each changes what a .manta file may contain.
-inline constexpr std::string_view kLanguageVersion = "1.3";
+// inside a block body; 1.4 lets a binding carry a whole chain rather than only
+// a net name. Each changes what a .manta file may contain.
+inline constexpr std::string_view kLanguageVersion = "1.4";
 
 // True when an object's revision is no newer than the toolchain's, so the
 // toolchain knows every construct it might contain.

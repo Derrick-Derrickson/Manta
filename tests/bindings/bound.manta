@@ -1,0 +1,41 @@
+// Revision 1.4, spec 7.4: "A binding is a chain rooted at a pin of the
+// enclosing instance." PIN <connector> <segment> in the binding list of D means
+// exactly what "D.PIN <connector> <segment>" means in the enclosing body.
+//
+// This file is the binding-list spelling. hoisted.manta is the same design with
+// every chain written out as a statement instead. The two must link to
+// byte-identical netlists: that equality is the rule itself, and the only test
+// that can catch a binding chain that parses, formats and round-trips cleanly
+// and then connects nothing.
+
+block eq-top {
+    GND &TYPE=GROUND;
+
+    {U1~EQ-CHIP:
+        // A shunt capacitor off a pin.
+        VIN   = VRAIL == .{C1~EQ-C: . = GND;};
+        // A '==' run spanning the pin and two devices: the pin, the diode's
+        // cathode and the capacitor's first pad are one net (spec 6.3).
+        SW    == K{D1~EQ-D: A = GND;} == .{C2~EQ-C: . = BOOT;};
+        // A two-resistor divider whose midpoint is the pin.
+        FB    == .{R1~EQ-R: . = VRAIL;} == .{R2~EQ-R: . = GND;};
+        // A series element between the pin and a net.
+        EN    = .{R3~EQ-R}. = VRAIL;
+        // A device nested two levels deep inside a binding.
+        COMP  == .{R4~EQ-R: . = .{C3~EQ-C: . = GND;};};
+        // The pre-1.4 spelling, one bare net after '='.
+        GND   = GND;
+    };
+
+    {U2~EQ-BUS:
+        SPARE = ?;
+        // An array-pin binding: four pins, four copies, four nets.
+        LANE  = [[.{RS%[1:4]~EQ-R}.]] = LANE-OUT[0:3];
+        // Four pins against a net that states no range at all: only the pins
+        // say how wide this is, so the array SIDE-BUS[0:3] exists only if the
+        // seeded pin reached width inference (spec 8.1).
+        SIDE  == SIDE-BUS;
+        // A series element between two pins.
+        REF   = .{R5~EQ-R}. = U1.SW;
+    };
+};

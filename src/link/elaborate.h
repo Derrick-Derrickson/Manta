@@ -135,8 +135,16 @@ private:
     // Returns the segment's own terminals: the entry of its first element and
     // the exit of its last, which is what a group or replication needs in order
     // to present itself as a single element to the enclosing chain.
+    //
+    // 'seedLead' prepends a leading element the segment does not itself spell.
+    // Spec 7.4: a binding is a chain rooted at a pin, so "PIN <conn> <segment>"
+    // is the segment with the pin standing in front of it and 'seedConn' between
+    // them. Seeding rather than uniting afterwards is what makes a '==' run span
+    // the pin: the run is one run, seen by one pass of spec 6's connectors.
     ElemValue elaborateSegment(const Segment* seg, Scope& scope, std::int64_t expectedIn,
-                               std::int64_t expectedOut, std::vector<std::uint32_t>& touched);
+                               std::int64_t expectedOut, std::vector<std::uint32_t>& touched,
+                               const ElemValue* seedLead = nullptr,
+                               Connector seedConn = Connector::Advance);
 
     ElemValue evalElement(const Element* el, Scope& scope, std::int64_t expectedIn,
                           std::int64_t expectedOut, std::vector<std::uint32_t>& touched);
@@ -148,8 +156,19 @@ private:
     ElemValue evalNet(const NetExpr* net, Scope& scope, std::int64_t expectedWidth,
                       std::vector<std::uint32_t>& touched);
 
+    // Resolves "DESIGNATOR.PIN" against the instances in scope, appending the
+    // pins it names in declaration order. Returns the component index, or null
+    // when the head is not an instance or the tail names no pin of it.
+    [[nodiscard]] const std::uint32_t* referencedPins(const NetExpr* net, Scope& scope,
+                                                      std::vector<std::uint32_t>& matched);
+
     // ---- width inference ---------------------------------------------------
-    void inferWidths(const Segment* seg, Scope& scope, std::vector<ElemWidth>& widths);
+    // 'seedWidth' > 0 gives the segment a leading element of that fixed width,
+    // occupying widths[0] and joined to the first written element by 'seedConn'.
+    // A seeded pin takes part in inference like any other element: a scalar pin
+    // makes the chain one wire wide, an N-pin range makes it N (spec 8.1).
+    void inferWidths(const Segment* seg, Scope& scope, std::vector<ElemWidth>& widths,
+                     std::int64_t seedWidth = -1, Connector seedConn = Connector::Advance);
     [[nodiscard]] std::int64_t staticWidth(const Element* el, Scope& scope);
     [[nodiscard]] std::int64_t terminalWidth(const Terminal& t, const PartInfo* part,
                                              Scope& scope);
@@ -163,7 +182,10 @@ private:
     std::unique_ptr<Scope> instantiateBlock(const Instance* inst, const Item* block,
                                             Scope& parent);
 
-    void applyBindings(const Instance* inst, Component& component, Scope& scope,
+    // Takes the component by index, not by reference: a binding may carry a
+    // chain (spec 7.4) whose devices are instantiated here, and every such
+    // instantiation may reallocate components_.
+    void applyBindings(const Instance* inst, std::uint32_t componentIndex, Scope& scope,
                        std::vector<std::uint32_t>& touched);
     void applyDefaultNets(Component& component, const PartInfo& part, Scope& scope);
 
