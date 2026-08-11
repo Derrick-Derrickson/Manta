@@ -3,9 +3,9 @@
 //
 // The layout engine: rooms, then idioms inside each room, then shelf-packed
 // rooms on the sheet. There is deliberately NO general-purpose router here.
-// Collision handling is one axis per element kind: chain strips move DOWN
-// (y += P), pull-up/pull-down/ladder columns move RIGHT (x += P). A wire that
-// still cannot be placed is not drawn at all -- the connection keeps its
+// Collision handling is one axis per element kind: chain and node strips move
+// DOWN (y += P), pull-up/pull-down/ladder columns move RIGHT (x += P). A wire
+// that still cannot be placed is not drawn at all -- the connection keeps its
 // labels, which connect by name.
 #include "render/layout.h"
 
@@ -133,6 +133,20 @@ const std::string& netName(const RenderPage& p, std::int32_t net) {
     return p.nets[static_cast<std::size_t>(net)].display;
 }
 
+// How far a horizontal strip runs past its last element to carry the mark
+// that terminates it: a chain's end mark, a node trunk's terminal mark.
+int markTail(const RenderPage& p, std::int32_t net) {
+    if (net < 0) return P;
+    switch (markKindFor(p, net)) {
+        case MarkKind::Ground:
+        case MarkKind::NoConnect:  // the cross, no label: the same tail as a glyph
+        case MarkKind::RailFlag: return P + 10;
+        case MarkKind::Label: return P + textW(netName(p, net)) + 6;
+        case MarkKind::PortFlag: return P + textW(netName(p, net)) + 18;
+    }
+    return P;
+}
+
 // How far a pin's stub and its mark reach beyond the body edge.
 int markExtent(const RenderPage& p, std::int32_t net, Side side) {
     if (net < 0) return kStubLen + 4;
@@ -178,6 +192,75 @@ struct Run {
     std::int32_t endNet = -1;
     bool downgraded = false;  // could not be drawn at its anchor: floats instead
 };
+
+// One two-terminal part hanging off a node's trunk by the pin on the node's
+// net; the far pin carries the mark for whatever net it lands on.
+struct NodeTap {
+    std::size_t cand = 0;       // index into the room's candidate list
+    std::uint32_t nearPin = 0;  // the component pin on the node's net
+    bool up = false;            // a tap to a rail stands above the trunk
+};
+
+// A net joining three or more pins, drawn as one conductor: legs out of an
+// anchor's pins to a spine, a trunk along the spine, and a tap per claimed
+// two-terminal part. `terminal` is set when some pin of the net is left
+// outside this drawing -- another anchor, another room, another page -- and
+// the trunk must carry a mark so the two halves still join by name.
+struct Node {
+    std::int32_t net = -1;
+    std::uint32_t anchor = 0;             // component index the legs leave from
+    std::vector<std::uint32_t> rootPins;  // that anchor's pins on the net
+    std::vector<NodeTap> taps;
+    bool terminal = true;
+};
+
+// An axis-aligned conductor segment, for counting junctions.
+struct Seg {
+    int x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+};
+
+// Conductor ends meeting at a point: a segment ending there counts one, a
+// segment passing straight through counts two (it continues both ways).
+int conductorsAt(const std::vector<Seg>& segs, int x, int y) {
+    int n = 0;
+    for (const Seg& s : segs) {
+        if (s.x1 == s.x2 && s.y1 == s.y2) continue;  // degenerate: not a conductor
+        if ((s.x1 == x && s.y1 == y) || (s.x2 == x && s.y2 == y)) {
+            n += 1;
+        } else if (s.x1 == s.x2 && x == s.x1 && y > std::min(s.y1, s.y2) &&
+                   y < std::max(s.y1, s.y2)) {
+            n += 2;
+        } else if (s.y1 == s.y2 && y == s.y1 && x > std::min(s.x1, s.x2) &&
+                   x < std::max(s.x1, s.x2)) {
+            n += 2;
+        }
+    }
+    return n;
+}
+
+// Junction dots are counted, never assumed. Three or more conductor ends at a
+// point is a junction and takes a dot; a corner and a plain end-to-end join
+// both count two and take none. Points are visited in segment order, so the
+// dot list is a function of the geometry alone (spec 15.8).
+void addJunctionDots(std::vector<DotItem>& dots, const std::vector<Seg>& segs,
+                     std::int32_t net) {
+    std::vector<Seg> seen;  // reused as a point list: (x1,y1) is the point
+    for (const Seg& s : segs) {
+        const int px[2] = {s.x1, s.x2};
+        const int py[2] = {s.y1, s.y2};
+        for (int e = 0; e < 2; ++e) {
+            bool dup = false;
+            for (const Seg& p : seen) {
+                if (p.x1 == px[e] && p.y1 == py[e]) dup = true;
+            }
+            if (dup) continue;
+            seen.push_back(Seg{px[e], py[e], 0, 0});
+            if (conductorsAt(segs, px[e], py[e]) >= 3) {
+                dots.push_back(DotItem{px[e], py[e], net});
+            }
+        }
+    }
+}
 
 // The room's draw buffer, in room-content coordinates (0,0 top-left).
 //
@@ -274,6 +357,8 @@ struct RoomLayout {
     std::vector<std::uint32_t> leftovers; // wires, crimps, test points...
     std::vector<std::uint32_t> children;  // Design::blocks indices, room order
     std::vector<Run> runs;                // anchor runs then floating runs
+    std::vector<Node> nodes;              // multi-way nodes, net declaration order
+    std::vector<std::uint32_t> orphans;   // taps of a node that could not be drawn
 
     RoomLayout(const RenderModel& model, const RenderPage& page)
         : m(model), pg(page), d(*model.design),
@@ -308,10 +393,23 @@ struct RoomLayout {
     }
 
     void classify(const RenderRoom& room);
+    void claimNodes();
     void walkChains();
     void placeAll();
 
 private:
+    // Trunk metrics, shared by the width an anchor must reserve and by the
+    // placement itself so the two can never disagree.
+    struct NodeMetrics {
+        int pitch = 0;     // centre-to-centre spacing of the taps
+        int firstTap = 0;  // spine to the first tap
+        int lastTap = 0;   // spine to the last tap
+        int reserve = 0;   // spine to the far edge of what the trunk occupies
+        int trunk = 0;     // spine to the drawn end of the trunk
+    };
+    [[nodiscard]] NodeMetrics nodeMetrics(const Node& node) const;
+    [[nodiscard]] bool placeNode(const Node& node, const PlacedSymbol& anchor, int ext,
+                                 int stagger);
     void walkForward(Run& run, std::int32_t net, std::uint32_t fromComp, std::uint32_t fromPin);
     int placeBand0(int y);
     int placeBand1(int y);
@@ -372,6 +470,269 @@ void RoomLayout::classify(const RenderRoom& room) {
         if (naturalLess(db, da)) return false;
         return a < b;
     });
+}
+
+// ---------------------------------------------------------------------------
+// Multi-way nodes. A net on three or more pins has no class of its own, so
+// before this idiom every one of its pins degraded to the same repeated label
+// and the node could not be read off the sheet at all.
+//
+// The node claims its participants BEFORE the chain walk, so a switch node
+// wins its bypass capacitor from the two-pin chain that would otherwise take
+// it: a drawn junction is worth more than one more series string, and the
+// label count is unchanged either way -- whichever idiom loses the part, its
+// own net picks up the marks the other net sheds.
+// ---------------------------------------------------------------------------
+
+void RoomLayout::claimNodes() {
+    constexpr std::size_t kMaxTaps = 6;  // bounds the trunk's width on a big net
+
+    std::vector<SymbolGeom> geoms;
+    geoms.reserve(anchors.size());
+    for (std::uint32_t a : anchors) geoms.push_back(buildSymbol(d.components[a], m.kinds[a]));
+
+    for (std::size_t ni = 0; ni < d.nets.size(); ++ni) {
+        std::int32_t net = static_cast<std::int32_t>(ni);
+        const Net& n = d.nets[ni];
+        const RenderNet& rn = pg.nets[ni];
+        if (n.pins.size() < 3) continue;         // a pair is the chain idiom's
+        if (rn.mark != NetMark::Label) continue;  // ground and rail have marks
+
+        // The root is the anchor with the most pins on the net on ONE side, so
+        // every leg runs straight out of the body without crossing it. Ties go
+        // to the earlier anchor, which is designator order.
+        std::size_t bestA = 0;
+        std::vector<std::uint32_t> bestPins;
+        for (std::size_t ai = 0; ai < anchors.size(); ++ai) {
+            for (Side s : {Side::Left, Side::Right}) {
+                std::vector<std::uint32_t> pins;
+                for (const SymPin& p : geoms[ai].pins) {
+                    if (p.side == s && p.net == net) pins.push_back(p.pin);
+                }
+                if (pins.size() > bestPins.size()) {
+                    bestPins = std::move(pins);
+                    bestA = ai;
+                }
+            }
+        }
+        if (bestPins.empty()) continue;
+
+        // Taps: the room's unclaimed two-terminal parts with exactly one pin
+        // on the net. A part with both pins on it is a short, not a tap.
+        std::vector<NodeTap> taps;
+        for (std::size_t ci = 0; ci < cands.size() && taps.size() < kMaxTaps; ++ci) {
+            const Cand& c = cands[ci];
+            if (c.consumed) continue;
+            const Component& cc = d.components[c.comp];
+            if (cc.pins.size() != 2) continue;
+            bool on0 = cc.pins[0].net == net;
+            bool on1 = cc.pins[1].net == net;
+            if (on0 == on1) continue;
+            taps.push_back(NodeTap{ci, on0 ? 0u : 1u, false});
+        }
+        if (bestPins.size() + taps.size() < 2) continue;  // nothing to join
+
+        Node node;
+        node.net = net;
+        node.anchor = anchors[bestA];
+        node.rootPins = std::move(bestPins);
+        for (NodeTap& t : taps) {
+            Cand& c = cands[t.cand];
+            c.consumed = true;
+            std::int32_t far = d.components[c.comp].pins[t.nearPin == 0 ? 1 : 0].net;
+            t.up = far >= 0 && markKindFor(pg, far) == MarkKind::RailFlag;
+            node.taps.push_back(t);
+        }
+
+        // The trunk may drop its mark only when the drawing already holds
+        // every pin of the net: a pin left with a label and a trunk with none
+        // would show no connection at all.
+        std::size_t drawn = node.rootPins.size() + node.taps.size();
+        bool childPort = false;
+        for (std::uint32_t bi : children) {
+            for (const BlockPort& p : d.blocks[bi].ports) {
+                if (p.net == net) childPort = true;
+            }
+        }
+        node.terminal = drawn != n.pins.size() || rn.crossing || childPort ||
+                        rn.direction != PortDir::None;
+        nodes.push_back(std::move(node));
+    }
+}
+
+RoomLayout::NodeMetrics RoomLayout::nodeMetrics(const Node& node) const {
+    NodeMetrics mt;
+    mt.pitch = 3 * P;
+    for (const NodeTap& t : node.taps) {
+        std::int32_t far = d.components[cands[t.cand].comp].pins[t.nearPin == 0 ? 1 : 0].net;
+        int w = 3 * P;
+        if (far >= 0 && markKindFor(pg, far) != MarkKind::Ground) {
+            w = textW(netName(pg, far));
+        }
+        mt.pitch = std::max(mt.pitch, w + P);
+    }
+    mt.pitch = (mt.pitch + P - 1) / P * P;
+    // The first tap clears the spine by half a label, so the leftmost far-end
+    // name cannot reach back over the legs.
+    mt.firstTap = std::max(2 * P, mt.pitch / 2 + P);
+    int n = static_cast<int>(node.taps.size());
+    mt.lastTap = n > 0 ? mt.firstTap + (n - 1) * mt.pitch : 2 * P;
+    if (node.terminal) {
+        mt.trunk = mt.lastTap + markTail(pg, node.net);
+        mt.reserve = mt.trunk;
+    } else {
+        // No mark: the trunk stops dead on the last tap, which is then a
+        // corner and takes no dot.
+        mt.trunk = n > 0 ? mt.lastTap : 0;
+        mt.reserve = mt.trunk + (n > 0 ? mt.pitch / 2 + 4 : 0);
+    }
+    return mt;
+}
+
+bool RoomLayout::placeNode(const Node& node, const PlacedSymbol& anchor, int ext, int stagger) {
+    const SymbolGeom& g = anchor.geom;
+    int px = 0;
+    Side side = Side::Left;
+    std::vector<int> ys;
+    for (std::uint32_t cp : node.rootPins) {
+        int gp = geomPinFor(g, cp);
+        if (gp < 0) return false;
+        int x = 0, y = 0;
+        pinPos(anchor, static_cast<std::size_t>(gp), x, y, side);
+        px = x;
+        ys.push_back(y);
+    }
+    std::sort(ys.begin(), ys.end());
+    const bool rightward = side != Side::Left;
+    const int dir = rightward ? 1 : -1;
+    const int spineX = px + dir * (ext + 6 + stagger);
+    const int minY = ys.front(), maxY = ys.back();
+
+    // Tap bodies, measured before a trunk row is chosen: the strip's height
+    // needs the tallest body on each side of it.
+    struct TapGeom {
+        SymbolGeom geom;
+        Rot rot = Rot::R0;
+        int h = 0;
+        std::int32_t farNet = -1;
+        bool up = false;
+    };
+    std::vector<TapGeom> tg;
+    int upH = 0, dnH = 0;
+    for (const NodeTap& t : node.taps) {
+        const Cand& c = cands[t.cand];
+        TapGeom e;
+        e.up = t.up;
+        e.farNet = d.components[c.comp].pins[t.nearPin == 0 ? 1 : 0].net;
+        e.geom = buildSymbol(d.components[c.comp], m.kinds[c.comp]);
+        // Every tap is measured before anything is drawn, so a geometry that
+        // does not expose the tapped pin fails the node here -- where the
+        // fallback can still hand every claimed part back whole.
+        if (geomPinFor(e.geom, t.nearPin) < 0) return false;
+        // verticalRot puts the named pin on top: a tap standing above the
+        // trunk wants its FAR pin up, one hanging below wants its near pin up.
+        std::uint32_t farPin = t.nearPin == 0 ? 1u : 0u;
+        e.rot = verticalRot(e.geom, e.up ? farPin : t.nearPin);
+        e.h = rotatedH(e.geom, e.rot);
+        int reach = P + e.h + P + 16;  // stub, body, stub, the far mark's text
+        if (e.up) upH = std::max(upH, reach);
+        else dnH = std::max(dnH, reach);
+        tg.push_back(std::move(e));
+    }
+
+    const NodeMetrics mt = nodeMetrics(node);
+    const int nTaps = static_cast<int>(tg.size());
+
+    // A trunk wider than the band every other idiom wraps at would push its
+    // room past every neighbour and wreck the shelf packing. Long far-end net
+    // names are what get one there; the node gives up and its pins keep the
+    // labels they would have had.
+    if (mt.reserve > kBandWrap) return false;
+
+    // The legs and the spine are wires: they may cross other wires but never a
+    // solid. Each leg is tested on its own pin's row -- the rows between two
+    // root pins belong to whatever pins live there, and the spine clears their
+    // marks by construction, standing further out than any mark on this side.
+    // The trunk band holds bodies and marks, so it must clear both classes.
+    std::vector<Rect> legs;
+    for (int y : ys) {
+        legs.push_back(rightward ? Rect{px + 4, y - 2, spineX, y + 2}
+                                 : Rect{spineX, y - 2, px - 4, y + 2});
+    }
+    for (const Rect& r : legs) {
+        if (buf.collides(r)) return false;
+    }
+
+    int stripY = maxY;
+    bool placed = false;
+    Rect band;
+    for (int tries = 0; tries < 40; ++tries) {
+        int a = spineX, b = spineX + dir * mt.reserve;
+        band.x0 = std::min(a, b);
+        band.x1 = std::max(a, b);
+        band.y0 = upH > 0 ? stripY - upH - 4 : stripY - 6;
+        band.y1 = dnH > 0 ? stripY + dnH + 4 : stripY + 6;
+        Rect spine{spineX - 2, minY, spineX + 2, stripY};
+        if (band.y0 >= 0 && !buf.collidesAny(band) && !buf.collides(spine)) {
+            buf.reserve(band);
+            buf.reserveWire(spine);
+            for (const Rect& r : legs) buf.reserveWire(r);
+            placed = true;
+            break;
+        }
+        stripY += P;  // the node strip moves DOWN, never sideways
+    }
+    if (!placed) return false;
+
+    std::vector<Seg> segs;
+    for (int y : ys) {
+        buf.wire({px, y, spineX, y}, node.net);
+        segs.push_back(Seg{px, y, spineX, y});
+    }
+    if (minY != stripY) {
+        buf.wire({spineX, minY, spineX, stripY}, node.net);
+        segs.push_back(Seg{spineX, minY, spineX, stripY});
+    }
+    if (mt.trunk > 0) {
+        int endX = spineX + dir * mt.trunk;
+        buf.wire({spineX, stripY, endX, stripY}, node.net);
+        segs.push_back(Seg{spineX, stripY, endX, stripY});
+    }
+
+    for (int k = 0; k < nTaps; ++k) {
+        const TapGeom& e = tg[static_cast<std::size_t>(k)];
+        const NodeTap& t = node.taps[static_cast<std::size_t>(k)];
+        int tapX = spineX + dir * (mt.firstTap + k * mt.pitch);
+        int sgn = e.up ? -1 : 1;
+        buf.wire({tapX, stripY, tapX, stripY + sgn * P}, node.net);
+        segs.push_back(Seg{tapX, stripY, tapX, stripY + sgn * P});
+
+        PlacedSymbol s;
+        s.component = cands[t.cand].comp;
+        s.geom = e.geom;
+        s.rot = e.rot;
+        int gp = geomPinFor(s.geom, t.nearPin);
+        int lx = 0, ly = 0, rx = 0, ry = 0;
+        localPin(s.geom, s.geom.pins[static_cast<std::size_t>(gp)], lx, ly);
+        rotatePoint(s.geom, s.rot, lx, ly, rx, ry);
+        s.x = tapX - rx;
+        s.y = e.up ? stripY - P - e.h : stripY + P;
+        int farY = e.up ? s.y : s.y + e.h;
+        int markY = farY + sgn * P;
+        buf.wire({tapX, farY, tapX, markY}, e.farNet);
+        if (e.farNet >= 0) {
+            buf.mark(markKindFor(pg, e.farNet), tapX, markY, e.up ? Side::Top : Side::Bottom,
+                     e.farNet);
+        }
+        buf.symbols.push_back(std::move(s));
+    }
+
+    if (node.terminal) {
+        buf.mark(markKindFor(pg, node.net), spineX + dir * mt.trunk, stripY,
+                 rightward ? Side::Right : Side::Left, node.net);
+    }
+    addJunctionDots(buf.dots, segs, node.net);
+    return true;
 }
 
 void RoomLayout::walkForward(Run& run, std::int32_t net, std::uint32_t fromComp,
@@ -508,16 +869,7 @@ int RoomLayout::innerLength(const Run& run) const {
         len += g.w + P;
     }
     len -= P;  // the last gap is replaced by the terminal below
-    std::int32_t end = run.endNet;
-    if (end < 0) return len + P;
-    switch (markKindFor(pg, end)) {
-        case MarkKind::Ground:
-        case MarkKind::NoConnect:
-        case MarkKind::RailFlag: return len + P + 10;
-        case MarkKind::Label: return len + P + textW(netName(pg, end)) + 6;
-        case MarkKind::PortFlag: return len + P + textW(netName(pg, end)) + 18;
-    }
-    return len + P;
+    return len + markTail(pg, run.endNet);
 }
 
 bool RoomLayout::placeRun(const Run& run, int px, int py, bool rightward, int midX) {
@@ -789,6 +1141,12 @@ int RoomLayout::placeBand1(int y) {
                 pinConsumed[r.anchorPin] = true;
             }
         }
+        std::vector<Node*> myNodes;
+        for (Node& nd : nodes) {
+            if (nd.anchor != a) continue;
+            myNodes.push_back(&nd);
+            for (std::uint32_t rp : nd.rootPins) pinConsumed[rp] = true;
+        }
 
         // Extents of the unconsumed pins' stubs and marks, and of the chains.
         int extL = 0, extR = 0, extT = 14, extB = 14;
@@ -805,12 +1163,20 @@ int RoomLayout::placeBand1(int y) {
         extL = std::max(extL, kStubLen + 4);
         extR = std::max(extR, kStubLen + 4);
 
-        // Chains fan out: the run on the topmost pin jogs FURTHEST from the
-        // body, later runs jog sooner, so a lower run's drop column crosses
-        // only wires -- never an earlier run's element bodies.
+        // Chains and node trunks fan out: the structure on the topmost pin
+        // jogs FURTHEST from the body, later ones jog sooner, so a lower
+        // structure's drop column crosses only wires -- never an earlier one's
+        // element bodies. Runs are staggered before nodes on either side, and
+        // the placement loop below walks the two in the same order so the
+        // stagger it uses is the one this reserved.
         int nLeft = 0, nRight = 0;
         for (const Run* r : myRuns) {
             int gp = geomPinFor(g, r->anchorPin);
+            if (gp < 0) continue;
+            (g.pins[static_cast<std::size_t>(gp)].side == Side::Left ? nLeft : nRight) += 1;
+        }
+        for (const Node* nd : myNodes) {
+            int gp = geomPinFor(g, nd->rootPins[0]);
             if (gp < 0) continue;
             (g.pins[static_cast<std::size_t>(gp)].side == Side::Left ? nLeft : nRight) += 1;
         }
@@ -826,6 +1192,18 @@ int RoomLayout::placeBand1(int y) {
                 } else {
                     int stagger = (nRight - 1 - kR++) * 2 * P;
                     chainR = std::max(chainR, extR + 6 + stagger + innerLength(*r));
+                }
+            }
+            for (const Node* nd : myNodes) {
+                int gp = geomPinFor(g, nd->rootPins[0]);
+                if (gp < 0) continue;
+                int reserve = nodeMetrics(*nd).reserve;
+                if (g.pins[static_cast<std::size_t>(gp)].side == Side::Left) {
+                    int stagger = (nLeft - 1 - kL++) * 2 * P;
+                    chainL = std::max(chainL, extL + 6 + stagger + reserve);
+                } else {
+                    int stagger = (nRight - 1 - kR++) * 2 * P;
+                    chainR = std::max(chainR, extR + 6 + stagger + reserve);
                 }
             }
         }
@@ -950,6 +1328,33 @@ int RoomLayout::placeBand1(int y) {
                     buf.reserve(rightward ? Rect{px, py - 6, px + e, py + 6}
                                           : Rect{px - e, py - 6, px, py + 6});
                 }
+            }
+
+            // Node trunks leave the same way, one row of taps per net. A node
+            // that will not fit gives every part back: the root pins take a
+            // plain mark and the taps fall to the free grid as single cells,
+            // where their labels connect the net by name exactly as before.
+            for (Node* nd : myNodes) {
+                int gp = geomPinFor(g, nd->rootPins[0]);
+                if (gp < 0) continue;
+                bool rightward = g.pins[static_cast<std::size_t>(gp)].side != Side::Left;
+                int stagger = rightward ? (nRight - 1 - kR++) * 2 * P
+                                        : (nLeft - 1 - kL++) * 2 * P;
+                if (placeNode(*nd, placed, rightward ? extR : extL, stagger)) continue;
+                for (std::uint32_t rp : nd->rootPins) {
+                    int rgp = geomPinFor(g, rp);
+                    if (rgp < 0) continue;
+                    int px = 0, py = 0;
+                    Side side = Side::Left;
+                    pinPos(placed, static_cast<std::size_t>(rgp), px, py, side);
+                    int sx = px + (side == Side::Left ? -kStubLen : kStubLen);
+                    int e = markExtent(pg, nd->net, side);
+                    buf.wire({px, py, sx, py}, nd->net);
+                    buf.mark(markKindFor(pg, nd->net), sx, py, side, nd->net);
+                    buf.reserve(side == Side::Left ? Rect{px - e, py - 6, px, py + 6}
+                                                  : Rect{px, py - 6, px + e, py + 6});
+                }
+                for (const NodeTap& t : nd->taps) orphans.push_back(cands[t.cand].comp);
             }
         }
 
@@ -1111,7 +1516,10 @@ void RoomLayout::placeBand2(int y) {
         rowH = 0;
     }
 
-    // The free grid: whatever no idiom placed, labelled on every pin.
+    // The free grid: whatever no idiom placed, labelled on every pin. The taps
+    // of a node that could not be drawn land here, so a claimed part is never
+    // left off the sheet.
+    for (std::uint32_t idx : orphans) placeLeftoverCell(idx, x, y, rowH);
     for (std::uint32_t idx : leftovers) placeLeftoverCell(idx, x, y, rowH);
 }
 
@@ -1189,6 +1597,7 @@ SheetLayout layoutPage(const RenderModel& model, const RenderPage& page) {
     for (const RenderRoom& room : page.rooms) {
         RoomLayout rl(model, page);
         rl.classify(room);
+        rl.claimNodes();
         rl.walkChains();
         rl.placeAll();
         int strip = room.framed && !room.title.empty() ? kTitleStrip : 0;
@@ -1257,6 +1666,26 @@ SheetLayout layoutPage(const RenderModel& model, const RenderPage& page) {
             const PlacedSymbol& b = sheet.symbols[j];
             Rect rb{b.x, b.y, b.x + rotatedW(b.geom, b.rot), b.y + rotatedH(b.geom, b.rot)};
             assert(!overlaps(ra, rb) && "two symbol bodies overlap");
+        }
+    }
+
+    // The guarantee an idiom's fallback exists to protect: a pin showing
+    // neither a wire nor a mark shows no connection at all, which is the one
+    // outcome no degradation may produce. Every placed pin therefore has a
+    // conductor leaving it -- a stub to its mark, a leg to a node's spine, a
+    // tap off a trunk, or a chain's own wire.
+    for (const PlacedSymbol& s : sheet.symbols) {
+        for (std::size_t gp = 0; gp < s.geom.pins.size(); ++gp) {
+            int px = 0, py = 0;
+            Side side = Side::Left;
+            pinPos(s, gp, px, py, side);
+            bool wired = false;
+            for (const WireItem& w : sheet.wires) {
+                for (std::size_t i = 0; i + 1 < w.pts.size(); i += 2) {
+                    if (w.pts[i] == px && w.pts[i + 1] == py) wired = true;
+                }
+            }
+            assert(wired && "a placed pin has no conductor leaving it");
         }
     }
 #endif
