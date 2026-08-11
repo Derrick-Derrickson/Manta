@@ -11,9 +11,9 @@ namespace {
 
 using namespace DirCtx;
 
-// Spec 11.3 net directives, plus the pin directives of 11.5-11.7 and the
-// harness assignment of 12.1.
-constexpr std::array<DirectiveInfo, 16> kDirectives{{
+// Spec 11.3 net directives, plus the pin directives of 11.5-11.7, the instance
+// directive of 11.10 (revision 1.5) and the harness assignment of 12.1.
+constexpr std::array<DirectiveInfo, 18> kDirectives{{
     // Net directives (spec 11.3).
     {"IMP",       ValueType::Resistance, Net | Netclass | Harness, true},
     {"CURRENT",   ValueType::Current,    Net | Netclass | Harness, true},
@@ -26,12 +26,19 @@ constexpr std::array<DirectiveInfo, 16> kDirectives{{
     {"SHIELD",    ValueType::NetName,    Net | Netclass | Harness, true},
     {"TYPE",      ValueType::PinType,    Net | Pin | Harness,      true},
     {"STUB",      ValueType::None,       Net,                      false},
+    // Revision 1.5: an explicit power-rail mark for rendering, whatever the
+    // net's name or class. Masked as &CLASS is: it is the same kind of
+    // display-affecting, net-level membership claim.
+    {"RAIL",      ValueType::None,       Net | Harness,            false},
 
     // Pin directives (spec 11.5-11.7).
     {"PINDELAY",  ValueType::Time,       Pin,                      true},
     {"NET",       ValueType::NetName,    Pin,                      true},
     {"CASUAL",    ValueType::None,       Pin,                      false},
     {"SWAP",      ValueType::Identifier, Pin,                      true},
+
+    // Instance directives (spec 11.10, revision 1.5).
+    {"EDGE",      ValueType::Edge,       DirCtx::Instance,         true},
 
     // Harness assignment (spec 12.1).
     {"HARNESS",   ValueType::Identifier, Net | Harness,            true},
@@ -153,6 +160,47 @@ bool lookupPinType(std::string_view value, PinType& out, bool& caseError) noexce
         }
     }
     return false;
+}
+
+bool lookupEdgeSide(std::string_view value, EdgeSide& out, bool& caseError) noexcept {
+    struct Entry {
+        std::string_view name;
+        EdgeSide side;
+    };
+    static constexpr Entry kSides[] = {
+        {"LEFT", EdgeSide::Left},
+        {"RIGHT", EdgeSide::Right},
+        {"TOP", EdgeSide::Top},
+        {"BOTTOM", EdgeSide::Bottom},
+    };
+
+    caseError = false;
+    for (const auto& e : kSides) {
+        if (e.name == value) {
+            out = e.side;
+            return true;
+        }
+    }
+    // Spec 2.6, exactly as &TYPE: a recognisable but wrongly-cased spelling is
+    // E-34, not an unknown value.
+    for (const auto& e : kSides) {
+        if (equalFold(e.name, value)) {
+            out = e.side;
+            caseError = true;
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string_view edgeSideName(EdgeSide s) noexcept {
+    switch (s) {
+        case EdgeSide::Left: return "LEFT";
+        case EdgeSide::Right: return "RIGHT";
+        case EdgeSide::Top: return "TOP";
+        case EdgeSide::Bottom: return "BOTTOM";
+    }
+    return "LEFT";
 }
 
 namespace {

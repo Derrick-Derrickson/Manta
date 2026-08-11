@@ -309,6 +309,14 @@ TEST_CASE("rev 1.4: a binding's connector and chain round-trip through .mantaO")
     checkRoundTrip("bindings.manta");
 }
 
+TEST_CASE("rev 1.5: '&RAIL' and a bare '&EDGE' binding round-trip through .mantaO") {
+    // Spec 11.3 and 11.10: the value-less net directive and the instance-scope
+    // directive both predate nothing in the object format -- a directive
+    // binding has been encoded since before 1.4 -- but this is what proves the
+    // encoding still carries them byte for byte.
+    checkRoundTrip("hints.manta");
+}
+
 TEST_CASE("a range value survives the object round trip") {
     // '1:20' inside a list is what keeps a twenty-way pin map to one pair. A
     // range may descend -- that is how a reversed map is written -- so the

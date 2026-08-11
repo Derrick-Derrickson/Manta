@@ -23,6 +23,7 @@ inline constexpr std::uint8_t Net = 1u << 0;       // on a chain statement
 inline constexpr std::uint8_t Pin = 1u << 1;       // on a pin map line or binding
 inline constexpr std::uint8_t Netclass = 1u << 2;  // inside a netclass body
 inline constexpr std::uint8_t Harness = 1u << 3;   // on a harness type or member
+inline constexpr std::uint8_t Instance = 1u << 4;  // bare in an instance's binding list
 inline constexpr std::uint8_t Any = 0xFF;
 }  // namespace DirCtx
 
@@ -35,6 +36,7 @@ enum class ValueType : std::uint8_t {
     Identifier,  // &CLASS, &LAYER, &SWAP, &HARNESS, @footprint, @FLATFORMAT
     NetName,     // &SHIELD, &NET  (&NET also accepts '?')
     PinType,     // &TYPE: one of a fixed, upper-case set
+    Edge,        // &EDGE: one of a fixed, upper-case set of sheet edges
     MatchGroup,  // &MATCH: a group name or a group with overrides
     Boolean,     // @fitted, @bom
     Version,     // @VERSION
@@ -95,6 +97,16 @@ enum class PinType : std::uint8_t { Passive, Signal, Power, OpenDrain, NC, Groun
 [[nodiscard]] bool lookupPinType(std::string_view value, PinType& out, bool& caseError) noexcept;
 
 [[nodiscard]] std::string_view pinTypeName(PinType t) noexcept;
+
+// Spec 11.10 (revision 1.5): the fixed set of sheet edges an '&EDGE' names.
+// Values are upper case (spec 2.6), and a lower-case spelling is error E-34.
+enum class EdgeSide : std::uint8_t { Left, Right, Top, Bottom };
+
+// Recognises an &EDGE value. `caseError` is set when the spelling matched only
+// after case folding, which is what E-34 reports.
+[[nodiscard]] bool lookupEdgeSide(std::string_view value, EdgeSide& out, bool& caseError) noexcept;
+
+[[nodiscard]] std::string_view edgeSideName(EdgeSide s) noexcept;
 
 // The name a port direction is written under wherever one is emitted or read
 // back: the rules language (docs/rules.md, "direction == out") and the netlist's

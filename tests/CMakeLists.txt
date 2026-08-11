@@ -31,6 +31,15 @@ add_test(NAME bindings
                  -DWORK=${CMAKE_CURRENT_BINARY_DIR}/bindings-work
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/bindings.cmake)
 
+# Revision 1.5, spec 11.3 and 11.10: '&RAIL' on a net and '&EDGE' on a
+# connector instance reach the netlist, only where written, and read back.
+add_test(NAME hints
+         COMMAND ${CMAKE_COMMAND}
+                 -DMANTA=$<TARGET_FILE:manta>
+                 -DSPEC_DIR=${CMAKE_CURRENT_SOURCE_DIR}/spec
+                 -DWORK=${CMAKE_CURRENT_BINARY_DIR}/hints-work
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/hints.cmake)
+
 # Spec 15.4: ".mantaO and .mantaNets are JSON, validated against a published
 # JSON Schema". Runs after `pipeline`, over the artifacts it produced.
 find_package(Python3 COMPONENTS Interpreter QUIET)
@@ -40,6 +49,14 @@ if(Python3_FOUND)
                      ${CMAKE_SOURCE_DIR}/schema
                      ${CMAKE_CURRENT_BINARY_DIR}/pipeline-work)
     set_tests_properties(schema PROPERTIES DEPENDS pipeline)
+
+    # The artifacts carrying the 1.5 keys -- a component 'edge', a value-less
+    # net directive -- validate too.
+    add_test(NAME schema_hints
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/validate_schema.py
+                     ${CMAKE_SOURCE_DIR}/schema
+                     ${CMAKE_CURRENT_BINARY_DIR}/hints-work)
+    set_tests_properties(schema_hints PROPERTIES DEPENDS hints)
 endif()
 
 # The schematic layout engine: rooms, idioms, port flags and render

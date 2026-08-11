@@ -114,6 +114,26 @@ void expectFires(std::string_view code, std::vector<std::string> extraFixtures =
     }
 }
 
+// Asserts that `code` fires on a named fixture. For a code with several
+// provoking forms, each form gets its own file -- E-30's pattern -- and the
+// suffixed name says which one this is.
+void expectFiresOn(std::string_view code, std::string_view fixtureName) {
+    std::vector<std::string> paths{fixture(fixtureName)};
+    if (readFile(paths[0]).empty()) {
+        ::mantatest::fail(__FILE__, __LINE__,
+                          "missing conformance fixture " + std::string(fixtureName));
+        return;
+    }
+
+    std::string report;
+    std::vector<std::string> codes = pipeline(paths, report);
+    if (std::find(codes.begin(), codes.end(), code) == codes.end()) {
+        ::mantatest::fail(__FILE__, __LINE__,
+                          std::string(code) + " did not fire on " + std::string(fixtureName) +
+                              ". Got:\n" + report);
+    }
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -163,6 +183,31 @@ TEST_CASE("E-43 a part exports a field") { expectFires("E-43"); }
 // Not in the numbered table: the general syntax error, provoked here by a
 // section marker with no title (revision 1.3).
 TEST_CASE("E-SYNTAX an untitled section marker") { expectFires("E-SYNTAX"); }
+
+// ---------------------------------------------------------------------------
+// Revision 1.5 -- '&RAIL' and '&EDGE' (spec 11.3, 11.10)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("rev 1.5: '&RAIL' outside net scope is E-13") {
+    expectFiresOn("E-13", "E-13-rail-pin");
+}
+TEST_CASE("rev 1.5: '&EDGE' at net scope is E-13") {
+    expectFiresOn("E-13", "E-13-edge-net");
+}
+TEST_CASE("rev 1.5: a pin directive written bare in a binding list is E-13") {
+    // Before 1.5 this form was accepted and applied to nothing; it is now
+    // checked against the Instance context (docs/assumptions.md, F2).
+    expectFiresOn("E-13", "E-13-instance");
+}
+TEST_CASE("rev 1.5: '&EDGE=left' is the E-34 case error") {
+    expectFiresOn("E-34", "E-34-edge");
+}
+TEST_CASE("rev 1.5: an unknown '&EDGE' value is E-TYPE") {
+    expectFiresOn("E-TYPE", "E-TYPE-edge");
+}
+TEST_CASE("rev 1.5: duplicate '&EDGE' at equal strength is E-12") {
+    expectFiresOn("E-12", "E-12-edge");
+}
 
 // ---------------------------------------------------------------------------
 // Section 16.2 -- warnings

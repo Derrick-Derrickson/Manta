@@ -100,6 +100,10 @@ void writeNetlist(const Design& design, std::string& out) {
         w.field("footprint", c.footprint);
         w.field("type", c.type);
         if (!c.section.empty()) w.field("section", c.section);
+        // Which sheet edge a connector faces (spec 11.10, revision 1.5).
+        // Emitted only when '&EDGE' was written, so a design that never uses
+        // the directive serialises to exactly the bytes 1.4 wrote.
+        if (!c.edge.empty()) w.field("edge", c.edge);
         w.key("fields");
         w.beginObject();
         for (const auto& [name, value] : c.fields) w.field(name, value);

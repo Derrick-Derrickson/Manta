@@ -755,7 +755,70 @@ void Elaborator::applyBindings(const Instance* inst, std::uint32_t componentInde
     // Spec 15.8: bindings are elaborated in source order, and each segment in
     // its own written order, so the components a design creates are created in
     // one order on every run.
+    //
+    // The '&EDGE' already applied to this instance, for the duplicate check.
+    // Local to this call on purpose: an instance's bindings are all in this one
+    // list, and a designator *reference* never applies bindings.
+    struct {
+        std::string value;
+        Strength strength = Strength::Normal;
+        Span at;
+        bool set = false;
+    } edge;
+
     for (const Binding* b : inst->bindings) {
+        if (b->kind == BindingKind::Directive) {
+            // Revision 1.5, spec 11.10: a directive written bare in a binding
+            // list annotates the instance. Only '&EDGE' exists at this scope; a
+            // spelled-out name that is anything else was already E-13 at
+            // compile (an Instance-context check in sema), so what reaches this
+            // arm wrongly can only have been interpolated.
+            const Directive* d = b->directive;
+            SymbolId dirName = resolve(d->name, scope);
+            if (!valid(dirName)) continue;
+            std::string_view text = interner_.text(dirName);
+            if (text != "EDGE") {
+                diags_.report(DiagId::E13, d->name.span, text);
+                continue;
+            }
+            if (!d->value) continue;  // reported at compile: '&EDGE' requires a value
+            const Value* resolved = subst_.resolveValue(d->value, *scope.fields, arena_);
+            std::string value = resolved ? renderValue(resolved, interner_) : std::string{};
+            EdgeSide side{};
+            bool caseError = false;
+            if (!lookupEdgeSide(value, side, caseError)) {
+                diags_.report(DiagId::Type, d->span,
+                              std::format("'{}' is not a sheet edge; write LEFT, RIGHT, "
+                                          "TOP or BOTTOM",
+                                          value));
+                continue;
+            }
+            if (caseError) {
+                // Spec 2.6 via a substitution: the written form is checked at
+                // compile, so only an interpolated value can land here.
+                diags_.report(DiagId::E34, d->span, value, edgeSideName(side));
+            }
+            std::string canonical{edgeSideName(side)};
+
+            // Duplicates take the strength ladder, exactly as directives on a
+            // net do (spec 11.1): a stronger '&EDGE' replaces a weaker one, and
+            // a same-key collision at equal strength with a different value is
+            // E-12.
+            if (edge.set) {
+                if (edge.strength > d->strength) continue;
+                if (edge.strength == d->strength && edge.value != canonical) {
+                    diags_.report(DiagId::E12, d->span, "EDGE", edge.value, canonical)
+                        .note(edge.at, "first applied here");
+                    continue;
+                }
+            }
+            edge.value = canonical;
+            edge.strength = d->strength;
+            edge.at = d->span;
+            edge.set = true;
+            components_[componentIndex].edge = canonical;
+            continue;
+        }
         if (b->kind != BindingKind::PinNet) continue;
         // Re-fetched each iteration and never held across elaborateSegment: a
         // chain binding instantiates devices, which grows components_ and

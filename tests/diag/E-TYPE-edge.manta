@@ -1,0 +1,8 @@
+part p {
+    1 = A &CASUAL;
+    2 = B &CASUAL;
+};
+
+block b {
+    X = .{U1~p: &EDGE=MIDDLE;}. = Y;
+};

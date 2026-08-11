@@ -507,3 +507,44 @@ with no right-hand side (`DQ[0] &PINDELAY=18ps`, §11.5) and the unbind
 `PIN = ?` (§11.6). Both are of the kind recorded in section A — the wording was
 narrower than the language — and are corrected here rather than listed there
 because the production they belong to was being rewritten anyway.
+
+### F2. `&RAIL` and `&EDGE` are display facts, and instance scope is new
+
+Revision 1.5 adds two directives that say something a renderer needs and no
+check reads. The decisions worth recording are where each one lives, and what
+tightening the second one forced.
+
+**`&RAIL` is the explicit override; the heuristics remain.** E2 records how a
+renderer decides which nets are supplies: evidence (`&CLASS=power`, a
+`&TYPE=POWER` source pin) or spelling (`3V3`, `VCC`, `VBUS`, …). Those tiers
+stay exactly as they are — they cost the author nothing and are right almost
+always. `&RAIL` exists for the nets they miss: a switched rail called
+`VSYS-PROT`, a divided reference, a project-local name no pattern should be
+taught. It is value-less and masked as `&CLASS` is (net and harness contexts),
+because it is the same kind of net-level membership claim; it flows through the
+generic net-directive path and appears in the netlist's `directives` object with
+an empty value, exactly as `&STUB` always has.
+
+**`&EDGE` needed a scope that did not exist.** A connector's facing is a fact
+about an instance — not about any pin, and not about a net. The grammar has
+admitted a bare directive in a binding list since 1.4 rewrote the production,
+but nothing consumed it: the checker tested such a directive against the *pin*
+context and the elaborator had no case for it at all, so `{J1~X: &CASUAL; }`
+was accepted and silently did nothing. Rather than give `&EDGE` a home inside a
+defect, 1.5 introduces an Instance context, gives `&EDGE` to it alone, and
+checks bare binding-list directives against it.
+
+**The tightening is a defect fix, not a break.** Every directive that was legal
+bare in a binding list before — legal because the check asked "could this sit on
+a pin?" — was a no-op there. The specification assigns the position no meaning
+for any of them, and the corpus (tests, examples, the specification's own worked
+examples) contains not one instance of the form. What is newly rejected is
+exactly the set of spellings that did nothing, and E-13 is what they report,
+the same code a wrong-context directive reports everywhere else.
+
+**Duplicates follow §11.1, not a new rule.** Two `&EDGE` on one instance take
+the strength ladder: stronger wins, equal strength with different values is
+E-12, with the first application noted — the same behaviour a repeated `&IMP`
+has on a net. The netlist carries the result on an optional component `edge`
+key, emitted only when written, so a design that never uses the directive
+serialises byte-identically to 1.4's output.

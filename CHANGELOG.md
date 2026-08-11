@@ -1,5 +1,49 @@
 # Changelog
 
+## 1.5.0 — Unreleased
+
+### Language, revision 1.5
+
+- **`&RAIL` marks a power rail for rendering.** A value-less net directive
+  (§11.3): the net is a supply for display purposes, whatever its name or
+  class. The renderer's rail heuristics — `&CLASS=power`, a `&TYPE=POWER`
+  source pin, a `3V3`-shaped spelling — remain exactly as they were; `&RAIL` is
+  the explicit override for the rails they miss:
+
+  ```
+  VSYS-PROT &RAIL &CURRENT=2A;
+  ```
+
+  It flows through the generic net-directive path and appears in the netlist's
+  `directives` object with an empty value, exactly as `&STUB` always has.
+
+- **`&EDGE` declares which sheet edge a connector faces.** The first directive
+  with *instance* scope (§11.10), written bare in the binding list:
+
+  ```
+  {J1~CONN-6P: &EDGE=LEFT; VIN = VPOS; GND = GND; };
+  ```
+
+  The value is one of `LEFT`, `RIGHT`, `TOP`, `BOTTOM` — a fixed set, so it is
+  upper case per §2.6 and `&EDGE=left` is **E-34**. Duplicates take the §11.1
+  strength ladder, and two at equal strength with different values are
+  **E-12**. The netlist carries the result on an optional component `edge` key,
+  emitted only when written.
+
+- **Bare instance-body directives were accepted and ignored; now checked
+  against an Instance context.** Since 1.4's grammar a directive could be
+  written bare in a binding list, but it was checked as though it sat on a pin
+  and then applied to nothing. Only `&EDGE` has instance scope, so any other
+  directive written bare there is now **E-13**. Nothing meaningful is rejected:
+  the specification assigned the position no meaning and the corpus never used
+  it, so every newly-rejected spelling was a silent no-op before.
+
+- **Purely additive.** Both directives were **E-13** under 1.4, so no source
+  that compiled before means anything different now. `kLanguageVersion`, both
+  schemas and the project version move to 1.5; a 1.5 toolchain reads any older
+  object, and a design that uses neither directive links to byte-identical
+  output.
+
 ## 1.4.0 — 2026-08-11
 
 ### Language, revision 1.4
