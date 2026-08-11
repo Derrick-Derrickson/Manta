@@ -39,6 +39,13 @@ part FIX-MCU {
     5 = IO1>;
     6 = AVDD< &TYPE=POWER;
 };
+part FIX-NC {
+    @~footprint = QFN-4;
+    1 = IN;
+    2 = OUT;
+    3 = SPARE &TYPE=NC;
+    4 = SPARE2 &TYPE=NC;
+};
 part FIX-HDR {
     @!type = boardconnector;
     @~footprint = HDR-1x4;
@@ -58,6 +65,7 @@ block sub {
 block fixture {
     GND &TYPE=GROUND;
     3V3 &CLASS=power;
+    PROBE &STUB;
     
 
     {U9~FIX-R: A = LEFTY[0]; B = LEFTY[1];};
@@ -79,6 +87,8 @@ block fixture {
     {R7~FIX-R: A = LEFTY[0]; B = LEFTY[1];};
     {R8~FIX-R: A = LEFTY[0]; B = LEFTY[1];};
     {TP1~FIX-TP: T = SPI-CLK;};
+    {TP2~FIX-TP: T = PROBE;};
+    {U4~FIX-NC: IN = SPI-CLK; OUT = LED-A; SPARE = DEAD-PIN;};
 
     --- SUBS
     DRV[0:1] = [[{SUB%[1:2]~sub}DRIVE]];
@@ -133,6 +143,37 @@ if(html MATCHES "class=\"netlabel\"[^>]*data-net=\"LED-K\"")
 endif()
 if(NOT html MATCHES "data-net=\"LED-K\"")
     message(FATAL_ERROR "the LED chain did not draw the LED-K wire")
+endif()
+
+# --- no-connect pins: a cross, never a net label ------------------------------
+# Spec 11.6: '&TYPE=NC' forbids connection, so U4's SPARE and SPARE2 are drawn
+# as crosses -- SPARE despite carrying the net DEAD-PIN, SPARE2 despite
+# carrying no net at all. Two crosses of two strokes each.
+string(REGEX MATCHALL "class=\"noconn\"" nc_strokes "${html}")
+list(LENGTH nc_strokes nc_stroke_count)
+if(NOT nc_stroke_count EQUAL 4)
+    message(FATAL_ERROR "expected 2 no-connect crosses (4 strokes) for U4's NC pins, "
+                        "got ${nc_stroke_count} strokes")
+endif()
+
+# The net a NC pin happens to carry names no conductor: it must not be drawn.
+if(html MATCHES "class=\"netlabel\"[^>]*data-net=\"DEAD-PIN\"")
+    message(FATAL_ERROR "a NC pin's net must not be labelled")
+endif()
+if(html MATCHES ">DEAD-PIN<")
+    message(FATAL_ERROR "the NC pin's net name is drawn as text somewhere")
+endif()
+
+# The cross sits WITH the existing greyed pin text, not instead of it.
+if(NOT html MATCHES "class=\"pinname nc\"")
+    message(FATAL_ERROR "a NC pin's name must still be drawn greyed")
+endif()
+
+# A single-pin net that is NOT typed NC keeps its label: '&STUB' declares the
+# single reference deliberate (spec 11.8), so PROBE is a named test point the
+# reader wants to see, not noise. Only '&TYPE=NC' means "do not connect".
+if(NOT html MATCHES "class=\"netlabel\"[^>]*data-net=\"PROBE\"")
+    message(FATAL_ERROR "a deliberate single-pin stub net must still be labelled")
 endif()
 
 # --- hierarchy: one page per block DEFINITION --------------------------------

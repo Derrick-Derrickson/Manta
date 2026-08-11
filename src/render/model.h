@@ -11,9 +11,10 @@
 
 namespace manta::render {
 
-// How a net is shown at each pin stub. Grounds and rails get a mark instead of
-// a text label, which is most of what makes a sheet read like a schematic.
-enum class NetMark : std::uint8_t { Label, Ground, Rail };
+// How a net is shown at each pin stub. Grounds, rails and no-connects get a
+// mark instead of a text label, which is most of what makes a sheet read like
+// a schematic.
+enum class NetMark : std::uint8_t { Label, Ground, Rail, NoConnect };
 
 // One page's view of a design net. The display name is the page-local spelling
 // -- a block page labels "BLK1.LED-ANODE" as "LED-ANODE" -- while data-net in

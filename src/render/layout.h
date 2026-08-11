@@ -51,7 +51,7 @@ struct DotItem {
 
 // What terminates a stub. `dir` is the direction the mark extends away from
 // its attach point (the free end of the stub).
-enum class MarkKind : std::uint8_t { Ground, RailFlag, Label, PortFlag };
+enum class MarkKind : std::uint8_t { Ground, RailFlag, Label, PortFlag, NoConnect };
 
 struct MarkItem {
     MarkKind kind = MarkKind::Label;

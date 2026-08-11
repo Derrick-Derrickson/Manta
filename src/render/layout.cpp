@@ -115,10 +115,18 @@ bool isRail(const RenderPage& p, std::int32_t net) {
 
 MarkKind markKindFor(const RenderPage& p, std::int32_t net) {
     const RenderNet& rn = p.nets[static_cast<std::size_t>(net)];
+    if (rn.mark == NetMark::NoConnect) return MarkKind::NoConnect;
     if (rn.mark == NetMark::Ground) return MarkKind::Ground;
     if (rn.mark == NetMark::Rail) return MarkKind::RailFlag;
     if (rn.crossing || rn.direction != PortDir::None) return MarkKind::PortFlag;
     return MarkKind::Label;
+}
+
+// A NC pin is a no-connect wherever it appears and whatever binding it carries
+// -- including none at all, which is why this takes the pin and not just its
+// net: an unbound NC pin has no net to classify (spec 11.6).
+MarkKind markKindForPin(const RenderPage& p, const SymPin& sp) {
+    return sp.nc ? MarkKind::NoConnect : markKindFor(p, sp.net);
 }
 
 const std::string& netName(const RenderPage& p, std::int32_t net) {
@@ -135,6 +143,7 @@ int markExtent(const RenderPage& p, std::int32_t net, Side side) {
         case MarkKind::RailFlag: return vertical ? kStubLen + 18 : kStubLen + nameW + 10;
         case MarkKind::PortFlag: return vertical ? kStubLen + 22 : kStubLen + nameW + 18;
         case MarkKind::Label: return vertical ? kStubLen + 16 : kStubLen + nameW + 8;
+        case MarkKind::NoConnect: return kStubLen + 4;  // the cross, no label
     }
     return kStubLen + 4;
 }
@@ -503,6 +512,7 @@ int RoomLayout::innerLength(const Run& run) const {
     if (end < 0) return len + P;
     switch (markKindFor(pg, end)) {
         case MarkKind::Ground:
+        case MarkKind::NoConnect:
         case MarkKind::RailFlag: return len + P + 10;
         case MarkKind::Label: return len + P + textW(netName(pg, end)) + 6;
         case MarkKind::PortFlag: return len + P + textW(netName(pg, end)) + 18;
@@ -619,6 +629,7 @@ bool RoomLayout::placeRun(const Run& run, int px, int py, bool rightward, int mi
             buf.mark(MarkKind::RailFlag, cursor + dir * P, stripY - P, Side::Top, end);
             break;
         case MarkKind::Label:
+        case MarkKind::NoConnect:
         case MarkKind::PortFlag:
             buf.wire({cursor, stripY, cursor + dir * P, stripY}, end);
             buf.mark(markKindFor(pg, end), cursor + dir * P, stripY,
@@ -872,7 +883,7 @@ int RoomLayout::placeBand1(int y) {
                     break;
             }
             buf.wire({px, py, sx, sy}, p.net);
-            if (p.net >= 0) buf.mark(markKindFor(pg, p.net), sx, sy, side, p.net);
+            if (p.nc || p.net >= 0) buf.mark(markKindForPin(pg, p), sx, sy, side, p.net);
         }
 
         // Pull-ups stand over the anchor, rail flag up, signal joining BY
@@ -1056,7 +1067,7 @@ void RoomLayout::placeLeftoverCell(std::uint32_t comp, int& x, int& y, int& rowH
             case Side::Bottom: sy += kStubLen; break;
         }
         buf.wire({px, py, sx, sy}, p.net);
-        if (p.net >= 0) buf.mark(markKindFor(pg, p.net), sx, sy, side, p.net);
+        if (p.nc || p.net >= 0) buf.mark(markKindForPin(pg, p), sx, sy, side, p.net);
     }
     x += cellW + 2 * P;
     rowH = std::max(rowH, cellH);

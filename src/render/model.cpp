@@ -16,6 +16,19 @@ bool isGroundNet(const Design& d, const Net& n) {
     return true;
 }
 
+// Spec 11.6: "'&TYPE=NC' means the datasheet forbids connection". Such a net
+// conducts nothing, so it is drawn as a no-connect cross and never labelled --
+// the name a lone NC pin's net carries reads as a signal that is not there.
+// Connecting a NC pin is error E-25, so a net mixing NC with ordinary pins is
+// already diagnosed; only an all-NC net takes the mark here.
+bool isNoConnectNet(const Design& d, const Net& n) {
+    if (n.pins.empty()) return false;
+    for (const PinRef& p : n.pins) {
+        if (d.components[p.component].pins[p.pin].type != PinType::NC) return false;
+    }
+    return true;
+}
+
 char upper(char c) { return c >= 'a' && c <= 'z' ? static_cast<char>(c - 'a' + 'A') : c; }
 bool isDigit(char c) { return c >= '0' && c <= '9'; }
 bool isWord(char c) {
@@ -152,6 +165,15 @@ void buildPageNets(const Design& design, RenderPage& page, const BlockInstance* 
                 page.nets[j].mark = page.nets[i].mark;
             }
         }
+    }
+
+    // A no-connect is settled after the spelling pass above, so it neither
+    // spreads by name -- two unrelated NC pins may both display "NC" -- nor
+    // displaces a ground or rail mark.
+    for (std::size_t i = 0; i < page.nets.size(); ++i) {
+        RenderNet& rn = page.nets[i];
+        if (rn.mark != NetMark::Label) continue;
+        if (isNoConnectNet(design, design.nets[i])) rn.mark = NetMark::NoConnect;
     }
 
     // A net touching two or more rooms of this page -- through a component pin

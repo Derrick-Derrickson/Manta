@@ -48,6 +48,14 @@ void groundGlyphSideways(std::string& out, int x, int y, int dx) {
     line(out, "wire", x + 6 * dx, y - 2, x + 6 * dx, y + 2);
 }
 
+// The no-connect cross. Centred on the free end of the stub, so it reads the
+// same from any side and needs no direction; the half-size of 4 keeps it
+// inside the kStubLen + 4 strip markExtent reserves for it.
+void noConnectGlyph(std::string& out, int x, int y) {
+    line(out, "noconn", x - 4, y - 4, x + 4, y + 4);
+    line(out, "noconn", x - 4, y + 4, x + 4, y - 4);
+}
+
 // The name drawn on this page: the page-local spelling.
 std::string_view dispOf(const RenderPage& p, std::int32_t net) {
     return net < 0 ? std::string_view{} : p.nets[static_cast<std::size_t>(net)].display;
@@ -173,6 +181,9 @@ void emitMark(std::string& out, const RenderModel& m, const RenderPage& p, const
                     break;
             }
             break;
+        // No label and no data-net hook: a no-connect names no conductor, so
+        // there is nothing for a click to trace (spec 11.6).
+        case MarkKind::NoConnect: noConnectGlyph(out, mk.x, mk.y); break;
         case MarkKind::PortFlag: {
             const RenderNet& rn = p.nets[static_cast<std::size_t>(mk.net)];
             out += std::format("<g class=\"portflag\" data-net=\"{}\">\n", esc(flat));
