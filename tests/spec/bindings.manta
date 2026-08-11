@@ -1,0 +1,60 @@
+// Revision 1.4 -- a binding is a chain rooted at a pin.
+//
+// Spec 7.4: "PIN <connector> <segment>" inside the binding list of instance D
+// means exactly what "D.PIN <connector> <segment>" means in the enclosing body.
+// "PIN = NET", the only form legal before this revision, is the degenerate
+// case of that rule and must keep meaning what it always meant.
+
+part BND-BUCK {
+    @~footprint = SOT-23-6;
+    #value      = MP1584EN-LF-Z;
+    1 = VIN<   &TYPE=POWER;
+    2 = SW>;
+    3 = FB<;
+    4 = EN<;
+    5 = COMP<>;
+    6 = GND<   &TYPE=POWER;
+};
+
+part BND-BUS {
+    @~footprint = BGA-96;
+    [1:4] = LANE[0:3]<>;
+    5     = REF<>;
+    6     = SPARE &TYPE=NC;
+};
+
+block bindings-demo {
+    GND &TYPE=GROUND;
+
+    {U2~BND-BUCK:
+        // A device chain hanging off a pin, and a shunt that carries a
+        // binding list of its own.
+        VIN  = VPOS-PROT == .{C1~10uF-0805: . = GND;};
+        // '==' opens a binding just as it opens a statement (spec 6.3).
+        SW   == K{D2~DI3643: A = GND;} == .{C3~100nF-0603: . = BUCK-BST;};
+        // A binding chain may run over as many lines as it needs.
+        FB   == .{R3~10kR-0603: . = 5V;}
+            == .{R4~10kR-0603: . = GND;};
+        // The pre-1.4 spelling, unchanged: one bare net after '='.
+        EN   = .{R5~100kR-0603}. = VPOS-PROT;
+        COMP = .{C2~100nF-0603}. == GND;
+        GND  = GND;
+    };
+
+    // Nested devices: the shunt on U3's REF is itself an instance whose
+    // binding list holds another.
+    {U3~BND-BUS:
+        LANE[0:3] =* LANE-COMMON;
+        REF       == .{R6~10kR-0603: . = .{C4~100nF-0603: . = GND;};};
+        // Spec 11.6: a pin left deliberately floating.
+        SPARE     = ?;
+        // Spec 11.5: a directive written against the pin, after the chain.
+        LANE[0]   = LANE-COMMON &~PINDELAY=8ps;
+    };
+
+    // '.' takes the first unassigned pin, with a chain on the right of it
+    // like any other binding (spec 7.3).
+    VPOS-PROT = .{R7~0R-0603: . = .{C5~10uF-0805: . = GND;};}. = VPOS;
+
+    VPOS = .{TP1~board-supply}VOUT;
+};

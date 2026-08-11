@@ -65,6 +65,25 @@ void Parser::recoverToStatementEnd() {
     }
 }
 
+int Parser::braceDepth() {
+    while (depthCursor_ < pos_) {
+        TokenKind k = toks_.at(depthCursor_).kind;
+        if (k == TokenKind::LBrace) ++depthAtCursor_;
+        else if (k == TokenKind::RBrace) --depthAtCursor_;
+        ++depthCursor_;
+    }
+    return depthAtCursor_;
+}
+
+void Parser::resyncToDepth(int depth) {
+    if (braceDepth() <= depth) return;
+    while (!atEnd() && braceDepth() > depth) advance();
+    // The '}' just consumed closed the construct the failed entry left open,
+    // and the ';' terminating the statement that construct belonged to goes
+    // with it. A body loop is entitled to start on a fresh entry.
+    accept(TokenKind::Semi);
+}
+
 void Parser::recoverToDeclEnd() {
     int depth = 0;
     while (!atEnd()) {
@@ -917,13 +936,39 @@ Binding* Parser::parseBinding() {
         if (at(TokenKind::LBracket)) b->pinRange = parseRange();
     }
 
-    if (accept(TokenKind::Eq)) {
-        if (at(TokenKind::Question)) {
-            // "GNDB=?" leaves the pin deliberately floating (spec 11.6).
+    // Revision 1.4, spec 7.4: a binding is a chain rooted at a pin of the
+    // enclosing instance, so "PIN <connector> <segment>" here means exactly
+    // what "<designator>.PIN <connector> <segment>" means in the enclosing
+    // body. The connectors are spec 6's four, the same set parseSegment()
+    // joins elements with. None of them means the binding has no right-hand
+    // side at all: the pin carries only directives or fields (spec 11.5).
+    bool connected = true;
+    if (at(TokenKind::EqEq)) b->connector = Connector::Same;
+    else if (at(TokenKind::EqStar)) b->connector = Connector::Gather;
+    else if (at(TokenKind::StarEq)) b->connector = Connector::Broadcast;
+    else if (at(TokenKind::Eq)) b->connector = Connector::Advance;
+    else connected = false;
+
+    if (connected) {
+        bool advancing = at(TokenKind::Eq);
+        advance();
+        if (advancing && at(TokenKind::Question)) {
+            // "GNDB=?" leaves the pin deliberately floating (spec 11.6). Only
+            // '=' takes it: the other three connectors join runs of elements,
+            // and there is no run to join to nothing.
             advance();
             b->unbind = true;
         } else {
-            b->net = parseNetExpr();
+            Segment* seg = parseSegment();
+            // A lone net keeps the shape it had before revision 1.4, 'rhs'
+            // null included, so every design written against 1.3 travels the
+            // path it always travelled.
+            if (b->connector == Connector::Advance && seg->elements.size() == 1 &&
+                seg->elements[0]->kind == ElementKind::Net) {
+                b->net = seg->elements[0]->net;
+            } else {
+                b->rhs = seg;
+            }
         }
     }
 
@@ -1338,6 +1383,7 @@ void Parser::rejectSectionMarker() {
 void Parser::parseBlockBody(std::vector<BodyEntry>& out, bool allowSections) {
     while (!at(TokenKind::RBrace) && !atEnd()) {
         std::size_t before = pos_;
+        int depth = braceDepth();
         if (at(TokenKind::SectionMarker)) {
             const Token& t = cur();
             if (!allowSections) {
@@ -1377,12 +1423,14 @@ void Parser::parseBlockBody(std::vector<BodyEntry>& out, bool allowSections) {
             recoverToStatementEnd();
             if (pos_ == before) ++pos_;
         }
+        resyncToDepth(depth);
     }
 }
 
 void Parser::parsePartBody(std::vector<BodyEntry>& out) {
     while (!at(TokenKind::RBrace) && !atEnd()) {
         std::size_t before = pos_;
+        int depth = braceDepth();
         if (at(TokenKind::SectionMarker)) {
             rejectSectionMarker();
             continue;
@@ -1405,12 +1453,14 @@ void Parser::parsePartBody(std::vector<BodyEntry>& out) {
             recoverToStatementEnd();
             if (pos_ == before) ++pos_;
         }
+        resyncToDepth(depth);
     }
 }
 
 void Parser::parseHarnessBody(std::vector<BodyEntry>& out) {
     while (!at(TokenKind::RBrace) && !atEnd()) {
         std::size_t before = pos_;
+        int depth = braceDepth();
         if (at(TokenKind::SectionMarker)) {
             rejectSectionMarker();
             continue;
@@ -1434,12 +1484,14 @@ void Parser::parseHarnessBody(std::vector<BodyEntry>& out) {
             recoverToStatementEnd();
             if (pos_ == before) ++pos_;
         }
+        resyncToDepth(depth);
     }
 }
 
 void Parser::parseNetclassBody(std::vector<BodyEntry>& out) {
     while (!at(TokenKind::RBrace) && !atEnd()) {
         std::size_t before = pos_;
+        int depth = braceDepth();
         if (at(TokenKind::SectionMarker)) {
             rejectSectionMarker();
             continue;
@@ -1454,12 +1506,14 @@ void Parser::parseNetclassBody(std::vector<BodyEntry>& out) {
             recoverToStatementEnd();
             if (pos_ == before) ++pos_;
         }
+        resyncToDepth(depth);
     }
 }
 
 void Parser::parseMatchBody(std::vector<BodyEntry>& out) {
     while (!at(TokenKind::RBrace) && !atEnd()) {
         std::size_t before = pos_;
+        int depth = braceDepth();
         if (at(TokenKind::SectionMarker)) {
             rejectSectionMarker();
             continue;
@@ -1484,6 +1538,7 @@ void Parser::parseMatchBody(std::vector<BodyEntry>& out) {
             recoverToStatementEnd();
             if (pos_ == before) ++pos_;
         }
+        resyncToDepth(depth);
     }
 }
 
@@ -1675,6 +1730,10 @@ SourceUnit Parser::run() {
         Item* item = parseItem();
         if (item) items.push_back(item);
         if (pos_ == before) ++pos_;
+        // A declaration that ran out of braces leaves the file's own nesting
+        // adrift; the next '}' would then be read as the start of a
+        // declaration and every line after it reported as garbage.
+        resyncToDepth(0);
     }
 
     unit.items = commit(items);
