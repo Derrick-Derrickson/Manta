@@ -51,6 +51,14 @@ add_test(NAME render
                  -DWORK=${CMAKE_CURRENT_BINARY_DIR}/render-work
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/render.cmake)
 
+# Multi-way nodes: the trunk-and-tap idiom, where a junction dot may and may
+# not go, and the label fallback when a trunk will not fit.
+add_test(NAME render_nodes
+         COMMAND ${CMAKE_COMMAND}
+                 -DMANTA=$<TARGET_FILE:manta>
+                 -DWORK=${CMAKE_CURRENT_BINARY_DIR}/render-nodes-work
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/nodes.cmake)
+
 # A complete design that must pass every check with nothing to report -- the
 # other half of the conformance argument.
 add_test(NAME example

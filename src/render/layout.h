@@ -4,11 +4,11 @@
 //
 // Every drawn wire comes from an idiom that reserves its own space -- a
 // decoupling ladder under its rail bar, a pull-up standing over its anchor, a
-// chain walking out of an anchor pin. Any connection no idiom claims is a 10u
-// stub and a mark (label, ground, rail or port flag), which is both the
-// reference style and always electrically correct. If an idiom's wire cannot
-// be placed without collision the connection downgrades to marks; correctness
-// never depends on routing.
+// chain walking out of an anchor pin, a multi-way node's trunk with its taps.
+// Any connection no idiom claims is a 10u stub and a mark (label, ground, rail
+// or port flag), which is both the reference style and always electrically
+// correct. If an idiom's wire cannot be placed without collision the
+// connection downgrades to marks; correctness never depends on routing.
 #pragma once
 
 #include <string>
@@ -43,7 +43,9 @@ struct WireItem {
     std::int32_t net = -1;
 };
 
-// A junction dot where a ladder cap taps its rail bar.
+// A filled junction dot. It belongs only where three or more conductors meet
+// -- a ladder cap tapping its rail bar, a node's tap tapping its trunk. A
+// corner in a wire, or two conductors joined end to end, takes none.
 struct DotItem {
     int x = 0, y = 0;
     std::int32_t net = -1;
