@@ -21,7 +21,9 @@ file(REMOVE_RECURSE "${WORK}")
 file(MAKE_DIRECTORY "${WORK}")
 
 # One block, three '--- TITLE' markers, and a part placed before any marker so
-# the untitled room exists too. LEFTY[0] and SPI-CLK deliberately span rooms.
+# the untitled room exists too. LEFTY[0] and SPI-CLK deliberately span rooms;
+# nRST joins two anchors (U1, J2) and a pull-up inside one room, so the Flow
+# pipeline has a room-local net to route.
 set(SRC "${WORK}/rooms.manta")
 file(WRITE "${SRC}" "\
 netclass power { &CURRENT=1A; };
@@ -75,6 +77,7 @@ block fixture {
 
     --- MCU CORE
     {U1~FIX-MCU: VCC = 3V3; RST = nRST; IO0 = LED-A; IO1 = SPI-CLK; AVDD = VBAT;};
+    {J2~FIX-HDR: A = nRST;};
     3V3 = .{R1~FIX-R}. == nRST;
     LED-A = .{R2~FIX-R}. = LED-K;
     LED-K = A{D1~FIX-LED}K = GND;
@@ -109,18 +112,6 @@ file(SHA256 "${WORK}/fixture.html" a)
 file(SHA256 "${WORK}/fixture2.html" b)
 if(NOT a STREQUAL b)
     message(FATAL_ERROR "render is not deterministic")
-endif()
-
-# --- TEMPORARY (WP7 removes this): the pipeline flag -------------------------
-# '--layout=flow' selects the Flow pipeline, whose stub delegates to the
-# classic engine, so its output must be byte-identical to the default. This
-# assertion proves the flag and the delegation; it dies when the flow placer
-# lands and the outputs legitimately diverge.
-run_manta(render --layout=flow -o "${WORK}/fixture-flow.html" "${WORK}/fixture.mantaNets")
-file(SHA256 "${WORK}/fixture-flow.html" f)
-if(NOT a STREQUAL f)
-    message(FATAL_ERROR "--layout=flow must render byte-identically to the default "
-                        "while its stub delegates to the classic engine")
 endif()
 
 file(READ "${WORK}/fixture.html" html)
@@ -247,4 +238,65 @@ if(html MATCHES "data-net=\"SUB2.INNER-NODE\"")
     message(FATAL_ERROR "SUB2's copy rendered: the 2nd instance must draw no page")
 endif()
 
-message(STATUS "render: rooms, rail bars, chains, port flags and block pages all verified")
+# ==============================================================================
+# The Flow pipeline ('--layout=flow'): the flow-ranked placer. Its output
+# legitimately diverges from the classic default, so it gets its own
+# determinism proof and behavioural assertions; every classic assertion above
+# still runs on the default output, untouched.
+# ==============================================================================
+
+# --- flow determinism (spec 15.8): two renders, identical bytes ---------------
+run_manta(render --layout=flow -o "${WORK}/fixture-flow.html" "${WORK}/fixture.mantaNets")
+run_manta(render --layout=flow -o "${WORK}/fixture-flow2.html" "${WORK}/fixture.mantaNets")
+file(SHA256 "${WORK}/fixture-flow.html" fa)
+file(SHA256 "${WORK}/fixture-flow2.html" fb)
+if(NOT fa STREQUAL fb)
+    message(FATAL_ERROR "flow render is not deterministic")
+endif()
+
+file(READ "${WORK}/fixture-flow.html" flow)
+
+# --- flow: a room-local net is a routed wire, not repeated labels -------------
+# nRST joins U1.RST, J2.A and pull-up R1, all inside MCU CORE: the router
+# claims it, so its data-net rides wire elements (the routed tree and the
+# stubs) and not one netlabel appears for it anywhere.
+if(NOT flow MATCHES "class=\"wire\"[^>]*data-net=\"nRST\"")
+    message(FATAL_ERROR "the room-local net nRST must be drawn as a wire on the flow output")
+endif()
+if(flow MATCHES "class=\"netlabel\"[^>]*data-net=\"nRST\"")
+    message(FATAL_ERROR "a routed net must not carry a label")
+endif()
+
+# --- flow: one rail bar per room, not one flag per pin ------------------------
+# VBAT has three consumers in MCU CORE (C3, C4, U1.AVDD) and one in IO HEADER
+# (J1.C). The MCU CORE appearance is a bar -- named once at its left end --
+# with its consumers hanging from it (a pin whose tap cannot drop keeps at
+# most one flag), so the rail-flag marks are bounded by the rooms the rail
+# touches (2), never one per pin (4).
+if(NOT flow MATCHES "class=\"railbar\"[^>]*data-net=\"VBAT\"")
+    message(FATAL_ERROR "VBAT has 3 consumers in MCU CORE and must get a rail bar")
+endif()
+string(REGEX MATCHALL "class=\"rail\" data-net=\"VBAT\"" vbat_marks "${flow}")
+list(LENGTH vbat_marks vbat_mark_count)
+if(vbat_mark_count GREATER 2)
+    message(FATAL_ERROR "VBAT touches 2 rooms and must show at most 2 rail-flag marks, "
+                        "got ${vbat_mark_count}")
+endif()
+
+# --- flow: wires dominate labels ----------------------------------------------
+# Every placed pin has at least its stub wire and the router turns label nets
+# into wires, so wire elements must be at least as numerous as netlabel texts.
+# Parity is a defensible floor on this small fixture: below it, half the sheet
+# would connect by name alone, which is exactly what the flow placer exists to
+# avoid.
+string(REGEX MATCHALL "class=\"wire\"" flow_wires "${flow}")
+string(REGEX MATCHALL "class=\"netlabel\"" flow_labels "${flow}")
+list(LENGTH flow_wires flow_wire_count)
+list(LENGTH flow_labels flow_label_count)
+if(flow_wire_count LESS flow_label_count)
+    message(FATAL_ERROR "flow output has ${flow_wire_count} wires vs "
+                        "${flow_label_count} netlabels; wires must dominate")
+endif()
+
+message(STATUS "render: rooms, rail bars, chains, port flags, block pages and the "
+               "flow pipeline all verified")

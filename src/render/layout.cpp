@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "render/layout.h"
 
+#include <algorithm>
 #include <cassert>
 
 #include "render/place.h"
@@ -13,27 +14,32 @@ namespace manta::render {
 // This is the one place outside symbols.cpp that may call buildSymbol: every
 // placer reads the cache, so a page's geometry is measured exactly once and
 // the reservation pass and the drawing pass can never disagree.
-SymbolCache buildSymbolCache(const RenderModel& m, const std::vector<SidePlan>* plans) {
+SymbolCache buildSymbolCache(const RenderModel& m, const std::vector<SidePlan>* plans,
+                             const RenderPage* page) {
     const Design& d = *m.design;
     SymbolCache cache;
     cache.reserve(d.components.size());
     for (std::size_t i = 0; i < d.components.size(); ++i) {
         const SidePlan* plan = nullptr;
         if (plans && i < plans->size() && !(*plans)[i].byPin.empty()) plan = &(*plans)[i];
-        cache.push_back(buildSymbol(d.components[i], m.kinds[i], plan));
+        // The page matters only alongside a plan (it feeds the net names the
+        // plan asked to show); planless symbols stay the builtin heuristic.
+        cache.push_back(buildSymbol(d.components[i], m.kinds[i], plan, plan ? page : nullptr));
     }
     return cache;
 }
 
 SheetLayout layoutPage(const RenderModel& model, const RenderPage& page,
                        RenderOptions::Pipeline pipeline) {
-    // WP2 feeds per-component SidePlans in here; today every component keeps
-    // the builtin side heuristic on both pipelines.
-    SymbolCache cache = buildSymbolCache(model, nullptr);
-
-    SheetLayout sheet = pipeline == RenderOptions::Pipeline::Flow
-                            ? layoutPageFlow(model, page, cache)
-                            : layoutPageClassic(model, page, cache);
+    SheetLayout sheet;
+    if (pipeline == RenderOptions::Pipeline::Flow) {
+        // The Flow path plans pin sides from each room's flow graph before
+        // any geometry is measured, so it builds its own per-page cache.
+        sheet = layoutPageFlow(model, page);
+    } else {
+        SymbolCache cache = buildSymbolCache(model, nullptr, nullptr);
+        sheet = layoutPageClassic(model, page, cache);
+    }
 
 #ifndef NDEBUG
     // The layout's own guarantee, whichever pipeline produced the sheet: no
@@ -68,6 +74,32 @@ SheetLayout layoutPage(const RenderModel& model, const RenderPage& page,
             }
             assert(wired && "a placed pin has no conductor leaving it");
         }
+    }
+
+    // Flow only: the placed room rectangles of a framed multi-room page
+    // partition their bounding box exactly -- pairwise disjoint, areas
+    // summing to the bounding box's area. tileRooms guarantees it; this
+    // proves the plumbing from RoomPlace to RoomItem kept it.
+    if (pipeline == RenderOptions::Pipeline::Flow && sheet.rooms.size() >= 2) {
+        int x0 = sheet.rooms[0].x, y0 = sheet.rooms[0].y;
+        int x1 = x0, y1 = y0;
+        long long sum = 0;
+        for (std::size_t i = 0; i < sheet.rooms.size(); ++i) {
+            const RoomItem& r = sheet.rooms[i];
+            x0 = std::min(x0, r.x);
+            y0 = std::min(y0, r.y);
+            x1 = std::max(x1, r.x + r.w);
+            y1 = std::max(y1, r.y + r.h);
+            sum += static_cast<long long>(r.w) * r.h;
+            Rect ra{r.x, r.y, r.x + r.w, r.y + r.h};
+            for (std::size_t j = i + 1; j < sheet.rooms.size(); ++j) {
+                const RoomItem& o = sheet.rooms[j];
+                Rect rb{o.x, o.y, o.x + o.w, o.y + o.h};
+                assert(!overlaps(ra, rb) && "two placed rooms overlap");
+            }
+        }
+        assert(sum == static_cast<long long>(x1 - x0) * (y1 - y0) &&
+               "the placed rooms do not partition their bounding box");
     }
 #endif
 
