@@ -4,6 +4,7 @@
 
 #include <algorithm>
 
+#include "render/model.h"
 #include "render/sides.h"
 
 namespace manta::render {
@@ -50,10 +51,104 @@ void placeColumn(const Component& c, const std::vector<std::uint32_t>& idx, Side
     }
 }
 
-SymbolGeom buildGeneric(const Component& c, const SidePlan* plan) {
-    // WP2 places pins by `plan`; until then only the heuristic below runs,
-    // and a null (or empty) plan must keep it byte-identical.
-    (void)plan;
+// True when `plan` actually plans this component: non-null, non-empty, and
+// parallel to Component::pins. A stale plan of the wrong length falls back to
+// the heuristic rather than misplacing pins.
+bool planApplies(const Component& c, const SidePlan* plan) {
+    return plan != nullptr && !plan->byPin.empty() && plan->byPin.size() == c.pins.size();
+}
+
+// The page-local net name pin `i` shows inside the body; empty when the plan
+// did not ask for it or no page was supplied (display names are page-local,
+// so without the page there is nothing correct to show).
+std::string shownNet(const Component& c, const SidePlan& plan, const RenderPage* page,
+                     std::uint32_t i) {
+    if (page == nullptr || !plan.byPin[i].showNet) return {};
+    std::int32_t net = c.pins[i].net;
+    if (net < 0 || static_cast<std::size_t>(net) >= page->nets.size()) return {};
+    return page->nets[static_cast<std::size_t>(net)].display;
+}
+
+// Sorts pin indices by the plan's slot number. The slot defines the order
+// along the side; the offsets keep the existing pitch rules. Ties (which a
+// well-formed plan never produces on one side) fall back to pin index.
+void slotSort(const SidePlan& plan, std::vector<std::uint32_t>& idx) {
+    std::sort(idx.begin(), idx.end(), [&](std::uint32_t a, std::uint32_t b) {
+        int sa = plan.byPin[a].slot;
+        int sb = plan.byPin[b].slot;
+        if (sa != sb) return sa < sb;
+        return a < b;
+    });
+}
+
+// Widest shown net name over `idx`, as reserved width: the net text sits on
+// the same row as the silicon name, kNetGap after it, so the body widens by
+// the worst case once (max name + max net bounds every row's name + net).
+int maxNetLen(const Component& c, const SidePlan& plan, const RenderPage* page,
+              const std::vector<std::uint32_t>& idx) {
+    int best = 0;
+    for (std::uint32_t i : idx) {
+        std::string s = shownNet(c, plan, page, i);
+        if (!s.empty()) best = std::max(best, kCharWidth * static_cast<int>(s.size()) + kNetGap);
+    }
+    return best;
+}
+
+// buildGeneric with a real side plan: same formulas as the heuristic path,
+// with the per-side pin sets taken from the plan instead of type/direction.
+SymbolGeom buildGenericPlanned(const Component& c, const SidePlan& plan, const RenderPage* page) {
+    std::vector<std::uint32_t> left, right, top, bottom;
+    for (std::uint32_t i = 0; i < c.pins.size(); ++i) {
+        switch (plan.byPin[i].side) {
+            case Side::Left: left.push_back(i); break;
+            case Side::Right: right.push_back(i); break;
+            case Side::Top: top.push_back(i); break;
+            case Side::Bottom: bottom.push_back(i); break;
+        }
+    }
+    slotSort(plan, left);
+    slotSort(plan, right);
+    slotSort(plan, top);
+    slotSort(plan, bottom);
+
+    SymbolGeom g;
+    int nL = static_cast<int>(left.size());
+    int nR = static_cast<int>(right.size());
+    int nT = static_cast<int>(top.size());
+    int nB = static_cast<int>(bottom.size());
+
+    int leftW = kCharWidth * maxNameLen(c, left);
+    int rightW = kCharWidth * maxNameLen(c, right);
+    // Only Left/Right pins ever show a net name (planSides guarantees it), so
+    // only the horizontal name row widens for them.
+    int netW = std::max(maxNetLen(c, plan, page, left), maxNetLen(c, plan, page, right));
+
+    const int vPitch = 3 * kPinPitch;
+    g.topReserve = std::max({3 * kPinPitch,
+                             kCharWidth * static_cast<int>(c.designator.size()) + kPinPitch,
+                             leftW + 12});
+    g.botReserve = std::max({3 * kPinPitch,
+                             kCharWidth * static_cast<int>(c.partName.size()) + kPinPitch,
+                             leftW + 12});
+
+    int nameW = leftW + rightW + 3 * kPinPitch + netW;
+    int topW = nT > 0 ? g.topReserve + vPitch * (nT - 1) + rightW + 15 : 0;
+    int botW = nB > 0 ? g.botReserve + vPitch * (nB - 1) + rightW + 15 : 0;
+    g.w = std::max({6 * kPinPitch, nameW, topW, botW});
+    g.h = kPinPitch * (2 * std::max({nL, nR, 1}) + 1);
+
+    placeColumn(c, left, Side::Left, kPinPitch, 2 * kPinPitch, g);
+    placeColumn(c, right, Side::Right, kPinPitch, 2 * kPinPitch, g);
+    placeColumn(c, top, Side::Top, g.topReserve, vPitch, g);
+    placeColumn(c, bottom, Side::Bottom, g.botReserve, vPitch, g);
+    for (SymPin& p : g.pins) p.netName = shownNet(c, plan, page, p.pin);
+    return g;
+}
+
+SymbolGeom buildGeneric(const Component& c, const SidePlan* plan, const RenderPage* page) {
+    if (planApplies(c, plan)) return buildGenericPlanned(c, *plan, page);
+    // No plan (or an empty one): the builtin heuristic, byte-identical to the
+    // pre-plan renderer.
     std::vector<std::uint32_t> left, right, top, bottom, nc;
     for (std::uint32_t i = 0; i < c.pins.size(); ++i) {
         const ComponentPin& p = c.pins[i];
@@ -389,20 +484,34 @@ SymbolGeom buildOpAmp(const Component& c) {
     return g;
 }
 
-SymbolGeom buildConnector(const Component& c, const SidePlan* plan) {
-    // As for buildGeneric: `plan` is WP2's, the null path is today's exactly.
-    (void)plan;
+SymbolGeom buildConnector(const Component& c, const SidePlan* plan, const RenderPage* page) {
     std::vector<std::uint32_t> rows;
     for (std::uint32_t i = 0; i < c.pins.size(); ++i) rows.push_back(i);
-    naturalSort(c, rows);
+
+    // A connector is one column of pins whichever way it faces; the plan only
+    // reorders the rows and picks which side the column sits on (Left when
+    // the body sits at the sheet's right or bottom edge).
+    const bool planned = planApplies(c, plan);
+    Side side = Side::Right;
+    int netW = 0;
+    if (planned) {
+        slotSort(*plan, rows);
+        side = plan->byPin[rows[0]].side;  // planSides puts every pin on one side
+        netW = maxNetLen(c, *plan, page, rows);
+    } else {
+        naturalSort(c, rows);
+    }
 
     SymbolGeom g;
     g.botReserve = std::max(3 * kPinPitch,
                             kCharWidth * static_cast<int>(c.partName.size()) + kPinPitch);
-    g.w = std::max(4 * kPinPitch, kCharWidth * maxNameLen(c, rows) + 2 * kPinPitch);
+    g.w = std::max(4 * kPinPitch, kCharWidth * maxNameLen(c, rows) + 2 * kPinPitch + netW);
     // Double pitch, matching the generic box's Left/Right rows.
     g.h = kPinPitch * (2 * std::max(1, static_cast<int>(rows.size())) + 1);
-    placeColumn(c, rows, Side::Right, kPinPitch, 2 * kPinPitch, g);
+    placeColumn(c, rows, side, kPinPitch, 2 * kPinPitch, g);
+    if (planned) {
+        for (SymPin& p : g.pins) p.netName = shownNet(c, *plan, page, p.pin);
+    }
     return g;
 }
 
@@ -432,9 +541,10 @@ bool naturalLess(std::string_view a, std::string_view b) {
     return (a.size() - i) < (b.size() - j);
 }
 
-SymbolGeom buildSymbol(const Component& c, SymbolKind kind, const SidePlan* plan) {
+SymbolGeom buildSymbol(const Component& c, SymbolKind kind, const SidePlan* plan,
+                       const RenderPage* page) {
     switch (kind) {
-        case SymbolKind::Connector: return buildConnector(c, plan);
+        case SymbolKind::Connector: return buildConnector(c, plan, page);
         case SymbolKind::Resistor: return buildResistor(c);
         case SymbolKind::Capacitor: return buildCapacitor(c);
         case SymbolKind::CapacitorPolarised: return buildCapacitorPolarised(c);
@@ -458,7 +568,7 @@ SymbolGeom buildSymbol(const Component& c, SymbolKind kind, const SidePlan* plan
         case SymbolKind::Crimp: return buildCrimp(c);
         case SymbolKind::Generic: break;
     }
-    return buildGeneric(c, plan);
+    return buildGeneric(c, plan, page);
 }
 
 }  // namespace manta::render
