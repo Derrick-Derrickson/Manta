@@ -2347,6 +2347,21 @@ manta render [options] <netlist.mantaNets>
 Renders a netlist as a clickable HTML schematic: one sheet per block definition, with
 the render sections of §4.7 as titled rooms.
 
+The rooms tile the sheet edge to edge — every room border meets a neighbour or the
+sheet frame, the way a hand-drawn schematic partitions its page — and the sheet as a
+whole aims for a landscape shape. Inside a room, signal flow reads left to right:
+connectors and other entry points sit at the left, loads and outputs at the right,
+and a part's pins face the parts they talk to, with each pin's net name printed
+beside the pin name inside the body. Power rails with more than one consumer in a
+room run as a named horizontal bar with taps dropping to their consumers; decoupling
+capacitors hang directly from it. A net whose pins all sit in one room is drawn as a
+wire; where drawing one is impossible the net's pins carry its name instead, which
+connects them just as firmly. A net that crosses rooms connects by name — a plain
+label at each appearance. PORT flags are reserved for signals that leave the page
+entirely: a block's ports, on both the parent's sheet symbol and the definition's
+own page. No-connect pins keep their cross, and single-pin `&STUB` nets keep their
+label.
+
 | Option | Meaning |
 |---|---|
 | `-o`, `--output <file>` | HTML output path. Default: derived from the input name. |
