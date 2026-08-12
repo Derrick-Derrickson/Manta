@@ -1,8 +1,9 @@
 # The layout engine, end to end through the real binary: rooms from section
-# markers, a rail bar with its decoupling ladder, pull-ups and a chain on an
-# anchor, port flags where a net crosses rooms, multi-page hierarchy -- one
-# page per block definition, sheet symbols on the parent page -- and the
-# determinism guarantee of spec 15.8 over the whole HTML.
+# markers, rail bars with taps and decoupling ladders, routed room-local nets,
+# plain labels where a net crosses rooms, port flags only at block ports,
+# multi-page hierarchy -- one page per block definition, sheet symbols on the
+# parent page -- and the determinism guarantee of spec 15.8 over the whole
+# HTML.
 #
 # Expects: MANTA (path to the binary), WORK (scratch dir).
 
@@ -22,8 +23,8 @@ file(MAKE_DIRECTORY "${WORK}")
 
 # One block, three '--- TITLE' markers, and a part placed before any marker so
 # the untitled room exists too. LEFTY[0] and SPI-CLK deliberately span rooms;
-# nRST joins two anchors (U1, J2) and a pull-up inside one room, so the Flow
-# pipeline has a room-local net to route.
+# nRST joins two anchors (U1, J2) and a pull-up inside one room, so the
+# placer has a room-local net to route.
 set(SRC "${WORK}/rooms.manta")
 file(WRITE "${SRC}" "\
 netclass power { &CURRENT=1A; };
@@ -71,7 +72,7 @@ block fixture {
     3V3 &CLASS=power;
     RAWPWR &CLASS=raw-power &STUB;
     PROBE &STUB;
-    
+
 
     {U9~FIX-R: A = LEFTY[0]; B = LEFTY[1];};
 
@@ -128,11 +129,40 @@ if(room_count LESS 4)
     message(FATAL_ERROR "expected 4 framed rooms (3 titled + 1 untitled), got ${room_count}")
 endif()
 
-# --- a rail bar per rail with >= 2 ladder caps -------------------------------
+# --- rail bars ----------------------------------------------------------------
+# A rail with two or more consumer pins in a room gets one bar there: 3V3
+# (U1.VCC, R1, C1, C2) and VBAT (U1.AVDD, C3, C4), both in MCU CORE. RAWPWR
+# has a single pin anywhere (TP3) and never earns one.
 string(REGEX MATCHALL "class=\"railbar\"" bars "${html}")
 list(LENGTH bars bar_count)
 if(NOT bar_count EQUAL 2)
     message(FATAL_ERROR "expected rail bars for 3V3 and VBAT, got ${bar_count}")
+endif()
+
+# --- a room-local net is a routed wire, not repeated labels -------------------
+# nRST joins U1.RST, J2.A and pull-up R1, all inside MCU CORE: the router
+# claims it, so its data-net rides wire elements (the routed tree and the
+# stubs) and not one netlabel appears for it anywhere.
+if(NOT html MATCHES "class=\"wire\"[^>]*data-net=\"nRST\"")
+    message(FATAL_ERROR "the room-local net nRST must be drawn as a wire")
+endif()
+if(html MATCHES "class=\"netlabel\"[^>]*data-net=\"nRST\"")
+    message(FATAL_ERROR "a routed net must not carry a label")
+endif()
+
+# --- one rail bar per room, not one flag per pin -------------------------------
+# VBAT has three consumer pins in MCU CORE (C3, C4, U1.AVDD) and one in
+# IO HEADER (J1.C). The MCU CORE appearance is a bar -- named once at its
+# left end -- with its consumers tapping it, so the rail-flag marks are
+# bounded by the rooms the rail touches (2), never one per pin (4).
+if(NOT html MATCHES "class=\"railbar\"[^>]*data-net=\"VBAT\"")
+    message(FATAL_ERROR "VBAT has 3 consumer pins in MCU CORE and must get a rail bar")
+endif()
+string(REGEX MATCHALL "class=\"rail\" data-net=\"VBAT\"" vbat_marks "${html}")
+list(LENGTH vbat_marks vbat_mark_count)
+if(vbat_mark_count GREATER 2)
+    message(FATAL_ERROR "VBAT touches 2 rooms and must show at most 2 rail-flag marks, "
+                        "got ${vbat_mark_count}")
 endif()
 
 # --- room-crossing nets: a plain label, not a port flag ----------------------
@@ -159,13 +189,15 @@ if(html MATCHES "class=\"netlabel\"[^>]*data-net=\"RAWPWR\"")
     message(FATAL_ERROR "a rail net must not carry a plain label")
 endif()
 
-# --- the drawn idioms actually drew ------------------------------------------
-# The GPIO chain's LED-K net lives entirely inside one run: wire, never label.
+# --- the LED string's interior net is drawn, never labelled -------------------
+# LED-K joins R2 and D1 only. Whether it rides inside a series string or the
+# router joins the pair, it is a private room-local net: a drawn conductor
+# with no label anywhere -- the same guarantee the classic chain idiom gave.
 if(html MATCHES "class=\"netlabel\"[^>]*data-net=\"LED-K\"")
-    message(FATAL_ERROR "LED-K is drawn inside a chain and must not be labelled")
+    message(FATAL_ERROR "LED-K is room-local and private and must not be labelled")
 endif()
 if(NOT html MATCHES "data-net=\"LED-K\"")
-    message(FATAL_ERROR "the LED chain did not draw the LED-K wire")
+    message(FATAL_ERROR "the LED string did not draw the LED-K wire")
 endif()
 
 # --- no-connect pins: a cross, never a net label ------------------------------
@@ -197,6 +229,21 @@ endif()
 # reader wants to see, not noise. Only '&TYPE=NC' means "do not connect".
 if(NOT html MATCHES "class=\"netlabel\"[^>]*data-net=\"PROBE\"")
     message(FATAL_ERROR "a deliberate single-pin stub net must still be labelled")
+endif()
+
+# --- wires dominate labels ----------------------------------------------------
+# Every placed pin has at least its stub wire and the router turns label nets
+# into wires, so wire elements must be at least as numerous as netlabel texts.
+# Parity is a defensible floor on this small fixture: below it, half the sheet
+# would connect by name alone, which is exactly what the flow placer exists to
+# avoid.
+string(REGEX MATCHALL "class=\"wire\"" all_wires "${html}")
+string(REGEX MATCHALL "class=\"netlabel\"" all_labels "${html}")
+list(LENGTH all_wires wire_count)
+list(LENGTH all_labels all_label_count)
+if(wire_count LESS all_label_count)
+    message(FATAL_ERROR "output has ${wire_count} wires vs ${all_label_count} netlabels; "
+                        "wires must dominate")
 endif()
 
 # --- hierarchy: one page per block DEFINITION --------------------------------
@@ -238,65 +285,5 @@ if(html MATCHES "data-net=\"SUB2.INNER-NODE\"")
     message(FATAL_ERROR "SUB2's copy rendered: the 2nd instance must draw no page")
 endif()
 
-# ==============================================================================
-# The Flow pipeline ('--layout=flow'): the flow-ranked placer. Its output
-# legitimately diverges from the classic default, so it gets its own
-# determinism proof and behavioural assertions; every classic assertion above
-# still runs on the default output, untouched.
-# ==============================================================================
-
-# --- flow determinism (spec 15.8): two renders, identical bytes ---------------
-run_manta(render --layout=flow -o "${WORK}/fixture-flow.html" "${WORK}/fixture.mantaNets")
-run_manta(render --layout=flow -o "${WORK}/fixture-flow2.html" "${WORK}/fixture.mantaNets")
-file(SHA256 "${WORK}/fixture-flow.html" fa)
-file(SHA256 "${WORK}/fixture-flow2.html" fb)
-if(NOT fa STREQUAL fb)
-    message(FATAL_ERROR "flow render is not deterministic")
-endif()
-
-file(READ "${WORK}/fixture-flow.html" flow)
-
-# --- flow: a room-local net is a routed wire, not repeated labels -------------
-# nRST joins U1.RST, J2.A and pull-up R1, all inside MCU CORE: the router
-# claims it, so its data-net rides wire elements (the routed tree and the
-# stubs) and not one netlabel appears for it anywhere.
-if(NOT flow MATCHES "class=\"wire\"[^>]*data-net=\"nRST\"")
-    message(FATAL_ERROR "the room-local net nRST must be drawn as a wire on the flow output")
-endif()
-if(flow MATCHES "class=\"netlabel\"[^>]*data-net=\"nRST\"")
-    message(FATAL_ERROR "a routed net must not carry a label")
-endif()
-
-# --- flow: one rail bar per room, not one flag per pin ------------------------
-# VBAT has three consumers in MCU CORE (C3, C4, U1.AVDD) and one in IO HEADER
-# (J1.C). The MCU CORE appearance is a bar -- named once at its left end --
-# with its consumers hanging from it (a pin whose tap cannot drop keeps at
-# most one flag), so the rail-flag marks are bounded by the rooms the rail
-# touches (2), never one per pin (4).
-if(NOT flow MATCHES "class=\"railbar\"[^>]*data-net=\"VBAT\"")
-    message(FATAL_ERROR "VBAT has 3 consumers in MCU CORE and must get a rail bar")
-endif()
-string(REGEX MATCHALL "class=\"rail\" data-net=\"VBAT\"" vbat_marks "${flow}")
-list(LENGTH vbat_marks vbat_mark_count)
-if(vbat_mark_count GREATER 2)
-    message(FATAL_ERROR "VBAT touches 2 rooms and must show at most 2 rail-flag marks, "
-                        "got ${vbat_mark_count}")
-endif()
-
-# --- flow: wires dominate labels ----------------------------------------------
-# Every placed pin has at least its stub wire and the router turns label nets
-# into wires, so wire elements must be at least as numerous as netlabel texts.
-# Parity is a defensible floor on this small fixture: below it, half the sheet
-# would connect by name alone, which is exactly what the flow placer exists to
-# avoid.
-string(REGEX MATCHALL "class=\"wire\"" flow_wires "${flow}")
-string(REGEX MATCHALL "class=\"netlabel\"" flow_labels "${flow}")
-list(LENGTH flow_wires flow_wire_count)
-list(LENGTH flow_labels flow_label_count)
-if(flow_wire_count LESS flow_label_count)
-    message(FATAL_ERROR "flow output has ${flow_wire_count} wires vs "
-                        "${flow_label_count} netlabels; wires must dominate")
-endif()
-
-message(STATUS "render: rooms, rail bars, chains, port flags, block pages and the "
-               "flow pipeline all verified")
+message(STATUS "render: rooms, rail bars, routed nets, labels, port flags, block "
+               "pages and determinism all verified")

@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Tom
 // SPDX-License-Identifier: GPL-3.0-or-later
-// WP3: the flow graph. A room is read as a directed graph -- sources on the
+// The flow graph. A room is read as a directed graph -- sources on the
 // left, loads on the right -- and ranked before any coordinate is chosen.
-// The vertex classification re-expresses place_classic's roles (anchors,
-// verticals, series strings); place_classic itself is transitional and
-// nothing here calls into it.
+// The vertex classification carries the drawing idioms (anchors, verticals,
+// series strings) the placer draws cells from.
 //
 // Determinism (spec 15.8): every container is a vector iterated in insertion
 // or index order, every tie is broken by an explicit key (designator via
@@ -22,8 +21,8 @@ namespace manta::render {
 
 namespace {
 
-// The gates place_classic applies (anchorKind / twoTerminalKind), restated
-// here because this file must outlive the classic placer.
+// The role gates: what may anchor a column and what may stand or chain as a
+// two-terminal element.
 bool anchorKind(SymbolKind k, const Component& c) {
     switch (k) {
         case SymbolKind::Generic:
@@ -57,7 +56,6 @@ bool twoTerminalKind(SymbolKind k) {
 }
 
 // What a room component is to the flow graph, before vertices are formed.
-// Ladder/PullUp/PullDown match place_classic's classification exactly.
 enum class Role : std::uint8_t { Anchor, Ladder, PullUp, PullDown, Chain, Loose };
 
 // An undirected edge with optional direction evidence. `a < b` always;

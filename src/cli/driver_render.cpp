@@ -89,9 +89,6 @@ int runRender(const Options& opts) {
 
     render::RenderOptions renderOptions;
     renderOptions.title = opts.title;
-    if (opts.layout == "flow") {
-        renderOptions.pipeline = render::RenderOptions::Pipeline::Flow;
-    }
     std::string html = render::renderSchematic(design, renderOptions);
 
     std::string outputPath =

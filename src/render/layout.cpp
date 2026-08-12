@@ -6,7 +6,6 @@
 #include <cassert>
 
 #include "render/place.h"
-#include "render/place_classic.h"
 #include "render/sides.h"
 
 namespace manta::render {
@@ -29,23 +28,15 @@ SymbolCache buildSymbolCache(const RenderModel& m, const std::vector<SidePlan>* 
     return cache;
 }
 
-SheetLayout layoutPage(const RenderModel& model, const RenderPage& page,
-                       RenderOptions::Pipeline pipeline) {
-    SheetLayout sheet;
-    if (pipeline == RenderOptions::Pipeline::Flow) {
-        // The Flow path plans pin sides from each room's flow graph before
-        // any geometry is measured, so it builds its own per-page cache.
-        sheet = layoutPageFlow(model, page);
-    } else {
-        SymbolCache cache = buildSymbolCache(model, nullptr, nullptr);
-        sheet = layoutPageClassic(model, page, cache);
-    }
+SheetLayout layoutPage(const RenderModel& model, const RenderPage& page) {
+    // The flow placer plans pin sides from each room's flow graph before any
+    // geometry is measured, so it builds its own per-page cache.
+    SheetLayout sheet = layoutPageFlow(model, page);
 
 #ifndef NDEBUG
-    // The layout's own guarantee, whichever pipeline produced the sheet: no
-    // two placed symbol bodies intersect. The release build trusts it; the
-    // debug and sanitizer builds prove it on every render the test suite
-    // makes.
+    // The layout's own guarantee: no two placed symbol bodies intersect. The
+    // release build trusts it; the debug and sanitizer builds prove it on
+    // every render the test suite makes.
     for (std::size_t i = 0; i < sheet.symbols.size(); ++i) {
         const PlacedSymbol& a = sheet.symbols[i];
         Rect ra{a.x, a.y, a.x + rotatedW(a.geom, a.rot), a.y + rotatedH(a.geom, a.rot)};
@@ -76,11 +67,11 @@ SheetLayout layoutPage(const RenderModel& model, const RenderPage& page,
         }
     }
 
-    // Flow only: the placed room rectangles of a framed multi-room page
-    // partition their bounding box exactly -- pairwise disjoint, areas
-    // summing to the bounding box's area. tileRooms guarantees it; this
-    // proves the plumbing from RoomPlace to RoomItem kept it.
-    if (pipeline == RenderOptions::Pipeline::Flow && sheet.rooms.size() >= 2) {
+    // The placed room rectangles of a multi-room page partition their
+    // bounding box exactly -- pairwise disjoint, areas summing to the
+    // bounding box's area. tileRooms guarantees it; this proves the plumbing
+    // from RoomPlace to RoomItem kept it.
+    if (sheet.rooms.size() >= 2) {
         int x0 = sheet.rooms[0].x, y0 = sheet.rooms[0].y;
         int x1 = x0, y1 = y0;
         long long sum = 0;

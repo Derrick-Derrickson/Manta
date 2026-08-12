@@ -37,10 +37,6 @@
 //
 // Determinism (spec 15.8): integer math, vectors in index/insertion order,
 // explicit tie-breaks; nothing here reads an unordered container or a float.
-//
-// isqrtCeil, translate, upperCopy and the drawing primitives (vertical
-// cells, series runs, ladders, leftover stubs) are copied or adapted from
-// place_classic.cpp, which is transitional and scheduled for deletion.
 #include "render/place.h"
 
 #include <algorithm>
@@ -64,7 +60,7 @@ constexpr int kTitleBlockH = 70;
 [[nodiscard]] int roundUpP(int v) { return (v + P - 1) / P * P; }
 [[nodiscard]] int roundDownP(int v) { return v >= 0 ? v / P * P : -roundUpP(-v); }
 
-// Copied from place_classic.cpp: integer ceil(sqrt(v)).
+// Integer ceil(sqrt(v)).
 std::int64_t isqrtCeil(std::int64_t v) {
     if (v <= 0) return 0;
     std::int64_t r = 1;
@@ -78,7 +74,7 @@ std::int64_t isqrtCeil(std::int64_t v) {
     return r;
 }
 
-// Copied from place_classic.cpp: shift a finished room to its sheet position.
+// Shift a finished room to its sheet position.
 void translate(RoomBuf& b, int ox, int oy) {
     for (PlacedSymbol& s : b.symbols) {
         s.x += ox;
@@ -595,9 +591,9 @@ void RoomPlacer::placeBody(std::uint32_t vi, int colX, int off, int y, int& cell
     buf.grow(Rect{colX, y, colX + cellW, y + cellH});
 }
 
-// A standing two-terminal cell: mark (or bare stub) above, body, mark (or
-// bare stub) below. Adapted from place_classic's placeVertical with the
-// attach rows moved onto the P grid so a bare end is routable.
+// A standing two-terminal cell: mark (or bare stub, or a bar tap's riser)
+// above, body, mark (or bare stub) below. The attach rows sit on the P grid
+// so a bare end is routable.
 void RoomPlacer::placeVerticalCell(std::uint32_t vi, int colX, int off, int y, int& cellW,
                                    int& cellH) {
     const std::uint32_t comp = flow.verts[vi].comps[0];

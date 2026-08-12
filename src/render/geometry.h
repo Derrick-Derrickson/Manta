@@ -21,7 +21,6 @@ namespace manta::render {
 
 constexpr int P = kPinPitch;
 inline constexpr int kRoomPad = 2 * P;
-inline constexpr int kBandWrap = 60 * P;  // band-1 width before a second anchor row
 
 [[nodiscard]] inline int textW(std::string_view s) {
     return kCharWidth * static_cast<int>(s.size());
