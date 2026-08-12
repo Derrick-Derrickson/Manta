@@ -199,16 +199,20 @@ SidePlan planSides(std::uint32_t comp, const RoomFlow& flow, const RenderPage& p
         NetMark mark = static_cast<std::size_t>(p.net) < page.nets.size()
                            ? page.nets[static_cast<std::size_t>(p.net)].mark
                            : NetMark::Label;
-        if (p.type == PinType::Power) {
-            top.push_back(i);
-        } else if (p.type == PinType::Ground) {
+        // The net's evidence outranks the pin's declared type: a part is free
+        // to type every supply pin POWER (WCH's CH32 datasheet does), but a
+        // pin standing on a ground-marked net drinks downward wherever the
+        // silicon vendor filed it, and its ground mark must not point up.
+        if (mark == NetMark::Ground) {
             bottom.push_back(i);
         } else if (mark == NetMark::Rail) {
             // A rail is ambient, not a far end: any pin tied to a rail net
             // (a Passive one included) goes Top, even if the net also lands
             // on ranked components elsewhere in the room.
             top.push_back(i);
-        } else if (mark == NetMark::Ground) {
+        } else if (p.type == PinType::Power) {
+            top.push_back(i);
+        } else if (p.type == PinType::Ground) {
             bottom.push_back(i);
         } else if (partner[i].before) {
             left.push_back(i);
