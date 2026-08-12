@@ -31,7 +31,14 @@ constexpr std::uint32_t kStateDirs = 5;
 
 constexpr std::int32_t kStepCost = 1;  // per P step
 constexpr std::int32_t kTurnCost = 5;  // per 90-degree turn
-constexpr int kPopCap = 20000;         // popped states per routeNet call
+
+// Runaway valve, proportional to the search space: a state is pushed only on
+// a strict improvement, so a healthy search pops a small multiple of the
+// state count and anything past this is pathological. A fixed cap is wrong
+// here -- it silently failed real same-room nets whose pins sat a room-length
+// apart (the Dijkstra cost diamond grows quadratically with distance), which
+// surfaced as spurious label fallbacks on large rooms.
+constexpr std::int64_t kPopFactor = 4;  // popped states per grid state
 
 // Foreign-net wire segments split by axis: a step may cross one square-on --
 // ordinary schematic drawing -- but never run collinearly along it, which
@@ -50,7 +57,11 @@ struct Router {
     std::vector<HSpan> hSpans;
     std::vector<VSpan> vSpans;
     std::vector<char> tree;  // cell -> covered by this net's new segments
-    int pops = 0;
+    std::int64_t pops = 0;
+    // Goal row mode: when >= 0, the goal is any cell on this row with
+    // goalX1 <= x <= goalX2 (the rail-tap search: anywhere under the bar).
+    int goalRow = -1;
+    int goalX1 = 0, goalX2 = 0;
 
     [[nodiscard]] std::uint32_t stateOf(int x, int y, int d) const {
         const std::uint32_t cell =
@@ -89,12 +100,14 @@ struct Router {
     // the forbidden priority queue and makes every tie fall to insertion
     // order. The first goal state POPPED is the answer -- minimal cost by
     // bucket order, deterministic among equals by FIFO. `toTree` searches
-    // accept any tree cell as the goal; otherwise the goal is the single cell
-    // (gx,gy). On success `outCells` holds every path cell, seed to goal.
+    // accept any tree cell as the goal; a set goalRow accepts any cell in its
+    // window; otherwise the goal is the single cell (gx,gy). On success
+    // `outCells` holds every path cell, seed to goal.
     [[nodiscard]] bool search(int sx, int sy, bool toTree, int gx, int gy,
                               std::vector<int>& outCells) {
         const std::size_t nStates =
             static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny) * kStateDirs;
+        const std::int64_t popCap = kPopFactor * static_cast<std::int64_t>(nStates);
         std::vector<std::int32_t> dist(nStates, -1);
         std::vector<std::int32_t> parent(nStates, -1);
         std::vector<std::deque<std::uint32_t>> buckets(1);
@@ -109,12 +122,15 @@ struct Router {
                 const std::uint32_t s = buckets[c].front();
                 buckets[c].pop_front();
                 if (dist[s] != static_cast<std::int32_t>(c)) continue;  // superseded
-                if (++pops > kPopCap) return false;
+                if (++pops > popCap) return false;
                 const std::uint32_t cell = s / kStateDirs;
                 const int d = static_cast<int>(s % kStateDirs);
                 const int x = static_cast<int>(cell % static_cast<std::uint32_t>(nx)) * P;
                 const int y = static_cast<int>(cell / static_cast<std::uint32_t>(nx)) * P;
-                if (toTree ? tree[cell] != 0 : (x == gx && y == gy)) {
+                const bool atGoal = toTree      ? tree[cell] != 0
+                                    : goalRow >= 0 ? (y == goalRow && x >= goalX1 && x <= goalX2)
+                                                   : (x == gx && y == gy);
+                if (atGoal) {
                     goal = s;
                     break;
                 }
@@ -177,6 +193,23 @@ void compress(const std::vector<int>& cells, std::vector<int>& pts) {
     pts.push_back(cells[2 * n - 1]);
 }
 
+// Foreign-net wire segments into the router's span lists; same-net overlap
+// merges and is legal, so the net's own wires are skipped.
+void collectSpans(Router& r, const RoomBuf& buf, std::int32_t net) {
+    for (const WireItem& w : buf.wires) {
+        if (w.net == net) continue;
+        for (std::size_t i = 0; i + 3 < w.pts.size(); i += 2) {
+            const int ax = w.pts[i], ay = w.pts[i + 1];
+            const int bx = w.pts[i + 2], by = w.pts[i + 3];
+            if (ay == by && ax != bx) {
+                r.hSpans.push_back(HSpan{ay, std::min(ax, bx), std::max(ax, bx)});
+            } else if (ax == bx && ay != by) {
+                r.vSpans.push_back(VSpan{ax, std::min(ay, by), std::max(ay, by)});
+            }
+        }
+    }
+}
+
 }  // namespace
 
 bool routeNet(RoomBuf& buf, const RouteRequest& req, std::int32_t netForWires) {
@@ -196,18 +229,7 @@ bool routeNet(RoomBuf& buf, const RouteRequest& req, std::int32_t netForWires) {
         if (px % P != 0 || py % P != 0) return false;
     }
 
-    for (const WireItem& w : buf.wires) {
-        if (w.net == netForWires) continue;  // same-net overlap merges: legal
-        for (std::size_t i = 0; i + 3 < w.pts.size(); i += 2) {
-            const int ax = w.pts[i], ay = w.pts[i + 1];
-            const int bx = w.pts[i + 2], by = w.pts[i + 3];
-            if (ay == by && ax != bx) {
-                r.hSpans.push_back(HSpan{ay, std::min(ax, bx), std::max(ax, bx)});
-            } else if (ax == bx && ay != by) {
-                r.vSpans.push_back(VSpan{ax, std::min(ay, by), std::max(ay, by)});
-            }
-        }
-    }
+    collectSpans(r, buf, netForWires);
 
     r.tree.assign(static_cast<std::size_t>(r.nx) * static_cast<std::size_t>(r.ny), 0);
 
@@ -294,6 +316,69 @@ bool routeNet(RoomBuf& buf, const RouteRequest& req, std::int32_t netForWires) {
         }
         if (!present) buf.dots.push_back(nd);
     }
+    return true;
+}
+
+bool routeRailTap(RoomBuf& buf, int px, int py, const RailBarItem& bar) {
+    const int gx1 = buf.maxX + 2 * P;
+    const int gy1 = buf.maxY + 2 * P;
+    Router r{buf, gx1, gy1, gx1 / P + 1, gy1 / P + 1, {}, {}, {}, 0};
+
+    // The tap point must be a grid point inside the clip, like a routeNet pin.
+    if (px < 0 || py < 0 || px > gx1 || py > gy1) return false;
+    if (px % P != 0 || py % P != 0) return false;
+
+    // The goal is any grid cell on the first row at or below the bar, inside
+    // the bar's own span; the committed tap ends with a short off-grid joint
+    // from that row to the bar line itself. Bars sit off the P grid by
+    // construction, so the joint is never zero against a foreign wire row.
+    const int goalRow = (bar.y + P - 1) / P * P;
+    r.goalRow = goalRow;
+    r.goalX1 = std::max(0, (bar.x1 + P - 1) / P * P);
+    r.goalX2 = bar.x2 / P * P;
+    if (goalRow > gy1 || r.goalX1 > r.goalX2) return false;
+
+    collectSpans(r, buf, bar.net);
+    r.tree.assign(static_cast<std::size_t>(r.nx) * static_cast<std::size_t>(r.ny), 0);
+
+    std::vector<int> cells;
+    if (!r.search(px, py, false, 0, 0, cells)) return false;
+
+    std::vector<int> pts;
+    compress(cells, pts);
+    if (pts.empty()) {
+        // The tap point already sits on the goal row: the joint alone.
+        pts = {px, py};
+    }
+    // Join the goal row to the bar. A vertical final approach simply ends on
+    // the bar line (from either side); a horizontal one turns towards it.
+    const std::size_t n = pts.size();
+    const int endX = pts[n - 2];
+    if (n >= 4 && pts[n - 4] == endX) {
+        pts[n - 1] = bar.y;
+    } else {
+        pts.push_back(endX);
+        pts.push_back(bar.y);
+    }
+
+    for (std::size_t i = 0; i + 3 < pts.size(); i += 2) {
+        const int ax = pts[i], ay = pts[i + 1], bx = pts[i + 2], by = pts[i + 3];
+        const Rect rect = ay == by ? Rect{std::min(ax, bx), ay - 2, std::max(ax, bx), ay + 2}
+                                   : Rect{ax - 2, std::min(ay, by), ax + 2, std::max(ay, by)};
+        buf.reserveWire(rect);
+    }
+    WireItem w;
+    w.pts = std::move(pts);
+    w.net = bar.net;
+    buf.wires.push_back(std::move(w));
+
+    // The bar runs through, the tap ends: three conductors, one dot -- unless
+    // a ladder cap or an earlier tap already dotted this exact point.
+    bool present = false;
+    for (const DotItem& e : buf.dots) {
+        if (e.x == endX && e.y == bar.y) present = true;
+    }
+    if (!present) buf.dots.push_back(DotItem{endX, bar.y, bar.net});
     return true;
 }
 

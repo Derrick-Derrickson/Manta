@@ -1,16 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Tom
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Page layout: the orchestrator over the placement pipelines.
+// Page layout: the orchestrator over the flow placer.
 //
-// Two pipelines produce a SheetLayout. Classic places by idiom -- a
-// decoupling ladder under its rail bar, a pull-up standing over its anchor, a
-// chain walking out of an anchor pin, a multi-way node's trunk with its taps
-// -- and any connection no idiom claims is a 10u stub and a mark, which is
-// both the reference style and always electrically correct. Flow (in
-// progress, behind RenderOptions::Pipeline) ranks each room's signal flow
-// first and routes room-locally, degrading to the same marks. Whichever
-// pipeline runs, the debug invariants here hold: no two bodies overlap, and
-// every placed pin has a conductor leaving it.
+// The placer ranks each room's signal flow -- sources on the left, loads on
+// the right -- lays rank columns, hangs rails as bars with taps, and routes
+// room-local nets; any connection it cannot draw degrades to a 10u stub and
+// a mark, which is both the reference style and always electrically correct.
+// The debug invariants here hold on every sheet: no two bodies overlap,
+// every placed pin has a conductor leaving it, and the placed rooms of a
+// multi-room page partition their bounding box exactly.
 #pragma once
 
 #include <string>
@@ -50,18 +48,16 @@ struct SheetLayout {
 };
 
 // Symbol geometry for every component, indexed by component index, built once
-// per page before placement so no placer rebuilds what another already
-// measured. `plans` (parallel to components; an empty plan means "builtin
-// heuristic") is the Flow pipeline's side assignment, and `page` supplies the
-// page-local net names a planned pin shows inside the body. The Classic
-// pipeline passes null for both, which is byte-identically the builtin
-// heuristic; the Flow pipeline builds one cache per page from its plans.
+// per page before placement so the reservation pass and the drawing pass can
+// never disagree. `plans` (parallel to components; an empty plan means
+// "builtin heuristic") is the flow placer's side assignment, and `page`
+// supplies the page-local net names a planned pin shows inside the body;
+// null for both is byte-identically the builtin heuristic.
 using SymbolCache = std::vector<SymbolGeom>;
 [[nodiscard]] SymbolCache buildSymbolCache(const RenderModel& m,
                                            const std::vector<SidePlan>* plans,
                                            const RenderPage* page);
 
-[[nodiscard]] SheetLayout layoutPage(const RenderModel& model, const RenderPage& page,
-                                     RenderOptions::Pipeline pipeline);
+[[nodiscard]] SheetLayout layoutPage(const RenderModel& model, const RenderPage& page);
 
 }  // namespace manta::render

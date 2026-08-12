@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Sheet tiling: where each laid-out room lands on the page.
 //
-// Real implementation (later WP): choose room positions so pairs that share
-// signal nets (InterRoomFlow) sit adjacent, still filling toward the classic
-// target aspect. Integer geometry, insertion-order scanning, no floats.
-// Stub guarantee: returns an empty vector, meaning "use the classic shelf
-// packing"; a caller must treat empty as that fallback.
+// Flow columns: the reading order (pull, page order) split into contiguous
+// height-balanced columns, the column count chosen by the aspect it
+// produces -- nearest the landscape sqrt(2):1 reference within the width
+// budget -- and every placement stretched so the rooms partition their
+// bounding box exactly. Integer geometry, insertion-order scanning, no
+// floats (spec 15.8).
 #pragma once
 
 #include <vector>
@@ -29,8 +30,9 @@ struct RoomPlace {
     int w = 0, h = 0;
 };
 
-// Parallel to `rooms` (page order) when non-empty. `targetW` is the same
-// clamped ceil(sqrt(1.45 * area)) budget the classic shelf packing uses.
+// Parallel to `rooms` (page order) when non-empty. `targetW` is a hard width
+// ceiling (never below the widest room); within it the tiler picks the
+// column count whose bounding box lands nearest the landscape aspect.
 [[nodiscard]] std::vector<RoomPlace> tileRooms(const std::vector<RoomExtent>& rooms,
                                                const InterRoomFlow& flow, int targetW);
 

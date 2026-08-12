@@ -14,10 +14,13 @@
 // Structural choices, documented per the work package:
 //   - Rail bars are two-pass: the bars and their ladders go in first at the
 //     top of the room, the columns after, and only then is each bar
-//     stretched to the room's content width and its taps dropped (a tap
-//     whose corridor is blocked falls back to the classic per-pin rail
-//     flag). Bars sit at y = 12 (mod P), never on the P routing grid, so a
-//     routed wire can never run collinearly along a bar.
+//     stretched to the room's content width and its taps joined -- straight
+//     corridor drop first, routed fallback second, and only when both refuse
+//     the classic per-pin rail flag. Every bar-rail consumer taps: top pins
+//     by a riser to the cell's top edge, pull-up tops, series-string ends,
+//     and side pins by their bare stub. Bars sit at y = 12 (mod P), never on
+//     the P routing grid, so a routed wire can never run collinearly along a
+//     bar.
 //   - Bare stubs (pins of nets the router will attempt) are snapped OUTWARD
 //     to the P grid, since routeNet refuses off-grid endpoints; marked stubs
 //     keep the classic kStubLen.
@@ -34,10 +37,6 @@
 //
 // Determinism (spec 15.8): integer math, vectors in index/insertion order,
 // explicit tie-breaks; nothing here reads an unordered container or a float.
-//
-// isqrtCeil, translate, upperCopy and the drawing primitives (vertical
-// cells, series runs, ladders, leftover stubs) are copied or adapted from
-// place_classic.cpp, which is transitional and scheduled for deletion.
 #include "render/place.h"
 
 #include <algorithm>
@@ -61,7 +60,7 @@ constexpr int kTitleBlockH = 70;
 [[nodiscard]] int roundUpP(int v) { return (v + P - 1) / P * P; }
 [[nodiscard]] int roundDownP(int v) { return v >= 0 ? v / P * P : -roundUpP(-v); }
 
-// Copied from place_classic.cpp: integer ceil(sqrt(v)).
+// Integer ceil(sqrt(v)).
 std::int64_t isqrtCeil(std::int64_t v) {
     if (v <= 0) return 0;
     std::int64_t r = 1;
@@ -75,7 +74,7 @@ std::int64_t isqrtCeil(std::int64_t v) {
     return r;
 }
 
-// Copied from place_classic.cpp: shift a finished room to its sheet position.
+// Shift a finished room to its sheet position.
 void translate(RoomBuf& b, int ox, int oy) {
     for (PlacedSymbol& s : b.symbols) {
         s.x += ox;
@@ -141,10 +140,15 @@ private:
         int x = 0, y = 0;
         Side side = Side::Right;
     };
+    // One rail-bar consumer. The placer pre-draws the riser from the pin to
+    // the tap point -- a grid point on the cell's top edge (or a side stub's
+    // free end) that no solid covers -- so finishBars can join it to the bar
+    // three ways: the straight corridor drop, the routed fallback, or, when
+    // both fail, the classic per-pin rail flag drawn at the tap point.
     struct Tap {
-        int px = 0, py = 0;   // the consumer pin, room coords
-        int cellTop = 0;      // top of the pin's cell: the corridor test stops here
+        int px = 0, py = 0;  // the tap point, room coords, on the P grid
         std::int32_t net = -1;
+        Side fbSide = Side::Top;  // the failure mark's direction
     };
     // One element of a series string, with its orientation resolved so the
     // entry pin faces the string's source (placeRun's R0/R180 rule).
@@ -276,16 +280,15 @@ int RoomPlacer::placeBars() {
     barOf.assign(pg.nets.size(), -1);
     int yCur = 0;
     for (std::int32_t rail : flow.roomRails) {
+        // Pins, not components: an MCU drinking a rail through five supply
+        // pins wants the bar exactly as much as five separate consumers do.
         int touch = 0;
         for (std::uint32_t idx : room.components) {
             for (const ComponentPin& p : d.components[idx].pins) {
-                if (p.net == rail) {
-                    ++touch;
-                    break;
-                }
+                if (p.net == rail) ++touch;
             }
         }
-        if (touch < 2) continue;  // a single consumer keeps its per-pin flag
+        if (touch < 2) continue;  // a single consumer pin keeps its flag
 
         // 12 above a P-multiple: never on the routing grid, so no routed wire
         // can ever run collinearly along the bar.
@@ -491,7 +494,9 @@ void RoomPlacer::pinStub(const PlacedSymbol& s, std::size_t gp) {
     Side side = Side::Left;
     pinPos(s, gp, px, py, side);
 
-    if (!p.nc && isRoutable(p.net)) {
+    const bool tapToBar =
+        !p.nc && p.net >= 0 && barOf[static_cast<std::size_t>(p.net)] >= 0;
+    if (!p.nc && (isRoutable(p.net) || tapToBar)) {
         int sx = px, sy = py;
         switch (side) {
             case Side::Left: sx = roundDownP(px - kStubLen); break;
@@ -502,7 +507,14 @@ void RoomPlacer::pinStub(const PlacedSymbol& s, std::size_t gp) {
         buf.wire({px, py, sx, sy}, p.net);
         buf.reserveWire(Rect{std::min(px, sx) - 2, std::min(py, sy) - 2, std::max(px, sx) + 2,
                              std::max(py, sy) + 2});
-        netPts[static_cast<std::size_t>(p.net)].push_back(StubPt{sx, sy, side});
+        if (tapToBar) {
+            // A left/right/bottom pin of a bar rail: the bare stub's free end
+            // is the tap point (top-side pins never reach here -- placeBody
+            // intercepts them with a riser to the cell top).
+            taps.push_back(Tap{sx, sy, p.net, side});
+        } else {
+            netPts[static_cast<std::size_t>(p.net)].push_back(StubPt{sx, sy, side});
+        }
         return;
     }
 
@@ -560,7 +572,12 @@ void RoomPlacer::placeBody(std::uint32_t vi, int colX, int off, int y, int& cell
         pinPos(placed, gp, px, py, side);
         if (side == Side::Top && !p.nc && p.net >= 0 &&
             barOf[static_cast<std::size_t>(p.net)] >= 0) {
-            taps.push_back(Tap{px, py, y, p.net});
+            // Riser to the cell's top edge, through the pin's own mark strip;
+            // the tap point is outside every solid, so the routed fallback
+            // can leave it when the straight corridor is blocked.
+            buf.wire({px, py, px, y}, p.net);
+            buf.reserveWire(Rect{px - 2, y, px + 2, py});
+            taps.push_back(Tap{px, y, p.net, Side::Top});
             continue;
         }
         pinStub(placed, gp);
@@ -574,9 +591,9 @@ void RoomPlacer::placeBody(std::uint32_t vi, int colX, int off, int y, int& cell
     buf.grow(Rect{colX, y, colX + cellW, y + cellH});
 }
 
-// A standing two-terminal cell: mark (or bare stub) above, body, mark (or
-// bare stub) below. Adapted from place_classic's placeVertical with the
-// attach rows moved onto the P grid so a bare end is routable.
+// A standing two-terminal cell: mark (or bare stub, or a bar tap's riser)
+// above, body, mark (or bare stub) below. The attach rows sit on the P grid
+// so a bare end is routable.
 void RoomPlacer::placeVerticalCell(std::uint32_t vi, int colX, int off, int y, int& cellW,
                                    int& cellH) {
     const std::uint32_t comp = flow.verts[vi].comps[0];
@@ -600,13 +617,22 @@ void RoomPlacer::placeVerticalCell(std::uint32_t vi, int colX, int off, int y, i
     const int bodyBot = bodyTop + rotatedH(s.geom, s.rot);
 
     const bool bareTop = isRoutable(topNet);
+    const bool tapTop = topNet >= 0 && barOf[static_cast<std::size_t>(topNet)] >= 0;
     const bool bareBot = isRoutable(botNet);
-    buf.wire({cx, attachY, cx, bodyTop}, topNet);
-    if (bareTop) {
-        buf.reserveWire(Rect{cx - 2, attachY - 2, cx + 2, bodyTop});
-        netPts[static_cast<std::size_t>(topNet)].push_back(StubPt{cx, attachY, Side::Top});
-    } else if (topNet >= 0) {
-        buf.mark(markKindFor(pg, topNet), cx, attachY, Side::Top, topNet);
+    if (tapTop) {
+        // A pull-up on a bar rail: the attach wire runs to the cell's top
+        // edge and becomes the tap's riser instead of taking a rail flag.
+        buf.wire({cx, y, cx, bodyTop}, topNet);
+        buf.reserveWire(Rect{cx - 2, y, cx + 2, bodyTop});
+        taps.push_back(Tap{cx, y, topNet, Side::Top});
+    } else {
+        buf.wire({cx, attachY, cx, bodyTop}, topNet);
+        if (bareTop) {
+            buf.reserveWire(Rect{cx - 2, attachY - 2, cx + 2, bodyTop});
+            netPts[static_cast<std::size_t>(topNet)].push_back(StubPt{cx, attachY, Side::Top});
+        } else if (topNet >= 0) {
+            buf.mark(markKindFor(pg, topNet), cx, attachY, Side::Top, topNet);
+        }
     }
     buf.wire({cx, bodyBot, cx, bodyBot + P}, botNet);
     if (bareBot) {
@@ -620,8 +646,9 @@ void RoomPlacer::placeVerticalCell(std::uint32_t vi, int colX, int off, int y, i
 
     cellH = roundUpP(3 * P + (bodyBot - bodyTop) + P + 16);
     cellW = off + cw / 2 + 24;  // +24: the refdes/value text right of the body
-    // The solid stops at a bare end's stub row, so the router can leave it.
-    const int top = bareTop ? attachY : y;
+    // The solid stops at a bare end's stub row, so the router can leave it;
+    // a tapped top keeps its whole riser clear the same way.
+    const int top = bareTop ? attachY : tapTop ? bodyTop : y;
     const int bot = bareBot ? bodyBot + P : y + cellH;
     buf.reserve(Rect{cx - cw / 2, top, cx + cw / 2 + 24, bot});
     buf.grow(Rect{colX, y, colX + cellW, y + cellH});
@@ -640,6 +667,10 @@ void RoomPlacer::placeSeries(std::uint32_t vi, int colX, int off, int y, int& ce
     if (isRoutable(sg.startNet)) {
         netPts[static_cast<std::size_t>(sg.startNet)].push_back(
             StubPt{sx0, stripY, Side::Left});
+    } else if (sg.startNet >= 0 && barOf[static_cast<std::size_t>(sg.startNet)] >= 0) {
+        // The string starts on a bar rail: riser to the cell's top edge.
+        buf.wire({sx0, stripY, sx0, y}, sg.startNet);
+        taps.push_back(Tap{sx0, y, sg.startNet, Side::Top});
     } else if (sg.startNet >= 0) {
         buf.mark(markKindFor(pg, sg.startNet), sx0, stripY, Side::Left, sg.startNet);
     }
@@ -694,8 +725,16 @@ void RoomPlacer::placeSeries(std::uint32_t vi, int colX, int off, int y, int& ce
                 buf.mark(MarkKind::Ground, cursor + P, stripY + P, Side::Bottom, end);
                 break;
             case MarkKind::RailFlag:
-                buf.wire({cursor, stripY, cursor + P, stripY, cursor + P, stripY - P}, end);
-                buf.mark(MarkKind::RailFlag, cursor + P, stripY - P, Side::Top, end);
+                if (barOf[static_cast<std::size_t>(end)] >= 0) {
+                    // The string ends on a bar rail: the jog keeps rising to
+                    // the cell's top edge and taps the bar from there.
+                    buf.wire({cursor, stripY, cursor + P, stripY, cursor + P, y}, end);
+                    taps.push_back(Tap{cursor + P, y, end, Side::Top});
+                } else {
+                    buf.wire({cursor, stripY, cursor + P, stripY, cursor + P, stripY - P},
+                             end);
+                    buf.mark(MarkKind::RailFlag, cursor + P, stripY - P, Side::Top, end);
+                }
                 break;
             case MarkKind::Label:
             case MarkKind::NoConnect:
@@ -811,8 +850,11 @@ void RoomPlacer::placeColumns(int yStart) {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 3: stretch each bar to the room's content width and drop its taps. A
-// blocked corridor falls back to the classic per-pin rail flag.
+// Phase 3: stretch each bar to the room's content width and join its taps.
+// Each tap tries the straight corridor drop first (the pretty case), then the
+// routed fallback around whatever blocked it, and only when both refuse does
+// it keep the classic per-pin rail flag -- so a rail with a bar shows flags
+// only where no conductor can reach the bar at all.
 // ---------------------------------------------------------------------------
 
 void RoomPlacer::finishBars() {
@@ -822,19 +864,67 @@ void RoomPlacer::finishBars() {
         bar.x2 = std::max(bar.x2, contentW);
         buf.reserveWire(Rect{bar.x1, bar.y - 2, bar.x2, bar.y + 2});
     }
+
+    // The straight drop must clear every solid AND every foreign vertical
+    // wire astride its line -- an earlier tap's routed leg, a bare stub --
+    // or two nets would read as one conductor. Same-net wires merge legally.
+    auto corridorClear = [&](std::int32_t net, int px, int barY, int bottom) {
+        if (bottom <= barY + 4) return false;
+        if (buf.collides(Rect{px - 2, barY + 4, px + 2, bottom})) return false;
+        for (const WireItem& w : buf.wires) {
+            if (w.net == net) continue;
+            for (std::size_t i = 0; i + 3 < w.pts.size(); i += 2) {
+                const int ax = w.pts[i], ay = w.pts[i + 1];
+                const int bx = w.pts[i + 2], by = w.pts[i + 3];
+                if (ax != bx || ay == by) continue;  // vertical segments only
+                if (ax <= px - 4 || ax >= px + 4) continue;
+                if (std::max(barY + 4, std::min(ay, by)) <
+                    std::min(bottom, std::max(ay, by))) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+    auto dotOnce = [&](int x, int y, std::int32_t net) {
+        for (const DotItem& e : buf.dots) {
+            if (e.x == x && e.y == y) return;
+        }
+        buf.dots.push_back(DotItem{x, y, net});
+    };
+
+    // The routed fallback needs a grid start; a pin at an off-grid x (some
+    // connector geometries) first jogs along its own cell-top edge to the
+    // nearest grid point, nearer candidate tried first, lower x on the tie.
+    auto tryRoute = [&](const Tap& t, const RailBarItem& bar) {
+        if (t.px % P == 0) return routeRailTap(buf, t.px, t.py, bar);
+        const int lo = roundDownP(t.px), hi = roundUpP(t.px);
+        const int first = (t.px - lo <= hi - t.px) ? lo : hi;
+        const int second = first == lo ? hi : lo;
+        for (int gx : {first, second}) {
+            if (gx < 0) continue;
+            if (routeRailTap(buf, gx, t.py, bar)) {
+                buf.wire({t.px, t.py, gx, t.py}, t.net);
+                buf.reserveWire(Rect{std::min(t.px, gx) - 2, t.py - 2,
+                                     std::max(t.px, gx) + 2, t.py + 2});
+                return true;
+            }
+        }
+        return false;
+    };
+
     for (const Tap& t : taps) {
         const std::int32_t bi = barOf[static_cast<std::size_t>(t.net)];
-        const int barY = buf.bars[static_cast<std::size_t>(bi)].y;
-        const Rect corridor{t.px - 2, barY + 4, t.px + 2, t.cellTop};
-        if (t.cellTop > barY + 4 && !buf.collides(corridor)) {
-            buf.wire({t.px, barY, t.px, t.py}, t.net);
-            buf.reserveWire(Rect{t.px - 2, barY, t.px + 2, t.py});
+        const RailBarItem& bar = buf.bars[static_cast<std::size_t>(bi)];
+        if (corridorClear(t.net, t.px, bar.y, t.py)) {
+            buf.wire({t.px, bar.y, t.px, t.py}, t.net);
+            buf.reserveWire(Rect{t.px - 2, bar.y, t.px + 2, t.py});
             // The bar runs through, the tap ends: three conductors, one dot.
-            buf.dots.push_back(DotItem{t.px, barY, t.net});
+            dotOnce(t.px, bar.y, t.net);
+        } else if (tryRoute(t, bar)) {
+            // Routed around the blockage; the router dotted the bar joint.
         } else {
-            const int sy = t.py - kStubLen;
-            buf.wire({t.px, t.py, t.px, sy}, t.net);
-            buf.mark(MarkKind::RailFlag, t.px, sy, Side::Top, t.net);
+            buf.mark(MarkKind::RailFlag, t.px, t.py, t.fbSide, t.net);
         }
     }
 }
@@ -916,17 +1006,22 @@ SheetLayout layoutPageFlow(const RenderModel& model, const RenderPage& page) {
         bufs.push_back(std::move(rp.buf));
     }
 
-    // 4. Tile the rooms: the classic width budget, the flow tiler. The placed
-    // rectangles partition their bounding box; the frame is drawn at the
-    // stretched size while the content stays anchored top-left.
+    // 4. Tile the rooms. The placed rectangles partition their bounding box;
+    // the frame is drawn at the stretched size while the content stays
+    // anchored top-left. The width budget is a generous ceiling --
+    // ceil(sqrt(3 * area)) admits shapes out to roughly 2:1 once column
+    // stretch is paid for -- and the tiler's aspect-driven column count does
+    // the real shaping, so sheets land near the landscape sqrt(2):1 of the
+    // reference schematics instead of the portrait strips the old classic
+    // 1600-clamped budget produced under column tiling.
     std::int64_t area = 0;
     int widest = 0;
     for (const RoomExtent& e : extents) {
         area += static_cast<std::int64_t>(e.w) * e.h;
         widest = std::max(widest, e.w);
     }
-    int targetW = static_cast<int>(isqrtCeil(area * 145 / 100));
-    targetW = std::clamp(targetW, widest, std::max(widest, 1600));
+    int targetW = static_cast<int>(isqrtCeil(area * 3));
+    targetW = std::max(targetW, widest);
 
     const std::vector<RoomPlace> places =
         tileRooms(extents, buildInterRoomFlow(page, model), targetW);

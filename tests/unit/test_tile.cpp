@@ -88,15 +88,22 @@ TEST_CASE("a mixed set of rooms partitions its bounding box") {
 // Reading order under pull
 // ---------------------------------------------------------------------------
 
-TEST_CASE("pull sorts rooms into columns left to right") {
-    // Page order carries pulls +1, -1, 0: the -1 room must land in the first
-    // column, the +1 room in the last, the indifferent one between.
+TEST_CASE("pull sorts rooms into reading order") {
+    // Page order carries pulls +1, -1, 0. The reading order is pull
+    // ascending -- room 1, room 2, room 0 -- walked left to right across
+    // columns and top to bottom within one. Three equal squares land as two
+    // columns (200x200 sits nearer the landscape reference than 300x100),
+    // so the -1 room leads the first column, the indifferent one stacks
+    // under it, and the +1 room takes the last column.
     std::vector<RoomExtent> rooms = {{100, 100}, {100, 100}, {100, 100}};
     auto places = tileRooms(rooms, pullFlow({+1, -1, 0}), 300);
     checkPartition(rooms, places);
     CHECK_EQ(places[1].x, 0);
-    CHECK_EQ(places[2].x, 100);
-    CHECK_EQ(places[0].x, 200);
+    CHECK_EQ(places[1].y, 0);
+    CHECK_EQ(places[2].x, 0);
+    CHECK_EQ(places[2].y, 100);
+    CHECK_EQ(places[0].x, 100);
+    CHECK_EQ(places[0].y, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +126,38 @@ TEST_CASE("four equal rooms at two-column budget tile as a balanced 2x2") {
         CHECK_EQ(p.w, 100);
         CHECK_EQ(p.h, 100);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Aspect-driven column count
+// ---------------------------------------------------------------------------
+
+TEST_CASE("a generous width budget still lands near the landscape aspect") {
+    // Eight equal squares under a budget that would allow a 800x100 strip:
+    // the aspects on offer are 100x800, 200x400, 300x300, 400x200, ... and
+    // 300x300 sits nearest the sqrt(2):1 reference, so three columns win.
+    // The budget is a ceiling, never a demand.
+    std::vector<RoomExtent> rooms(8, RoomExtent{100, 100});
+    auto places = tileRooms(rooms, noFlow(), 1000);
+    checkPartition(rooms, places);
+    std::int64_t w = 0, h = 0;
+    for (const RoomPlace& p : places) {
+        w = std::max<std::int64_t>(w, p.x + p.w);
+        h = std::max<std::int64_t>(h, p.y + p.h);
+    }
+    CHECK_EQ(w, 300);
+    CHECK_EQ(h, 300);
+}
+
+TEST_CASE("the width budget binds the aspect choice") {
+    // The same eight squares under a 200 budget cannot take their preferred
+    // three columns: two is the widest fill that fits.
+    std::vector<RoomExtent> rooms(8, RoomExtent{100, 100});
+    auto places = tileRooms(rooms, noFlow(), 200);
+    checkPartition(rooms, places);
+    std::int64_t w = 0;
+    for (const RoomPlace& p : places) w = std::max<std::int64_t>(w, p.x + p.w);
+    CHECK_EQ(w, 200);
 }
 
 // ---------------------------------------------------------------------------

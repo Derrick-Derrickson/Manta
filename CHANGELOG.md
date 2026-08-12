@@ -44,6 +44,39 @@
   object, and a design that uses neither directive links to byte-identical
   output.
 
+### `manta render`: the flow placer
+
+The renderer's placement engine is rewritten around per-room signal flow; the
+1.3 band/idiom placer is deleted.
+
+- **Flow placement.** Each room is ranked as a directed graph — connectors and
+  `&EDGE` LEFT/TOP parts are the sources, `&EDGE` RIGHT/BOTTOM the sinks, a
+  hub anchors a room with neither — and laid out as rank columns, left to
+  right, so a room reads the way its signals flow.
+- **Pin sides follow the flow.** A box symbol's pins face the parts they talk
+  to — inputs left, outputs right, supplies up, grounds down — and each pin
+  shows its net name inside the body beside the pin name. Pin rows sit at 2:1
+  pitch, so bodies stay compact while stubs stay separable.
+- **Routed room-local nets.** A net whose pins all sit in one room is drawn as
+  a Manhattan wire tree with counted junction dots, replacing the repeated
+  labels of 1.3. Routing is strictly an upgrade: a net the router cannot join
+  keeps its stubs and labels, which connect by name and are always
+  electrically correct.
+- **Rails as spines.** A rail with two or more consumer pins in a room runs as
+  one named horizontal bar; decoupling ladders hang from it and every other
+  consumer taps it — straight drop, or routed around a blockage — so a rail
+  shows one name per room instead of one flag per pin.
+- **Label and PORT policy.** A net crossing rooms connects by a plain label at
+  each appearance; PORT flags are reserved for nets that leave the page — a
+  block's ports on both the parent's sheet symbol and the definition's page.
+- **Full-sheet room tiling.** Rooms tile the sheet in height-balanced columns
+  and are stretched to partition their bounding box exactly — every border
+  meets a neighbour or the frame — with the column count chosen so the sheet
+  lands near the landscape √2:1 of the reference schematics.
+- **The `--layout` flag is gone.** Flow is the renderer; the classic placer
+  and its hidden selector are removed. Determinism (§15.8) is unchanged: same
+  netlist, same bytes, no floats anywhere in the render path.
+
 ## 1.4.0 — 2026-08-11
 
 ### Language, revision 1.4

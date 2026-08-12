@@ -436,14 +436,63 @@ linking to the one page. The alternative, a page per instance, is exactly the
 duplication the hierarchy exists to avoid; where two instances differ, the
 netlist has both and the page says whose values it shows.
 
-### E4. There is no router
+### E4. The room-local router and the label fallback contract
 
-Placement is a fixed set of idioms — decoupling ladders against a rail bar,
-pull-ups and pull-downs, chain runs — with one collision axis per element kind.
-A wire that still cannot be placed is not drawn: the connection keeps its net
-labels, which connect by name, exactly as on a hand-drawn schematic. A missing
-wire is therefore never a missing connection; clicking either label still
-highlights the whole net.
+A net whose pins all sit in one room, carry no port direction and cross no room
+boundary is routed: a Manhattan tree over a fixed grid, wires free to cross
+wires but never to run along a foreign wire (two nets drawn collinear would
+read as one conductor) and never through a body or a label's reserved space.
+Junction dots are counted from the finished geometry — three or more conductor
+ends at a point — never assumed.
+
+The contract that makes routing safe to attempt at all: the router is strictly
+an upgrade. Every pin is given a bare stub first, so before routing begins the
+drawing is already the labelled fallback; a route that succeeds replaces names
+with a wire, and a route that fails — genuinely blocked, or refused because a
+pin sits off-grid — leaves the stubs and adds exactly the labels the pins would
+always have had, which connect by name as firmly as any wire. A missing wire is
+therefore never a missing connection, and no degradation can produce a pin with
+neither a wire nor a mark (the layout asserts this on every sheet). Nets that
+touch a block port are never routed even when room-local: a routed wire ending
+at a port's flag with no name on it would leave the reader unable to join the
+page's halves.
+
+Rail bars use the same machinery in miniature: every consumer of a bar rail
+records a tap, joined by a straight corridor drop when the column is clear, by
+a routed path around whatever blocks it otherwise, and by the classic per-pin
+rail flag only when both refuse. The search budget is proportional to the
+room's grid, not a fixed constant — a fixed cap silently failed honest
+room-length routes on real designs while claiming to guard against runaway.
+
+### E5. Flow sources are structural, never net-borne
+
+Ranking a room needs sources — the vertices pinned to rank 0, everything else
+flowing rightward from them. Sources are chosen on structural evidence only: a
+connector faces into the board, and an explicit `&EDGE` LEFT/TOP is an order.
+Touching a room-crossing net proves nothing and is deliberately not evidence:
+on a real design nearly every part in a room touches one, and admitting them as
+sources flattened whole rooms into rank 0 — every part a source, no flow left
+to draw. A room with no structural source anchors on its hub instead: the
+vertex with the greatest total edge weight, ties to the earliest, verticals and
+forced sinks standing aside while anything else is available.
+
+### E6. Rooms tile the sheet as columns and partition it exactly
+
+The reference schematics read as a few vertical columns of rooms whose borders
+meet — no loose paper between rooms. The tiler reproduces that: rooms in
+reading order (edge pull first, page order on ties) fill contiguous columns,
+each column height-balanced, and every room is then stretched — frame grown,
+content anchored top-left — so the placed rectangles partition their bounding
+box exactly. The partition is an invariant, asserted per sheet, not a hope.
+
+The column count is chosen by the shape it produces: among the counts whose
+summed column widths fit the width budget, the bounding box nearest the
+landscape √2:1 of the reference sheets wins (compared by cross-multiplied
+integers; fewer columns on a tie). The budget itself is a generous ceiling,
+`ceil(sqrt(3·area))` — wide enough that the aspect rule, not the budget, does
+the shaping. The old shelf-packing budget clamped width at 1600 and produced
+portrait strips under column tiling; a budget is kept at all only to rule out
+absurd one-row layouts on degenerate inputs.
 
 ---
 

@@ -76,9 +76,6 @@ struct Options {
     // render
     std::string title;
     std::string pdfPath;
-    // Experimental, kept out of the help text: "classic" (the default) or
-    // "flow", selecting the placement pipeline while the flow engine is built.
-    std::string layout;
 };
 
 struct ParseOutcome {
