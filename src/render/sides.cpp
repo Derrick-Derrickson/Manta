@@ -137,16 +137,6 @@ SidePlan planSides(std::uint32_t comp, const RoomFlow& flow, const RenderPage& p
     const std::size_t n = c.pins.size();
     if (n == 0) return {};
 
-    std::int32_t ownVert = comp < flow.vertexOf.size() ? flow.vertexOf[comp] : -1;
-    int ownRank = ownVert >= 0 ? flow.verts[static_cast<std::size_t>(ownVert)].rank : 0;
-
-    std::vector<Partner> partner(n);
-    for (std::uint32_t i = 0; i < n; ++i) {
-        if (!isDead(c.pins[i])) {
-            partner[i] = findPartner(d, flow, comp, ownVert, ownRank, c.pins[i].net);
-        }
-    }
-
     // A pin shows its net's name inside the body only when the wire alone
     // would not say it: the net is a plain routed label net (rails, grounds
     // and port/crossing flags already print their name at the mark) and the
@@ -172,14 +162,14 @@ SidePlan planSides(std::uint32_t comp, const RoomFlow& flow, const RenderPage& p
         Side side = (c.edge == "RIGHT" || c.edge == "BOTTOM") ? Side::Left : Side::Right;
         std::vector<std::uint32_t> rows(n);
         for (std::uint32_t i = 0; i < n; ++i) rows[i] = i;
-        // Slot order: partner vertex order (rank as its qualifier -- order is
-        // only defined within a rank), then natural pin-number order; dead
-        // and partnerless pins carry kNoPartner keys and gather at the end.
+        // Slot order: natural pin-number order, always -- real schematics
+        // draw a connector's pins 1, 2, 3, ... no matter where each net
+        // goes; the flow ranks never reorder them. Dead pins gather after
+        // every live pin, themselves in the same number order.
         std::sort(rows.begin(), rows.end(), [&](std::uint32_t a, std::uint32_t b) {
-            const Partner& fa = partner[a];
-            const Partner& fb = partner[b];
-            if (fa.order != fb.order) return fa.order < fb.order;
-            if (fa.rank != fb.rank) return fa.rank < fb.rank;
+            bool da = isDead(c.pins[a]);
+            bool db = isDead(c.pins[b]);
+            if (da != db) return db;
             return numberLess(c, a, b);
         });
         for (std::size_t s = 0; s < rows.size(); ++s) {
@@ -188,7 +178,18 @@ SidePlan planSides(std::uint32_t comp, const RoomFlow& flow, const RenderPage& p
         return plan;
     }
 
-    // Generic box. Fixed sides first, then partners, then balance.
+    // Generic box. Fixed sides first, then partners, then balance. Only here
+    // does the flow's far-end ranking matter: a connector's column above never
+    // reads it.
+    std::int32_t ownVert = comp < flow.vertexOf.size() ? flow.vertexOf[comp] : -1;
+    int ownRank = ownVert >= 0 ? flow.verts[static_cast<std::size_t>(ownVert)].rank : 0;
+    std::vector<Partner> partner(n);
+    for (std::uint32_t i = 0; i < n; ++i) {
+        if (!isDead(c.pins[i])) {
+            partner[i] = findPartner(d, flow, comp, ownVert, ownRank, c.pins[i].net);
+        }
+    }
+
     std::vector<std::uint32_t> left, right, top, bottom, dead, floating;
     for (std::uint32_t i = 0; i < n; ++i) {
         const ComponentPin& p = c.pins[i];

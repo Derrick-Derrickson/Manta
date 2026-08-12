@@ -279,7 +279,7 @@ TEST_CASE("an empty-flow room (the WP3 stub shape) degrades to a balanced box") 
 // Connectors
 // ---------------------------------------------------------------------------
 
-TEST_CASE("a connector keeps one right-hand column, ordered by partner then number") {
+TEST_CASE("a connector keeps one right-hand column in natural numeric order") {
     World w;
     std::uint32_t j = w.comp("J1", SymbolKind::Connector);
     w.pin(j, "1", "1");
@@ -289,16 +289,42 @@ TEST_CASE("a connector keeps one right-hand column, ordered by partner then numb
     w.pin(a, "1", "X");
     std::uint32_t b = w.comp("U2", SymbolKind::Generic);
     w.pin(b, "1", "Y");
-    // Pin 3 wires to the earlier-ordered partner, pin 1 to the later one.
+    // Pin 3 wires to the earlier-ordered partner, pin 1 to the later one,
+    // pin 2 to nobody: partner ranking must not reorder the column.
     w.net("N1", {{j, "3"}, {a, "X"}});
     w.net("N2", {{j, "1"}, {b, "Y"}});
+    w.net("N3", {{j, "2"}});
     w.rank({{1, 0}, {0, 0}, {0, 1}});
 
     SidePlan p = w.plan(j);
     for (const PinPlan& pp : p.byPin) CHECK(pp.side == Side::Right);
-    CHECK_EQ(entry(w, j, p, "3").slot, 0);  // partner order 0
-    CHECK_EQ(entry(w, j, p, "1").slot, 1);  // partner order 1
-    CHECK_EQ(entry(w, j, p, "2").slot, 2);  // partnerless: after, natural order
+    CHECK_EQ(entry(w, j, p, "1").slot, 0);
+    CHECK_EQ(entry(w, j, p, "2").slot, 1);
+    CHECK_EQ(entry(w, j, p, "3").slot, 2);
+}
+
+TEST_CASE("a connector's dead pins gather after every live pin, in numeric order") {
+    World w;
+    std::uint32_t j = w.comp("J1", SymbolKind::Connector);
+    w.pin(j, "1", "1");
+    w.pin(j, "2", "2", PinType::NC);  // typed dead
+    w.pin(j, "3", "3");               // never wired: net stays -1
+    w.pin(j, "10", "10");             // natural order: after 1, not after 2
+    std::uint32_t u = w.comp("U1", SymbolKind::Generic);
+    w.pin(u, "1", "X");
+    w.pin(u, "2", "Y");
+    w.net("N1", {{j, "1"}, {u, "X"}});
+    w.net("N10", {{j, "10"}, {u, "Y"}});
+    w.rank({{1, 0}, {0, 0}});
+
+    SidePlan p = w.plan(j);
+    for (const PinPlan& pp : p.byPin) CHECK(pp.side == Side::Right);
+    CHECK_EQ(entry(w, j, p, "1").slot, 0);   // live, numeric
+    CHECK_EQ(entry(w, j, p, "10").slot, 1);  // live: 10 after 1, naturally
+    CHECK_EQ(entry(w, j, p, "2").slot, 2);   // dead block starts
+    CHECK_EQ(entry(w, j, p, "3").slot, 3);
+    CHECK_FALSE(entry(w, j, p, "2").showNet);
+    CHECK_FALSE(entry(w, j, p, "3").showNet);
 }
 
 TEST_CASE("'&EDGE=RIGHT' and '&EDGE=BOTTOM' flip a connector's pins to the left") {
@@ -493,7 +519,7 @@ TEST_CASE("buildSymbol places pins by the plan and annotates shown nets") {
     }
 }
 
-TEST_CASE("a planned connector keeps its geometry but reorders and can flip") {
+TEST_CASE("a planned connector keeps its geometry and can flip") {
     World w;
     std::uint32_t j = w.comp("J1", SymbolKind::Connector);
     w.d.components[j].edge = "RIGHT";
