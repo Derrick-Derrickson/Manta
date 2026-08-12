@@ -340,6 +340,99 @@ TEST_CASE("&EDGE=RIGHT flips a connector from rank 0 to max rank") {
 }
 
 // ---------------------------------------------------------------------------
+// Source selection is structural: connectors and '&EDGE', never mere contact
+// with a room-crossing net -- on a real design nearly everything touches one.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("no connector, no edge: the hub anchors the room, passives rank after") {
+    TB b;
+    // A regulator-shaped room: input and output rails both cross into the
+    // neighbouring room, and the IC's enable does too, so every vertex here
+    // touches an entering net. None of that makes a source any more.
+    std::uint32_t u1 = b.comp("U1", "", {"IN", "OUT", "EN", "P4", "P5"}, "",
+                              PartType::BoardPart, "reg");
+    std::uint32_t r1 = b.comp("R1", "resistor", {"1", "2"}, "", PartType::BoardPart, "reg");
+    std::uint32_t r4 = b.comp("R4", "resistor", {"1", "2"}, "", PartType::BoardPart, "reg");
+    std::uint32_t c2 = b.comp("C2", "capacitor", {"1", "2"}, "", PartType::BoardPart, "reg");
+    std::uint32_t u9 = b.comp("U9", "", {"P1", "P2", "P3", "P4", "P5"}, "",
+                              PartType::BoardPart, "load");
+    std::int32_t in = b.net("SIG_IN"), nB = b.net("NB"), nC = b.net("NC"),
+                 mid = b.net("MID"), out = b.net("SIG_OUT"), en = b.net("SIG_EN");
+    b.wire(r1, 0, in);
+    b.wire(r1, 1, nB);
+    b.wire(u1, 0, nB, PortDir::In);
+    b.wire(u1, 1, nC, PortDir::Out);
+    b.wire(u1, 2, en);
+    b.wire(r4, 0, nC);
+    b.wire(r4, 1, mid);
+    b.wire(c2, 0, mid);
+    b.wire(c2, 1, out);
+    b.wire(u9, 0, in);
+    b.wire(u9, 1, out);
+    b.wire(u9, 2, en);
+
+    RenderModel m = buildRenderModel(b.d);
+    const RenderPage& page = m.pages[0];
+    CHECK_EQ(page.rooms.size(), static_cast<std::size_t>(2));  // reg, load
+    CHECK(page.nets[static_cast<std::size_t>(in)].crossing);
+    CHECK(page.nets[static_cast<std::size_t>(out)].crossing);
+    CHECK(page.nets[static_cast<std::size_t>(en)].crossing);
+
+    const RenderRoom& reg = page.rooms[0];
+    RoomFlow f = buildRoomFlow(page, reg, m);
+    checkTotality(f, b.d, reg);
+
+    CHECK(kindOf(f, u1) == FlowVertex::Kind::Anchor);
+    CHECK(kindOf(f, r1) == FlowVertex::Kind::Series);
+    CHECK(kindOf(f, r4) == FlowVertex::Kind::Series);
+    CHECK_EQ(f.vertexOf[r4], f.vertexOf[c2]);  // the R4-C2 output string
+
+    // The IC is the room's hub at rank 0, alone there; the input passive and
+    // the output string fan out to rank 1 -- not a flattened single column.
+    CHECK_EQ(rankOf(f, u1), 0);
+    CHECK_EQ(f.ranks[0].size(), static_cast<std::size_t>(1));
+    CHECK_EQ(rankOf(f, r1), 1);
+    CHECK_EQ(rankOf(f, r4), 1);
+    CHECK_EQ(f.ranks.size(), static_cast<std::size_t>(2));
+}
+
+TEST_CASE("a room-crossing net alone no longer makes its toucher a source") {
+    TB b;
+    // Two ICs share a crossing net; the room also holds a connector. Only
+    // the connector is a source -- the chain ranks strictly downstream.
+    std::uint32_t j1 = b.comp("J1", "", {"1"}, "", PartType::BoardConnector, "main");
+    std::uint32_t u1 = b.comp("U1", "", {"IN", "OUT", "P3", "P4", "P5"}, "",
+                              PartType::BoardPart, "main");
+    std::uint32_t u2 = b.comp("U2", "", {"IN", "P2", "P3", "P4", "P5"}, "",
+                              PartType::BoardPart, "main");
+    std::uint32_t u9 = b.comp("U9", "", {"P1", "P2", "P3", "P4", "P5"}, "",
+                              PartType::BoardPart, "far");
+    std::int32_t nA = b.net("A"), nB = b.net("B"), x = b.net("SIG_X");
+    b.wire(j1, 0, nA);
+    b.wire(u1, 0, nA, PortDir::In);
+    b.wire(u1, 1, nB, PortDir::Out);
+    b.wire(u2, 0, nB, PortDir::In);
+    b.wire(u1, 2, x);
+    b.wire(u2, 2, x);
+    b.wire(u9, 0, x);
+
+    RenderModel m = buildRenderModel(b.d);
+    const RenderPage& page = m.pages[0];
+    CHECK_EQ(page.rooms.size(), static_cast<std::size_t>(2));  // main, far
+    CHECK(page.nets[static_cast<std::size_t>(x)].crossing);
+
+    const RenderRoom& mainRoom = page.rooms[0];
+    RoomFlow f = buildRoomFlow(page, mainRoom, m);
+    checkTotality(f, b.d, mainRoom);
+
+    CHECK_EQ(rankOf(f, j1), 0);
+    CHECK_EQ(f.ranks[0].size(), static_cast<std::size_t>(1));  // the connector alone
+    CHECK_EQ(rankOf(f, u1), 1);
+    CHECK_EQ(rankOf(f, u2), 2);
+    CHECK_EQ(f.ranks.size(), static_cast<std::size_t>(3));
+}
+
+// ---------------------------------------------------------------------------
 // Determinism: the same circuit, declared backwards.
 // ---------------------------------------------------------------------------
 

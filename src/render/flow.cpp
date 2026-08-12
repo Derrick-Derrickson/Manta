@@ -344,14 +344,10 @@ RoomFlow buildRoomFlow(const RenderPage& pg, const RenderRoom& room, const Rende
         }
         return false;
     };
-    // A net that enters the room: a room-crossing signal or a block-port
-    // signal. Rails and grounds enter every room and prove nothing.
-    auto entersRoom = [&](std::int32_t net) {
-        if (net < 0) return false;
-        const RenderNet& rn = pg.nets[static_cast<std::size_t>(net)];
-        return rn.mark == NetMark::Label && (rn.crossing || rn.direction != PortDir::None);
-    };
-
+    // Sources are structural, not net-borne: a connector faces in, and an
+    // explicit '&EDGE' LEFT/TOP is an order. Touching a room-crossing net
+    // proves nothing -- on a real design nearly every part in a room touches
+    // one, and admitting them as sources flattened whole rooms into rank 0.
     std::vector<char> isSink(nv, 0), isSrc(nv, 0);
     for (std::uint32_t v = 0; v < nv; ++v) {
         if (vertHasEdge(v, true)) isSink[v] = 1;
@@ -363,23 +359,7 @@ RoomFlow buildRoomFlow(const RenderPage& pg, const RenderRoom& room, const Rende
             isSrc[v] = 1;
             continue;
         }
-        if (vertHasEdge(v, false)) {
-            isSrc[v] = 1;
-            continue;
-        }
-        bool entering = false;
-        if (fv.kind == VK::Child) {
-            for (const BlockPort& p : d.blocks[fv.comps[0]].ports) {
-                if (entersRoom(p.net)) entering = true;
-            }
-        } else {
-            for (std::uint32_t c : fv.comps) {
-                for (const ComponentPin& p : d.components[c].pins) {
-                    if (entersRoom(p.net)) entering = true;
-                }
-            }
-        }
-        if (entering) isSrc[v] = 1;
+        if (vertHasEdge(v, false)) isSrc[v] = 1;
     }
 
     bool anySrc = false;
