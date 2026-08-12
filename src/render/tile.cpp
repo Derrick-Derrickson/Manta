@@ -8,21 +8,22 @@
 //
 //   1. Reading order: room indices sorted by (pull ascending, page order),
 //      stable, so indifferent rooms keep page order.
-//   2. Column count: the smallest k whose greedy height-balanced fill keeps
-//      every column at or under the height the width budget implies
-//      (ceil(area / budget) plus 25% slack) with the column widths summing
-//      within the budget max(targetW, widest room). If targetW is generous
-//      enough that no k <= 4 can meet the height cap, more columns are
-//      allowed -- that is targetW demanding them. If no k meets the height
-//      cap at all (the width budget binds), fall back to the best-balanced
-//      k in 1..4 that fits the width budget; k = 1 always does.
+//   2. Column count: for each k, the reading order is split into k contiguous
+//      columns balanced by a binary search over the per-column height cap
+//      (the smallest cap a k-column greedy fill can meet -- the classic
+//      linear-partition answer, integers only). Among the k whose summed
+//      column widths fit the hard budget max(targetW, widest room), the one
+//      whose bounding box lands nearest the landscape reference aspect
+//      (W : H = sqrt(2) : 1, taken as 141 : 100) wins; ties go to fewer
+//      columns. k = 1 always fits, so there is always an answer.
 //   3. Assignment: walk the reading order left to right, stacking into the
 //      current column until the next room would push it past the cap, then
 //      advance. Order is never changed -- flow reads left to right across
 //      columns, top to bottom within one. When inter-room counts exist, one
 //      deterministic accept-first sweep may swap two equal-pull rooms of
 //      adjacent columns if that strictly raises the summed counts between
-//      rooms of horizontally adjacent columns without breaking the budgets.
+//      rooms of horizontally adjacent columns without breaking the width
+//      budget or the bounding-box height.
 //   4. Stretch to partition: every member takes its column's width (max
 //      member width); each column's members are stretched so the column
 //      exactly fills the tallest column's height, the deficit shared in
@@ -37,6 +38,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <numeric>
 
 namespace manta::render {
@@ -113,51 +115,72 @@ std::vector<RoomPlace> tileRooms(const std::vector<RoomExtent>& rooms, const Int
     std::stable_sort(order.begin(), order.end(),
                      [&pull](std::size_t a, std::size_t b) { return pull[a] < pull[b]; });
 
-    // Budgets. Width: the classic targetW, never below the widest room.
-    // Height: the balanced height that width implies, plus 25% slack.
-    std::int64_t area = 0, totalH = 0, widest = 0;
+    // The width budget is hard: max(targetW, widest room). Within it, the
+    // column count is chosen by the shape it produces, not by a height cap.
+    std::int64_t totalH = 0, widest = 0, tallest = 0;
     for (const RoomExtent& r : rooms) {
-        area += static_cast<std::int64_t>(r.w) * r.h;
         totalH += r.h;
         widest = std::max(widest, static_cast<std::int64_t>(r.w));
+        tallest = std::max(tallest, static_cast<std::int64_t>(r.h));
     }
-    const std::int64_t budgetW = std::max({static_cast<std::int64_t>(targetW), widest,
-                                           std::int64_t{1}});
-    const std::int64_t hStar = ceilDiv(area, budgetW);
-    const std::int64_t hCap = hStar + hStar / 4;
+    const std::int64_t budgetW =
+        std::max({static_cast<std::int64_t>(targetW), widest, std::int64_t{1}});
 
-    // Column count: smallest k meeting both budgets. Raising the greedy
-    // threshold to ceil(totalH / k) when that exceeds hCap never hides a
-    // feasible k -- by pigeonhole some column of any k-way split reaches
-    // totalH / k -- and keeps the infeasible fills balanced for the
-    // fallback below.
-    Columns cols;
-    bool feasible = false;
-    for (std::size_t k = 1; k <= n; ++k) {
-        const std::int64_t threshold =
-            std::max(hCap, ceilDiv(totalH, static_cast<std::int64_t>(k)));
-        Columns c = assignGreedy(rooms, order, k, threshold);
-        if (totalWidth(rooms, c) <= budgetW && tallestColumn(rooms, c) <= hCap) {
-            cols = std::move(c);
-            feasible = true;
-            break;
-        }
-    }
-    if (!feasible) {
-        // The width budget binds: no k meets the height cap. Take the
-        // best-balanced fill within the cap of four columns; smallest k
-        // wins a tie, and k = 1 always fits the width budget.
-        std::int64_t bestH = -1;
-        for (std::size_t k = 1; k <= std::min<std::size_t>(n, 4); ++k) {
-            const std::int64_t threshold =
-                std::max(hCap, ceilDiv(totalH, static_cast<std::int64_t>(k)));
-            Columns c = assignGreedy(rooms, order, k, threshold);
-            if (totalWidth(rooms, c) > budgetW) continue;
-            const std::int64_t h = tallestColumn(rooms, c);
-            if (bestH < 0 || h < bestH) {
-                bestH = h;
-                cols = std::move(c);
+    // The smallest per-column height cap a k-column contiguous fill of the
+    // reading order can meet: greedy count over a binary-searched cap (the
+    // linear-partition minimum, integer arithmetic only). assignGreedy with
+    // that cap reproduces the counted fill exactly.
+    auto columnsUnder = [&](std::int64_t cap) {
+        std::size_t c = 1;
+        std::int64_t stacked = 0;
+        bool empty = true;
+        for (std::size_t idx : order) {
+            const std::int64_t h = rooms[idx].h;
+            if (!empty && stacked + h > cap) {
+                ++c;
+                stacked = 0;
             }
+            stacked += h;
+            empty = false;
+        }
+        return c;
+    };
+    auto fillBalanced = [&](std::size_t k) {
+        std::int64_t lo = std::max(tallest, ceilDiv(totalH, static_cast<std::int64_t>(k)));
+        std::int64_t hi = totalH;
+        while (lo < hi) {
+            const std::int64_t mid = lo + (hi - lo) / 2;
+            if (columnsUnder(mid) <= k) hi = mid;
+            else lo = mid + 1;
+        }
+        return assignGreedy(rooms, order, k, lo);
+    };
+
+    // Aspect selection: |W/H - 141/100| compared by cross-multiplication --
+    // |100*W - 141*H| weighted by the rival's H -- so no division and no
+    // float ever decides a tie. Fewer columns win an exact tie.
+    Columns cols;
+    std::int64_t bestW = 0, bestH = 1;
+    bool have = false;
+    for (std::size_t k = 1; k <= n; ++k) {
+        Columns c = fillBalanced(k);
+        if (c.size() != k) continue;  // a duplicate of a smaller k
+        const std::int64_t w = totalWidth(rooms, c);
+        if (k > 1 && w > budgetW) continue;  // k = 1 always fits
+        const std::int64_t h = std::max(tallestColumn(rooms, c), std::int64_t{1});
+        if (!have) {
+            cols = std::move(c);
+            bestW = w;
+            bestH = h;
+            have = true;
+            continue;
+        }
+        const std::int64_t distNew = std::abs(100 * w - 141 * h) * bestH;
+        const std::int64_t distOld = std::abs(100 * bestW - 141 * bestH) * h;
+        if (distNew < distOld) {
+            cols = std::move(c);
+            bestW = w;
+            bestH = h;
         }
     }
 
@@ -189,7 +212,7 @@ std::vector<RoomPlace> tileRooms(const std::vector<RoomExtent>& rooms, const Int
                     const std::int64_t oldTallest = tallestColumn(rooms, cols);
                     std::swap(cols[ci][i], cols[ci + 1][j]);
                     const bool fits = totalWidth(rooms, cols) <= budgetW &&
-                                      tallestColumn(rooms, cols) <= std::max(hCap, oldTallest);
+                                      tallestColumn(rooms, cols) <= oldTallest;
                     const std::int64_t swapped = fits ? adjacentSum(cols) : -1;
                     if (fits && swapped > current)
                         current = swapped;  // keep the swap

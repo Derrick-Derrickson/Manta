@@ -1010,17 +1010,22 @@ SheetLayout layoutPageFlow(const RenderModel& model, const RenderPage& page) {
         bufs.push_back(std::move(rp.buf));
     }
 
-    // 4. Tile the rooms: the classic width budget, the flow tiler. The placed
-    // rectangles partition their bounding box; the frame is drawn at the
-    // stretched size while the content stays anchored top-left.
+    // 4. Tile the rooms. The placed rectangles partition their bounding box;
+    // the frame is drawn at the stretched size while the content stays
+    // anchored top-left. The width budget is a generous ceiling --
+    // ceil(sqrt(3 * area)) admits shapes out to roughly 2:1 once column
+    // stretch is paid for -- and the tiler's aspect-driven column count does
+    // the real shaping, so sheets land near the landscape sqrt(2):1 of the
+    // reference schematics instead of the portrait strips the old classic
+    // 1600-clamped budget produced under column tiling.
     std::int64_t area = 0;
     int widest = 0;
     for (const RoomExtent& e : extents) {
         area += static_cast<std::int64_t>(e.w) * e.h;
         widest = std::max(widest, e.w);
     }
-    int targetW = static_cast<int>(isqrtCeil(area * 145 / 100));
-    targetW = std::clamp(targetW, widest, std::max(widest, 1600));
+    int targetW = static_cast<int>(isqrtCeil(area * 3));
+    targetW = std::max(targetW, widest);
 
     const std::vector<RoomPlace> places =
         tileRooms(extents, buildInterRoomFlow(page, model), targetW);
