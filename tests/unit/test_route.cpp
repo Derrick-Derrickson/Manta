@@ -180,10 +180,12 @@ TEST_CASE("total blockage returns false and leaves the buffer bit-identical") {
     CHECK_FALSE(buf.wireRects.hits(Rect{-100, -100, 300, 300}));  // nothing reserved
 }
 
-TEST_CASE("the 20000-pop cap fails a flooded search, buffer untouched") {
-    // 123 x 123 cells and up to four popped states per cell: an exhaustive
-    // flood of the unreachable goal would take ~59k pops, so the refusal
-    // below can only have come from the cap.
+TEST_CASE("an unreachable goal floods, is refused, and leaves the buffer untouched") {
+    // The goal pin is sealed inside a solid, so the search exhausts every
+    // reachable state and gives up cleanly. The pop cap is proportional to
+    // the grid (kPopFactor per state), so a full flood of a room this size
+    // finishes well inside it -- the refusal is the honest "no path", not a
+    // budget accident.
     RoomBuf buf = room(1200, 1200);
     buf.reserve(Rect{550, 550, 650, 650});
     CHECK_FALSE(routeNet(buf, request(3, {{10, 10}, {600, 600}}), 3));
@@ -192,11 +194,77 @@ TEST_CASE("the 20000-pop cap fails a flooded search, buffer untouched") {
     CHECK_FALSE(buf.wireRects.hits(Rect{-100, -100, 1500, 1500}));
 }
 
+TEST_CASE("a room-length route succeeds: the cap scales with the grid") {
+    // The regression that surfaced as spurious XTAL labels on a real design:
+    // pins a room-length apart need a cost diamond of tens of thousands of
+    // states, which a fixed 20000-pop cap cut short. The cap now scales with
+    // the grid, so the longest in-room route is always affordable.
+    RoomBuf buf = room(2000, 1600);
+    CHECK(routeNet(buf, request(3, {{10, 10}, {1990, 1590}}), 3));
+    CHECK_EQ(buf.wires.size(), std::size_t{1});
+    const std::vector<int>& p = buf.wires[0].pts;
+    CHECK_EQ(p[0], 10);
+    CHECK_EQ(p[1], 10);
+    CHECK_EQ(p[p.size() - 2], 1990);
+    CHECK_EQ(p[p.size() - 1], 1590);
+}
+
 TEST_CASE("degenerate requests are declined untouched") {
     RoomBuf buf = room(100, 100);
     CHECK_FALSE(routeNet(buf, request(3, {{10, 50}}), 3));             // one pin
     CHECK_FALSE(routeNet(buf, request(3, {{15, 50}, {90, 50}}), 3));   // off grid
     CHECK_FALSE(routeNet(buf, request(3, {{-10, 50}, {90, 50}}), 3));  // off clip
+    CHECK(buf.wires.empty());
+    CHECK(buf.dots.empty());
+}
+
+// ---------------------------------------------------------------------------
+// Rail taps.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("a clear tap routes straight up and dots the bar") {
+    RoomBuf buf = room(200, 200);
+    const RailBarItem bar{0, 200, 12, 5};
+    CHECK(routeRailTap(buf, 100, 100, bar));
+    CHECK_EQ(buf.wires.size(), std::size_t{1});
+    const std::vector<int>& p = buf.wires[0].pts;
+    // One vertical run whose final joint lands on the off-grid bar line.
+    CHECK_EQ(p[0], 100);
+    CHECK_EQ(p[1], 100);
+    CHECK_EQ(p[p.size() - 2], 100);
+    CHECK_EQ(p[p.size() - 1], 12);
+    CHECK_EQ(buf.dots.size(), std::size_t{1});
+    CHECK_EQ(buf.dots[0].x, 100);
+    CHECK_EQ(buf.dots[0].y, 12);
+    CHECK_EQ(buf.dots[0].net, 5);
+}
+
+TEST_CASE("a blocked tap jogs around the solid and still reaches the bar") {
+    RoomBuf buf = room(200, 200);
+    buf.reserve(Rect{60, 40, 140, 80});  // squarely astride the direct drop
+    const RailBarItem bar{0, 200, 12, 5};
+    CHECK(routeRailTap(buf, 100, 100, bar));
+    CHECK_EQ(buf.wires.size(), std::size_t{1});
+    const std::vector<int>& p = buf.wires[0].pts;
+    CHECK(p.size() >= 6);  // it had to leave the direct column: at least one bend
+    CHECK_EQ(p[0], 100);
+    CHECK_EQ(p[1], 100);
+    CHECK_EQ(p[p.size() - 1], 12);  // and it ends on the bar line
+    bool leftTheColumn = false;
+    for (std::size_t i = 0; i < p.size(); i += 2) {
+        if (p[i] != 100) leftTheColumn = true;
+    }
+    CHECK(leftTheColumn);
+    CHECK_EQ(buf.dots.size(), std::size_t{1});
+    CHECK_EQ(buf.dots[0].y, 12);
+}
+
+TEST_CASE("an off-grid or sealed tap is refused with the buffer untouched") {
+    RoomBuf buf = room(200, 200);
+    const RailBarItem bar{0, 200, 12, 5};
+    CHECK_FALSE(routeRailTap(buf, 105, 100, bar));  // off the P grid
+    buf.reserve(Rect{60, 60, 140, 140});
+    CHECK_FALSE(routeRailTap(buf, 100, 100, bar));  // sealed inside a solid
     CHECK(buf.wires.empty());
     CHECK(buf.dots.empty());
 }
