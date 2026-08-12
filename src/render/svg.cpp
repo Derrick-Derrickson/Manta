@@ -261,10 +261,23 @@ void emitBoxPinText(std::string& out, const PlacedSymbol& s) {
             case Side::Left:
                 text(out, numCls, x - 2, y + p.offset - 2, "end", p.number);
                 text(out, nameCls, x + 3, y + p.offset + 3, {}, p.name);
+                // A planned pin's net name, inward of the silicon name so the
+                // two read as one annotated pin. Only Left/Right pins ever
+                // carry one; the geometry reserved kNetGap plus its width.
+                if (!p.netName.empty()) {
+                    text(out, "pinnet",
+                         x + 3 + kCharWidth * static_cast<int>(p.name.size()) + kNetGap,
+                         y + p.offset + 3, {}, p.netName);
+                }
                 break;
             case Side::Right:
                 text(out, numCls, x + w + 2, y + p.offset - 2, {}, p.number);
                 text(out, nameCls, x + w - 3, y + p.offset + 3, "end", p.name);
+                if (!p.netName.empty()) {
+                    text(out, "pinnet",
+                         x + w - 3 - kCharWidth * static_cast<int>(p.name.size()) - kNetGap,
+                         y + p.offset + 3, "end", p.netName);
+                }
                 break;
             case Side::Top:
                 text(out, numCls, x + p.offset + 2, y - 3, {}, p.number);

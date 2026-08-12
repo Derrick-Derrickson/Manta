@@ -76,6 +76,8 @@ svg.sheet { display: block; width: 100%; height: auto; background: var(--sheet);
 .partname { font-size: 9px; fill: #1c1c1c; font-family: 'Courier New', monospace; }
 .pinname { font-size: 10px; fill: var(--pinname); font-family: 'Courier New', monospace; }
 .pinnum { font-size: 7px; fill: var(--pinnum); font-family: 'Courier New', monospace; }
+/* a planned pin's net name, drawn inside beside the silicon name */
+.pinnet { font-size: 8px; fill: var(--label); font-family: 'Courier New', monospace; }
 line.wire, polyline.wire { stroke: var(--wire); stroke-width: 1; fill: none; }
 line.railbar { stroke: var(--wire); stroke-width: 3; }
 circle.dot { fill: var(--wire); stroke: none; }

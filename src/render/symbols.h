@@ -19,12 +19,17 @@ namespace manta::render {
 inline constexpr int kPinPitch = 10;  // grid units between adjacent pins
 inline constexpr int kCharWidth = 6;  // monospace advance at font-size 10
 inline constexpr int kStubLen = 10;   // wire stub from every pin to its mark
+inline constexpr int kNetGap = 6;     // gap between a pin's name and its shown net name
 
 enum class Side : std::uint8_t { Left, Right, Top, Bottom };
 
 struct SymPin {
     std::string number;      // the physical pin, drawn outside the body
     std::string name;        // the logical name, drawn inside
+    // The net's page-local display name, drawn inside beside the logical name
+    // when the side plan asked for it (PinPlan::showNet); empty otherwise,
+    // and always empty on the builtin-heuristic path.
+    std::string netName;
     Side side = Side::Left;
     int offset = 0;          // units along the side, from the top or left edge
     bool nc = false;         // drawn greyed
@@ -72,8 +77,13 @@ struct SymbolGeom {
 // A pin-side assignment planned by the Flow pipeline (sides.h). nullptr --
 // and an empty plan -- mean the builtin heuristic, byte-identically.
 struct SidePlan;
+// The page supplies the page-local net names a planned pin shows inside the
+// body (SymPin::netName). Null -- the builtin-heuristic callers -- means no
+// net text and no widening for it.
+struct RenderPage;
 
 [[nodiscard]] SymbolGeom buildSymbol(const Component& c, SymbolKind kind,
-                                     const SidePlan* plan = nullptr);
+                                     const SidePlan* plan = nullptr,
+                                     const RenderPage* page = nullptr);
 
 }  // namespace manta::render
