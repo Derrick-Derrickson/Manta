@@ -52,10 +52,14 @@ struct SheetLayout {
 // Symbol geometry for every component, indexed by component index, built once
 // per page before placement so no placer rebuilds what another already
 // measured. `plans` (parallel to components; an empty plan means "builtin
-// heuristic") is the Flow pipeline's side assignment; null today.
+// heuristic") is the Flow pipeline's side assignment, and `page` supplies the
+// page-local net names a planned pin shows inside the body. The Classic
+// pipeline passes null for both, which is byte-identically the builtin
+// heuristic; the Flow pipeline builds one cache per page from its plans.
 using SymbolCache = std::vector<SymbolGeom>;
 [[nodiscard]] SymbolCache buildSymbolCache(const RenderModel& m,
-                                           const std::vector<SidePlan>* plans);
+                                           const std::vector<SidePlan>* plans,
+                                           const RenderPage* page);
 
 [[nodiscard]] SheetLayout layoutPage(const RenderModel& model, const RenderPage& page,
                                      RenderOptions::Pipeline pipeline);
