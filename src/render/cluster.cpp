@@ -156,6 +156,8 @@ struct Planner {
     void walkArteries();
     void walkPin(std::uint32_t anchor, std::uint32_t pin, std::vector<Artery>& out);
     [[nodiscard]] bool junctionNet(std::int32_t net, std::uint32_t anchor) const;
+    [[nodiscard]] bool bridgesAnchorNet(std::uint32_t comp, std::uint32_t farPin,
+                                        std::uint32_t anchor) const;
     [[nodiscard]] bool buildJunction(Artery& art, std::int32_t net, std::uint32_t anchor,
                                      std::uint32_t fromComp, std::uint32_t fromPin);
     void walkString(Shunt& s, std::uint32_t comp, std::uint32_t exitPin);
@@ -335,6 +337,22 @@ bool Planner::junctionNet(std::int32_t net, std::uint32_t anchor) const {
     return true;
 }
 
+// A two-terminal part BRIDGES between two of the seeding anchor's own nets
+// when its far pin lands on another junction-eligible net of that anchor --
+// the crystal between OSC_IN and OSC_OUT, the bootstrap cap between BST and
+// the switch node. Such a part may be consumed by NEITHER side: an artery
+// walking through it would build the far net's junction from the wrong end
+// (the anchor's own pin there would be uncovered and force the net Named),
+// and a junction claiming it as a shunt head would leave the sibling net
+// uncoverable in the same way. Both sides refuse, the part keeps its own
+// idiom, and the nets stay Free -- routed or paired by name, never a label
+// hung on a net the plan could have drawn whole from the right pin.
+bool Planner::bridgesAnchorNet(std::uint32_t comp, std::uint32_t farPin,
+                               std::uint32_t anchor) const {
+    std::int32_t farNet = d.components[comp].pins[farPin].net;
+    return junctionNet(farNet, anchor) && compTouches(anchor, farNet);
+}
+
 // One artery from one anchor pin. The walk re-enters the case split after
 // every consumed part, so a chain may run through several inline parts and
 // then land on a junction. An artery that consumed nothing is dropped: the
@@ -350,6 +368,17 @@ void Planner::walkPin(std::uint32_t anchor, std::uint32_t pin, std::vector<Arter
         if (isPrivate(net)) {
             PinRef other = otherEnd(net, fromComp, fromPin);
             if (other.component != fromComp && consumable(other.component)) {
+                // A part bridging to a junction net of this same anchor is
+                // left alone: that net's own pin must seed its junction (the
+                // buck's BST pin walking through the bootstrap cap would
+                // otherwise reach the switch node first, whatever the side
+                // plan's seeding order, and build its junction with the
+                // anchor's SW pin uncovered). The artery hands off here.
+                std::uint32_t farPin = other.pin == 0 ? 1u : 0u;
+                if (bridgesAnchorNet(other.component, farPin, anchor)) {
+                    art.endNet = net;
+                    break;
+                }
                 consume(other.component);
                 art.steps.push_back(ArteryStep{ArteryStep::Kind::Inline,
                                                ChainElem{other.component, other.pin}, -1, {}});
@@ -399,6 +428,21 @@ void Planner::walkString(Shunt& s, std::uint32_t comp, std::uint32_t exitPin) {
 bool Planner::buildJunction(Artery& art, std::int32_t net, std::uint32_t anchor,
                             std::uint32_t fromComp, std::uint32_t fromPin) {
     const Net& n = d.nets[static_cast<std::size_t>(net)];
+
+    // A head that bridges to a sibling junction net of the same anchor (the
+    // crystal between the two OSC pins) refuses the WHOLE junction, before
+    // anything is consumed: claiming the bridge here would leave the sibling
+    // net uncoverable, and claiming everything BUT the bridge would leave
+    // this net Named over a pin the router can join wordlessly. Both nets
+    // stay Free and route -- the honest outcome where the two-junction shape
+    // has no connected drawing (WP note: routed, never labelled).
+    for (const PinRef& pr : n.pins) {
+        if (!headEligible(pr.component)) continue;
+        const Component& bc = d.components[pr.component];
+        std::uint32_t bFar = pr.pin == 0 ? 1u : 0u;
+        if (bc.pins[bFar].net == net) continue;  // a short, not a bridge
+        if (bridgesAnchorNet(pr.component, bFar, anchor)) return false;
+    }
 
     // Shunt heads in net-pin order: unclaimed two-terminal parts with exactly
     // one pin on the net. Both pins on it is a short -- skipped, left for the
@@ -498,10 +542,18 @@ bool Planner::buildJunction(Artery& art, std::int32_t net, std::uint32_t anchor,
     return true;
 }
 
-// Decap rows: per room rail in roomRails (first-touch) order, the rail's
-// unclaimed Ladder parts in room-component order go to the first flow-order
-// anchor cluster with any pin on that rail, the free cluster failing that.
-// Two or more make a DecapGroup; a single cap stands as its own loose cell.
+// Rail segments: per room rail in roomRails (first-touch) order. The classic
+// placer's pin-count rule, cluster-scoped: a cluster earns a rail segment
+// when its CONSUMERS on the rail -- the anchor's own pins (an MCU drinking a
+// rail through five supply pins wants the segment exactly as much as five
+// separate parts do), arteries ending on the rail, claimed rail satellites,
+// and the ladder caps it claims -- number two or more. The first consumer
+// cluster in flow order claims the room's unclaimed ladder caps; later
+// clusters may still earn pin-only segments from their own consumers. A
+// single consumer never earns a segment, and everything on the rail outside
+// a group keeps the classic per-part flag. Runs AFTER claimPulls so claimed
+// satellites count (ladders and pulls never compete for parts: their role
+// sets are disjoint).
 void Planner::claimDecaps() {
     for (std::int32_t rail : flow.roomRails) {
         std::vector<std::uint32_t> parts;
@@ -510,20 +562,39 @@ void Planner::claimDecaps() {
                 parts.push_back(idx);
             }
         }
-        if (parts.empty()) continue;
-        std::size_t target = freeCluster;
+        bool capsTaken = false;
         for (std::uint32_t a : flowAnchors) {
-            if (compTouches(a, rail)) {
-                target = clusterIndexOf(a);
-                break;
+            const std::size_t ci = clusterIndexOf(a);
+            Cluster& cl = plan.clusters[ci];
+            std::size_t consumers = 0;
+            for (const ComponentPin& p : d.components[a].pins) {
+                if (p.net == rail) ++consumers;
             }
+            for (const std::vector<Artery>* side : {&cl.left, &cl.right}) {
+                for (const Artery& art : *side) {
+                    if (art.endNet == rail) ++consumers;
+                }
+            }
+            for (std::uint32_t v : cl.satUps) {
+                if (railNet[flow.verts[v].comps[0]] == rail) ++consumers;
+            }
+            if (consumers == 0) continue;
+            std::vector<std::uint32_t> caps;
+            if (!capsTaken) caps = parts;
+            if (consumers + caps.size() < 2) continue;
+            for (std::uint32_t c : caps) consume(c);
+            if (!caps.empty()) capsTaken = true;
+            plan.clusters[ci].decaps.push_back(DecapGroup{rail, std::move(caps)});
         }
+        if (capsTaken || parts.empty()) continue;
+        // No consumer cluster took the ladder: it groups by count alone in
+        // the free cluster, a lone cap standing as its own loose cell.
         if (parts.size() >= 2) {
             for (std::uint32_t c : parts) consume(c);
-            plan.clusters[target].decaps.push_back(DecapGroup{rail, std::move(parts)});
+            plan.clusters[freeCluster].decaps.push_back(DecapGroup{rail, std::move(parts)});
         } else {
             claim(parts[0]);
-            plan.clusters[target].looseVerts.push_back(
+            plan.clusters[freeCluster].looseVerts.push_back(
                 static_cast<std::uint32_t>(flow.vertexOf[parts[0]]));
         }
     }
@@ -638,11 +709,13 @@ RoomPlan buildRoomPlan(const RenderPage& page, const RenderRoom& room, const Roo
     Planner pl(page, room, flow, plans, m);
     pl.classify();
     pl.makeClusters();
-    // Claiming order is fixed and first-wins: arteries, then decap rows,
-    // then satellites, then loose leftovers, then free chain runs.
+    // Claiming order is fixed and first-wins: arteries, then satellites,
+    // then rail segments (which count the claimed satellites and artery rail
+    // ends as consumers -- pulls and ladders can never contend for a part,
+    // so the swap changes no claim), then loose leftovers, then free runs.
     pl.walkArteries();
-    pl.claimDecaps();
     pl.claimPulls();
+    pl.claimDecaps();
     pl.claimLoose();
     pl.claimFreeRuns();
 

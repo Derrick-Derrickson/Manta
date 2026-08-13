@@ -11,11 +11,14 @@
 // room at natural content size.
 //
 // Structural choices, documented per the work package:
-//   - Rails are LOCAL. A decap group draws one short RailBarItem spanning
-//     just its ladder and the cluster's own tap columns (finishBars widens
-//     it to the taps, never to the room); rail pins outside the owning
-//     cluster keep the classic per-part flag. Bars still sit at y = 12
-//     (mod P), off the routing grid.
+//   - Rails are LOCAL. A cluster's rail segment (earned by the pin-count
+//     rule over the cluster's consumers -- see cluster.cpp claimDecaps)
+//     draws one short RailBarItem spanning just its ladder and the
+//     cluster's own tap columns (finishBars widens it to the taps, never to
+//     the room); a group may have no ladder at all when the anchor's own
+//     supply pins earn it. Rail pins outside an owning cluster keep the
+//     classic per-part flag. Bars still sit at y = 12 (mod P), off the
+//     routing grid.
 //   - Artery strips are allocated by measure, not search: side slots top to
 //     bottom, stripY = max(anchor pin row, previous strip bottom + up-half
 //     + P), and the cluster cell reserves the whole envelope, so cells can
@@ -24,9 +27,11 @@
 //     far-end name widths, firstTap = max(2P, pitch/2 + P), only the last
 //     gap of a string carries its end mark, and junction dots are COUNTED
 //     over the drawn segments, never assumed.
-//   - An artery ending on a rail taps the cluster's own decap segment only
-//     from the side's top strip (a lower strip's riser would cross the
-//     strips above it); everywhere else the classic flag stands.
+//   - An artery ending on a rail taps the cluster's own rail segment: the
+//     side's top strip is guaranteed at measure time, a lower strip takes
+//     the tap opportunistically at draw time when its riser column is
+//     actually clear (everything above it is already reserved), and the
+//     classic flag stands wherever the riser cannot be drawn.
 //   - Cluster alignment by rank is deliberately absent in this package:
 //     cells take natural metrics; a later package keys alignment on cluster
 //     structure.
@@ -150,6 +155,8 @@ private:
         int px = 0, py = 0;  // the tap point, room coords
         std::int32_t net = -1;
         Side fbSide = Side::Top;  // the failure mark's direction
+        std::int32_t bar = -1;    // the OWN cluster's bar (several clusters may
+                                  // bar the same rail, so net alone is not it)
     };
 
     // ------------------------------------------------------------------
@@ -256,8 +263,8 @@ private:
     std::vector<char> inRoom;                 // component -> member of this room
     std::vector<char> routable;               // net -> the router may claim it
     std::vector<std::vector<StubPt>> netPts;  // net -> bare stub ends collected
-    std::vector<std::int32_t> barOf;          // net -> index into buf.bars, -1
-    std::vector<std::int32_t> barOwner;       // net -> owning cluster index, -1
+    std::vector<std::int32_t> barOf;          // net -> the bar of the cluster being
+                                              // DRAWN (refreshed per cluster), -1
     std::vector<Tap> taps;
     std::vector<CMetric> mets;
     std::size_t curCluster = 0;
@@ -265,12 +272,26 @@ private:
     [[nodiscard]] bool isRoutable(std::int32_t net) const {
         return net >= 0 && routable[static_cast<std::size_t>(net)] != 0;
     }
-    // A rail pin taps a bar only inside the bar's own cluster; outside it
-    // the pin keeps its per-part flag (rails are local now).
+    // A rail pin taps a bar only inside a cluster that owns a segment on that
+    // rail; outside it the pin keeps its per-part flag (rails are local).
+    // Ownership is the plan's decap list, so it is answerable before any bar
+    // is drawn -- and several clusters may each own a segment on one rail.
+    [[nodiscard]] bool clusterHasBar(std::size_t ci, std::int32_t net) const {
+        if (net < 0) return false;
+        for (const DecapGroup& g : plan.clusters[ci].decaps) {
+            if (g.rail == net) return true;
+        }
+        return false;
+    }
     [[nodiscard]] bool tapsHere(std::int32_t net) const {
-        return net >= 0 && barOf[static_cast<std::size_t>(net)] >= 0 &&
-               barOwner[static_cast<std::size_t>(net)] ==
-                   static_cast<std::int32_t>(curCluster);
+        return clusterHasBar(curCluster, net);
+    }
+    // Record a tap against the drawing cluster's own bar. Decap rows are the
+    // first thing a cluster draws, so barOf is current by construction.
+    void addTap(int px, int py, std::int32_t net, Side fbSide) {
+        const std::int32_t bi = barOf[static_cast<std::size_t>(net)];
+        assert(bi >= 0 && "a tap recorded before its cluster's bar was drawn");
+        taps.push_back(Tap{px, py, net, fbSide, bi});
     }
 
     void computeRoutable();
@@ -309,9 +330,32 @@ private:
     void finishBars();
     void routeAll();
 
+    [[nodiscard]] bool riserClear(std::int32_t net, int x, int yTop, int yBot) const;
     [[nodiscard]] int verticalCellW(std::int32_t topNet, std::int32_t botNet) const;
     void bodyExtents(std::uint32_t comp, int& extL, int& extR, int& extT, int& extB) const;
 };
+
+// A vertical conductor may be drawn at x over (yTop, yBot) when it clears
+// every solid and no foreign vertical wire runs astride its column -- two
+// nets would read as one conductor. Perpendicular crossings are ordinary
+// schematic drawing and stay legal; same-net overlap merges legally.
+bool RoomPlacer::riserClear(std::int32_t net, int x, int yTop, int yBot) const {
+    if (yBot <= yTop) return false;
+    if (buf.collides(Rect{x - 2, yTop, x + 2, yBot})) return false;
+    for (const WireItem& w : buf.wires) {
+        if (w.net == net) continue;
+        for (std::size_t i = 0; i + 3 < w.pts.size(); i += 2) {
+            const int ax = w.pts[i], ay = w.pts[i + 1];
+            const int bx = w.pts[i + 2], by = w.pts[i + 3];
+            if (ax != bx || ay == by) continue;  // vertical segments only
+            if (ax <= x - 4 || ax >= x + 4) continue;
+            if (std::max(yTop, std::min(ay, by)) < std::min(yBot, std::max(ay, by))) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
 
 // A net the router may claim: plain room-local label net, two or more pins,
 // every pin a live pin of this room's components, and no block port anywhere
@@ -490,11 +534,8 @@ RoomPlacer::StripEnd RoomPlacer::classifyEnd(std::int32_t net, std::size_t ci,
     switch (markKindFor(pg, net)) {
         case MarkKind::Ground: return StripEnd::Ground;
         case MarkKind::RailFlag:
-            return railTapOk &&
-                           barOwner[static_cast<std::size_t>(net)] ==
-                               static_cast<std::int32_t>(ci)
-                       ? StripEnd::RailTap
-                       : StripEnd::RailFlag;
+            return railTapOk && clusterHasBar(ci, net) ? StripEnd::RailTap
+                                                       : StripEnd::RailFlag;
         default: return StripEnd::Mark;
     }
 }
@@ -629,13 +670,6 @@ RoomPlacer::RunGeom RoomPlacer::planRun(const std::vector<ChainElem>& run,
 // ---------------------------------------------------------------------------
 
 void RoomPlacer::clusterMetrics() {
-    barOwner.assign(pg.nets.size(), -1);
-    for (std::size_t ci = 0; ci < plan.clusters.size(); ++ci) {
-        for (const DecapGroup& g : plan.clusters[ci].decaps) {
-            barOwner[static_cast<std::size_t>(g.rail)] = static_cast<std::int32_t>(ci);
-        }
-    }
-
     mets.assign(plan.clusters.size(), {});
     for (std::size_t ci = 0; ci < plan.clusters.size(); ++ci) {
         const Cluster& cl = plan.clusters[ci];
@@ -710,8 +744,14 @@ void RoomPlacer::clusterMetrics() {
         // corridors drop straight onto their own bar.
         for (std::size_t gi = 0; gi < cl.decaps.size(); ++gi) {
             const DecapGroup& gr = cl.decaps[gi];
+            const int n = static_cast<int>(gr.comps.size());
+            // A ladder sits to the right of the anchor's top-pin block; a
+            // pin-only segment seeds its bar mid-body instead, so finishBars
+            // widens it straight over the tap columns it will serve.
             const int ladderX =
-                cm.hasBody ? roundUpP(cm.bodyX + g->w) + 2 * P : 2 * P;
+                cm.hasBody ? (n > 0 ? roundUpP(cm.bodyX + g->w) + 2 * P
+                                    : roundUpP(cm.bodyX + g->w / 2))
+                           : 2 * P;
             int capH = 0;
             for (std::uint32_t comp : gr.comps) {
                 const SymbolGeom& cg = cache[comp];
@@ -719,10 +759,10 @@ void RoomPlacer::clusterMetrics() {
                     d.components[comp].pins[0].net == gr.rail ? 0u : 1u;
                 capH = std::max(capH, rotatedH(cg, verticalRot(cg, railPin)));
             }
-            const int n = static_cast<int>(gr.comps.size());
-            const int bottom = yCur + 12 + P + capH + P + 10;
+            const int bottom = yCur + 12 + (n > 0 ? P + capH + P + 10 : 10);
             cm.decaps.push_back(DecapDraw{gi, yCur, ladderX});
-            wMax = std::max(wMax, ladderX + (n - 1) * 3 * P + 2 * P + 30);
+            wMax = std::max(wMax,
+                            n > 0 ? ladderX + (n - 1) * 3 * P + 2 * P + 30 : ladderX + 2 * P);
             yCur = roundUpP(bottom + 4) + P;
         }
 
@@ -907,7 +947,7 @@ void RoomPlacer::pinStub(const PlacedSymbol& s, std::size_t gp) {
             // A left/right/bottom pin of the cluster's own bar rail: the bare
             // stub's free end is the tap point (top-side pins never reach
             // here -- drawAnchor intercepts them with a riser).
-            taps.push_back(Tap{sx, sy, p.net, side});
+            addTap(sx, sy, p.net, side);
         } else {
             netPts[static_cast<std::size_t>(p.net)].push_back(StubPt{sx, sy, side});
         }
@@ -974,7 +1014,7 @@ void RoomPlacer::placeBody(std::uint32_t vi, int colX, int off, int y) {
         if (side == Side::Top && !p.nc && tapsHere(p.net)) {
             buf.wire({px, py, px, y}, p.net);
             buf.reserveWire(Rect{px - 2, y, px + 2, py});
-            taps.push_back(Tap{px, y, p.net, Side::Top});
+            addTap(px, y, p.net, Side::Top);
             continue;
         }
         pinStub(placed, gp);
@@ -1018,7 +1058,7 @@ void RoomPlacer::placeVerticalCell(std::uint32_t vi, int colX, int y) {
         // instead of taking a rail flag.
         buf.wire({cx, y, cx, bodyTop}, topNet);
         buf.reserveWire(Rect{cx - 2, y, cx + 2, bodyTop});
-        taps.push_back(Tap{cx, y, topNet, Side::Top});
+        addTap(cx, y, topNet, Side::Top);
     } else {
         buf.wire({cx, attachY, cx, bodyTop}, topNet);
         if (bareTop) {
@@ -1092,6 +1132,12 @@ void RoomPlacer::drawDecapRow(const DecapGroup& gr, const DecapDraw& dd, int cx,
     const int firstTapX = cx + dd.ladderX;
     barOf[static_cast<std::size_t>(gr.rail)] = static_cast<std::int32_t>(buf.bars.size());
     const int n = static_cast<int>(gr.comps.size());
+    if (n == 0) {
+        // A pin-only segment: the bar alone, seeded mid-body; finishBars
+        // widens it to the consumer tap columns and joins them.
+        buf.bars.push_back(RailBarItem{firstTapX - P, firstTapX + P, barY, gr.rail});
+        return;
+    }
     buf.bars.push_back(
         RailBarItem{firstTapX - P, firstTapX + (n - 1) * 3 * P + P, barY, gr.rail});
 
@@ -1149,16 +1195,31 @@ int RoomPlacer::drawStripEnd(StripEnd end, std::int32_t net, int cursor, int str
                      net);
             buf.mark(MarkKind::Ground, cursor + dir * P, stripY + P, Side::Bottom, net);
             return cursor + dir * (P + 10);
-        case StripEnd::RailFlag:
-            buf.wire({cursor, stripY, cursor + dir * P, stripY, cursor + dir * P, stripY - P},
-                     net);
-            buf.mark(MarkKind::RailFlag, cursor + dir * P, stripY - P, Side::Top, net);
+        case StripEnd::RailFlag: {
+            // A lower strip is classified a flag because its riser cannot be
+            // GUARANTEED at measure time. At draw time everything above the
+            // strip is already reserved, so when this cluster owns a segment
+            // on the rail and the column is actually clear, take the tap
+            // after all -- the strip joins the one named segment instead of
+            // repeating the name. The measured flag headroom stays reserved,
+            // which only leaves slack.
+            const int tx = cursor + dir * P;
+            if (tapsHere(net) && riserTopY < stripY - P &&
+                riserClear(net, tx, riserTopY, stripY - 4)) {
+                buf.wire({cursor, stripY, tx, stripY, tx, riserTopY}, net);
+                buf.reserveWire(Rect{tx - 2, riserTopY, tx + 2, stripY});
+                addTap(tx, riserTopY, net, Side::Top);
+                return cursor + dir * (P + 4);
+            }
+            buf.wire({cursor, stripY, tx, stripY, tx, stripY - P}, net);
+            buf.mark(MarkKind::RailFlag, tx, stripY - P, Side::Top, net);
             return cursor + dir * (P + textW(netName(pg, net)) / 2 + 8);
+        }
         case StripEnd::RailTap: {
             const int tx = cursor + dir * P;
             buf.wire({cursor, stripY, tx, stripY, tx, riserTopY}, net);
             buf.reserveWire(Rect{tx - 2, riserTopY, tx + 2, stripY});
-            taps.push_back(Tap{tx, riserTopY, net, Side::Top});
+            addTap(tx, riserTopY, net, Side::Top);
             return cursor + dir * (P + 4);
         }
         case StripEnd::Mark:
@@ -1339,7 +1400,7 @@ void RoomPlacer::drawRun(const RunDraw& rd, int cx, int cy) {
     } else if (tapsHere(rg.startNet)) {
         buf.wire({startX, stripY, startX, rowTopY}, rg.startNet);
         buf.reserveWire(Rect{startX - 2, rowTopY, startX + 2, stripY});
-        taps.push_back(Tap{startX, rowTopY, rg.startNet, Side::Top});
+        addTap(startX, rowTopY, rg.startNet, Side::Top);
     } else if (rg.startNet >= 0) {
         buf.mark(markKindFor(pg, rg.startNet), startX, stripY, Side::Left, rg.startNet);
     }
@@ -1416,7 +1477,7 @@ void RoomPlacer::drawAnchor(CMetric& cm, int cx, int cy) {
             // fallback can leave it when the straight corridor is blocked.
             buf.wire({px, py, px, zoneTopY}, p.net);
             buf.reserveWire(Rect{px - 2, zoneTopY, px + 2, py});
-            taps.push_back(Tap{px, zoneTopY, p.net, Side::Top});
+            addTap(px, zoneTopY, p.net, Side::Top);
             continue;
         }
         pinStub(placed, gp);
@@ -1465,10 +1526,11 @@ void RoomPlacer::drawClusters() {
 
 void RoomPlacer::finishBars() {
     if (buf.bars.empty()) return;
-    // Group width: the bar reaches exactly as far as its cluster's taps.
+    // Group width: the bar reaches exactly as far as its cluster's taps --
+    // each tap widens the bar it was recorded against, never a namesake
+    // segment another cluster owns on the same rail.
     for (const Tap& t : taps) {
-        RailBarItem& bar =
-            buf.bars[static_cast<std::size_t>(barOf[static_cast<std::size_t>(t.net)])];
+        RailBarItem& bar = buf.bars[static_cast<std::size_t>(t.bar)];
         bar.x1 = std::min(bar.x1, t.px - P);
         bar.x2 = std::max(bar.x2, t.px + P);
     }
@@ -1478,24 +1540,9 @@ void RoomPlacer::finishBars() {
 
     // The straight drop must clear every solid AND every foreign vertical
     // wire astride its line -- an earlier tap's routed leg, a bare stub --
-    // or two nets would read as one conductor. Same-net wires merge legally.
+    // or two nets would read as one conductor (riserClear's rule exactly).
     auto corridorClear = [&](std::int32_t net, int px, int barY, int bottom) {
-        if (bottom <= barY + 4) return false;
-        if (buf.collides(Rect{px - 2, barY + 4, px + 2, bottom})) return false;
-        for (const WireItem& w : buf.wires) {
-            if (w.net == net) continue;
-            for (std::size_t i = 0; i + 3 < w.pts.size(); i += 2) {
-                const int ax = w.pts[i], ay = w.pts[i + 1];
-                const int bx = w.pts[i + 2], by = w.pts[i + 3];
-                if (ax != bx || ay == by) continue;  // vertical segments only
-                if (ax <= px - 4 || ax >= px + 4) continue;
-                if (std::max(barY + 4, std::min(ay, by)) <
-                    std::min(bottom, std::max(ay, by))) {
-                    return false;
-                }
-            }
-        }
-        return true;
+        return bottom > barY + 4 && riserClear(net, px, barY + 4, bottom);
     };
     auto dotOnce = [&](int x, int y, std::int32_t net) {
         for (const DotItem& e : buf.dots) {
@@ -1524,19 +1571,46 @@ void RoomPlacer::finishBars() {
         return false;
     };
 
+    std::vector<std::int32_t> dropped;  // nets with a corridor drop, tap order
     for (const Tap& t : taps) {
-        const std::int32_t bi = barOf[static_cast<std::size_t>(t.net)];
-        const RailBarItem& bar = buf.bars[static_cast<std::size_t>(bi)];
+        const RailBarItem& bar = buf.bars[static_cast<std::size_t>(t.bar)];
         const bool inSpan = t.px >= bar.x1 && t.px <= bar.x2;
         if (inSpan && corridorClear(t.net, t.px, bar.y, t.py)) {
             buf.wire({t.px, bar.y, t.px, t.py}, t.net);
             buf.reserveWire(Rect{t.px - 2, bar.y, t.px + 2, t.py});
             // The bar runs through, the tap ends: three conductors, one dot.
             dotOnce(t.px, bar.y, t.net);
+            bool seen = false;
+            for (std::int32_t n : dropped) seen = seen || n == t.net;
+            if (!seen) dropped.push_back(t.net);
         } else if (tryRoute(t, bar)) {
             // Routed around the blockage; the router dotted the bar joint.
         } else {
             buf.mark(MarkKind::RailFlag, t.px, t.py, t.fbSide, t.net);
+        }
+    }
+
+    // Two stacked taps of one column (a connector's paired supply pins) put
+    // the lower pin's corridor straight through the upper pin's stub end: a
+    // T-join of the rail's own wires. Junction dots are counted, never
+    // assumed, so recount over every wire the dropped nets now own; the
+    // coordinate dedup keeps the dots dotOnce already placed single.
+    for (std::int32_t net : dropped) {
+        std::vector<Seg> segs;
+        for (const WireItem& w : buf.wires) {
+            if (w.net != net) continue;
+            for (std::size_t i = 0; i + 3 < w.pts.size(); i += 2) {
+                segs.push_back(Seg{w.pts[i], w.pts[i + 1], w.pts[i + 2], w.pts[i + 3]});
+            }
+        }
+        std::vector<DotItem> fresh;
+        addJunctionDots(fresh, segs, net);
+        for (const DotItem& nd : fresh) {
+            bool present = false;
+            for (const DotItem& e : buf.dots) {
+                if (e.x == nd.x && e.y == nd.y) present = true;
+            }
+            if (!present) buf.dots.push_back(nd);
         }
     }
 }

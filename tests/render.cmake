@@ -59,6 +59,13 @@ part FIX-HDR {
     3 = C &CASUAL;
     4 = D &CASUAL;
 };
+part FIX-DUAL {
+    @~footprint = QFN-8;
+    1 = VA< &TYPE=POWER;
+    2 = VB< &TYPE=POWER;
+    3 = IO0>;
+    4 = IO1<;
+};
 
 block sub {
     >DRIVE;
@@ -71,7 +78,9 @@ block fixture {
     GND &TYPE=GROUND;
     3V3 &CLASS=power;
     RAWPWR &CLASS=raw-power &STUB;
+    RAILX &CLASS=power;
     PROBE &STUB;
+    PG-OUT &STUB;
 
 
     {U9~FIX-R: A = LEFTY[0]; B = LEFTY[1];};
@@ -89,6 +98,9 @@ block fixture {
 
     --- IO HEADER
     {J1~FIX-HDR: A = SPI-CLK; B = GND; C = VBAT; D = EXTRA;};
+
+    --- PIN GROUP
+    {U5~FIX-DUAL: VA = RAILX; VB = RAILX; IO0 = PG-OUT;};
 
     --- MISC
     {R7~FIX-R: A = LEFTY[0]; B = LEFTY[1];};
@@ -130,13 +142,29 @@ if(room_count LESS 4)
 endif()
 
 # --- rail bars ----------------------------------------------------------------
-# A rail whose decap group lives in a cluster gets one bar there: 3V3 (group
-# C1,C2) and VBAT (group C3,C4), both in U1's cluster in MCU CORE. RAWPWR has
-# a single pin anywhere (TP3) and never earns one.
+# A rail whose consumer group lives in a cluster gets one bar there: 3V3
+# (group C1,C2) and VBAT (group C3,C4), both in U1's cluster in MCU CORE, and
+# RAILX in U5's cluster in PIN GROUP -- earned by the anchor's own two supply
+# pins alone, the pin-count rule with no ladder at all. RAWPWR has a single
+# pin anywhere (TP3) and never earns one.
 string(REGEX MATCHALL "class=\"railbar\"" bars "${html}")
 list(LENGTH bars bar_count)
-if(NOT bar_count EQUAL 2)
-    message(FATAL_ERROR "expected rail bars for 3V3 and VBAT, got ${bar_count}")
+if(NOT bar_count EQUAL 3)
+    message(FATAL_ERROR "expected rail bars for 3V3, VBAT and RAILX, got ${bar_count}")
+endif()
+
+# --- the pin-count rule, end to end ------------------------------------------
+# U5 drinks RAILX through two supply pins and nothing else touches the rail:
+# the cluster earns a pin-only segment, both pins tap it, and not one
+# per-part rail flag survives anywhere on RAILX.
+if(NOT html MATCHES "class=\"railbar\"[^>]*data-net=\"RAILX\"")
+    message(FATAL_ERROR "U5's two supply pins must earn RAILX a pin-only rail bar")
+endif()
+string(REGEX MATCHALL "class=\"rail\" data-net=\"RAILX\"" railx_marks "${html}")
+list(LENGTH railx_marks railx_mark_count)
+if(NOT railx_mark_count EQUAL 0)
+    message(FATAL_ERROR "both RAILX pins tap their cluster's segment, so no rail "
+                        "flag may remain; got ${railx_mark_count}")
 endif()
 
 # --- rail bars are LOCAL: group-width segments, never room-wide -------------
