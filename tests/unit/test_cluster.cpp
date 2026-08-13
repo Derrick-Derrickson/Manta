@@ -312,6 +312,82 @@ TEST_CASE("buck: junction with catch and bootstrap shunts, inductor continues to
     CHECK(b.plan.consumed[f.l1] != 0);
 }
 
+TEST_CASE("the switch-node junction forms from the anchor's own pin whatever "
+          "the seeding order") {
+    // The real MP1584's side plan seeds BST above SW. Unfixed, BST's artery
+    // walked through the bootstrap cap via the private BST net, reached the
+    // switch node first and built its junction from the cap's side -- with
+    // the anchor's own SW pin uncovered, forcing the node Named under two
+    // labels. The bridge gate stops that walk: a part whose far pin lands on
+    // a junction net of the same anchor is consumed by neither side.
+    Buck f = makeBuck(false);
+    RenderModel m = buildRenderModel(f.b.d);
+    std::vector<SidePlan> plans(f.b.d.components.size());
+    plans[f.u2].byPin = {PinPlan{Side::Left, 1, false}, PinPlan{Side::Left, 0, false},
+                         PinPlan{Side::Right, 0, false}, PinPlan{Side::Right, 1, false},
+                         PinPlan{Side::Right, 2, false}};
+    Built b = build(m, plans);
+    checkInvariants(b, f.b.d, m.pages[0].rooms[0]);
+
+    const Cluster& cl = clusterOf(b, f.u2);
+    CHECK(cl.anchorVert >= 0);
+    // BST walked first and consumed nothing: no artery for it. SW's own
+    // junction is the one and only artery, its shape the reference one.
+    CHECK_EQ(cl.left.size(), static_cast<std::size_t>(1));
+    const Artery& a = cl.left[0];
+    CHECK_EQ(a.anchorPin, 0u);
+    CHECK_EQ(a.steps.size(), static_cast<std::size_t>(2));
+    CHECK(a.steps[0].kind == ArteryStep::Kind::Junction);
+    CHECK_EQ(a.steps[0].net, f.sw);
+    CHECK_EQ(a.steps[0].shunts.size(), static_cast<std::size_t>(2));
+    CHECK(a.steps[1].kind == ArteryStep::Kind::Inline);
+    CHECK_EQ(a.steps[1].elem.comp, f.l1);
+    CHECK_EQ(a.endNet, f.v5);
+    CHECK(b.plan.netState[static_cast<std::size_t>(f.sw)] == NetState::Drawn);
+    // The bootstrap net pairs by name: the cap's far stub and the BST pin.
+    CHECK(b.plan.netState[static_cast<std::size_t>(f.bst)] == NetState::Free);
+}
+
+TEST_CASE("the crystal bridges two junction nets of one anchor: both refuse "
+          "and route") {
+    TB t;
+    std::uint32_t u1 = t.comp("U1", "", {"XI", "XO", "P3", "P4", "P5"});
+    std::uint32_t y1 = t.comp("Y1", "crystal", {"1", "2"});
+    std::uint32_t c11 = t.comp("C11", "capacitor", {"1", "2"});
+    std::uint32_t c12 = t.comp("C12", "capacitor", {"1", "2"});
+    std::int32_t xi = t.net("XTAL-IN"), xo = t.net("XTAL-OUT"), gnd = t.net("GND", true);
+    t.wire(u1, 0, xi);
+    t.wire(u1, 1, xo);
+    t.wire(y1, 0, xi);
+    t.wire(y1, 1, xo);
+    t.wire(c11, 0, gnd);
+    t.wire(c11, 1, xi);
+    t.wire(c12, 0, gnd);
+    t.wire(c12, 1, xo);
+
+    RenderModel m = buildRenderModel(t.d);
+    Built b = build(m);
+    checkInvariants(b, t.d, m.pages[0].rooms[0]);
+
+    // Claiming the crystal into either junction leaves the sibling net
+    // uncoverable (its trunk and the crystal's far stub never meet), so a
+    // junction would hang labels on nets the router can draw whole. Both
+    // walks refuse whole: the nets stay Free -- routed, never labelled --
+    // the caps stand as satellites, the crystal keeps its own run.
+    const Cluster& cl = clusterOf(b, u1);
+    CHECK(cl.anchorVert >= 0);
+    CHECK_EQ(cl.left.size(), static_cast<std::size_t>(0));
+    CHECK_EQ(cl.right.size(), static_cast<std::size_t>(0));
+    CHECK(b.plan.netState[static_cast<std::size_t>(xi)] == NetState::Free);
+    CHECK(b.plan.netState[static_cast<std::size_t>(xo)] == NetState::Free);
+    CHECK_FALSE(inAnyArtery(b.plan, y1));
+    CHECK(vertListHas(b, cl.satDowns, c11));
+    CHECK(vertListHas(b, cl.satDowns, c12));
+    CHECK_EQ(freeCluster(b).freeRuns.size(), static_cast<std::size_t>(1));
+    CHECK_EQ(freeCluster(b).freeRuns[0].size(), static_cast<std::size_t>(1));
+    CHECK_EQ(freeCluster(b).freeRuns[0][0].comp, y1);
+}
+
 // ---------------------------------------------------------------------------
 // Private chains and handoffs.
 // ---------------------------------------------------------------------------
@@ -642,16 +718,21 @@ TEST_CASE("a pull-up is never inlined; a pull-down is; a ladder stays vertical")
     CHECK(b.plan.netState[static_cast<std::size_t>(pa)] == NetState::Free);
     CHECK(b.plan.netState[static_cast<std::size_t>(pd)] == NetState::Drawn);
 
-    // The lone ladder's rail touches no anchor: it falls to the free
-    // cluster as a loose vertical.
-    CHECK(vertListHas(b, freeCluster(b).looseVerts, cl1));
+    // The claimed pull-up is a rail consumer of U1's cluster, so the lone
+    // ladder joins it in a rail segment there (pin-count rule) instead of
+    // falling to the free cluster.
+    CHECK_EQ(cu.decaps.size(), static_cast<std::size_t>(1));
+    CHECK_EQ(cu.decaps[0].rail, rail);
+    CHECK_EQ(cu.decaps[0].comps.size(), static_cast<std::size_t>(1));
+    CHECK_EQ(cu.decaps[0].comps[0], cl1);
+    CHECK(b.plan.consumed[cl1] != 0);
 }
 
 // ---------------------------------------------------------------------------
 // Decap grouping.
 // ---------------------------------------------------------------------------
 
-TEST_CASE("two caps on a rail group at the anchor; a single cap stands loose") {
+TEST_CASE("the pin-count rule: caps and the anchor's own pin group together") {
     TB t;
     std::uint32_t u1 = t.comp("U1", "", {"VCC", "P2", "P3", "P4", "P5"});
     std::uint32_t c1 = t.comp("C1", "capacitor", {"1", "2"});
@@ -673,7 +754,7 @@ TEST_CASE("two caps on a rail group at the anchor; a single cap stands loose") {
 
     const Cluster& cl = clusterOf(b, u1);
     CHECK(cl.anchorVert >= 0);
-    CHECK_EQ(cl.decaps.size(), static_cast<std::size_t>(1));
+    CHECK_EQ(cl.decaps.size(), static_cast<std::size_t>(2));
     CHECK_EQ(cl.decaps[0].rail, r33);
     CHECK_EQ(cl.decaps[0].comps.size(), static_cast<std::size_t>(2));
     CHECK_EQ(cl.decaps[0].comps[0], c1);
@@ -681,10 +762,56 @@ TEST_CASE("two caps on a rail group at the anchor; a single cap stands loose") {
     CHECK(b.plan.consumed[c1] != 0);
     CHECK(b.plan.consumed[c2] != 0);
 
-    // The 5V rail holds one cap: it keeps its own cell at the same anchor.
-    CHECK(vertListHas(b, cl.looseVerts, c4));
+    // 5V has one cap AND the anchor's own pin: two consumers, so the lone
+    // cap earns the segment too instead of standing loose with a flag.
+    CHECK_EQ(cl.decaps[1].rail, r5);
+    CHECK_EQ(cl.decaps[1].comps.size(), static_cast<std::size_t>(1));
+    CHECK_EQ(cl.decaps[1].comps[0], c4);
+    CHECK(b.plan.consumed[c4] != 0);
+}
+
+TEST_CASE("the anchor's own supply pins alone earn a segment; one pin never does") {
+    TB t;
+    std::uint32_t u1 = t.comp("U1", "", {"VCC1", "VCC2", "AVCC", "P4", "P5"});
+    std::int32_t r33 = t.net("3V3"), r5 = t.net("5V");
+    t.wire(u1, 0, r33);
+    t.wire(u1, 1, r33);
+    t.wire(u1, 2, r5);
+
+    RenderModel m = buildRenderModel(t.d);
+    Built b = build(m);
+    checkInvariants(b, t.d, m.pages[0].rooms[0]);
+
+    // An MCU drinking a rail through two supply pins wants the segment
+    // exactly as much as two separate parts do: a pin-only DecapGroup, no
+    // ladder. The single 5V pin stays a per-part flag: no group for it.
+    const Cluster& cl = clusterOf(b, u1);
+    CHECK(cl.anchorVert >= 0);
+    CHECK_EQ(cl.decaps.size(), static_cast<std::size_t>(1));
+    CHECK_EQ(cl.decaps[0].rail, r33);
+    CHECK_EQ(cl.decaps[0].comps.size(), static_cast<std::size_t>(0));
+}
+
+TEST_CASE("a lone cap on a rail no cluster consumes stays a loose cell") {
+    TB t;
+    std::uint32_t u1 = t.comp("U1", "", {"P1", "P2", "P3", "P4", "P5"});
+    std::uint32_t c4 = t.comp("C4", "capacitor", {"1", "2"});
+    std::int32_t nn = t.net("N1"), r5 = t.net("5V"), gnd = t.net("GND", true);
+    t.wire(u1, 0, nn);
+    t.wire(c4, 0, r5);
+    t.wire(c4, 1, gnd);
+
+    RenderModel m = buildRenderModel(t.d);
+    Built b = build(m);
+    checkInvariants(b, t.d, m.pages[0].rooms[0]);
+
+    // One consumer never earns a segment: the cap keeps its own cell in the
+    // free cluster with the classic flag above it.
+    CHECK(vertListHas(b, freeCluster(b).looseVerts, c4));
     CHECK(b.plan.consumed[c4] == 0);
-    CHECK(cl.decaps.size() == 1);
+    for (const Cluster& cl : b.plan.clusters) {
+        CHECK_EQ(cl.decaps.size(), static_cast<std::size_t>(0));
+    }
 }
 
 // ---------------------------------------------------------------------------

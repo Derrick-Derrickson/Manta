@@ -58,10 +58,14 @@ struct Artery {
     bool namedEnd = false;  // endNet keeps a terminal mark (partially covered multi-pin net)
 };
 
-// Two or more decoupling caps on one rail, drawn as a row under that rail.
+// One cluster rail segment: a short local bar every consumer of the group
+// taps. It forms when the cluster's consumers on the rail -- anchor pins,
+// artery rail ends, claimed rail satellites, and the ladder caps below --
+// number two or more (the classic pin-count rule, cluster-scoped), so
+// `comps` may be empty: an anchor's own supply pins alone can earn it.
 struct DecapGroup {
     std::int32_t rail = -1;
-    std::vector<std::uint32_t> comps;  // component indices, room order
+    std::vector<std::uint32_t> comps;  // ladder caps drawn under the bar, room order
 };
 
 // One cluster: an anchor (or child sheet symbol) and everything it claimed.
