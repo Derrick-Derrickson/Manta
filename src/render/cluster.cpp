@@ -165,6 +165,7 @@ struct Planner {
     void claimPulls();
     void claimLoose();
     void claimFreeRuns();
+    void fillShapeKeys();
 };
 
 // Classification in room component order, flow.cpp:110-143 semantics.
@@ -702,6 +703,110 @@ void Planner::claimFreeRuns() {
     }
 }
 
+// The structure signature (Cluster::shapeKey). Two clusters compare equal
+// exactly when the same drawing recipe runs for both: same anchor part, the
+// same arteries element for element (entry pins included -- a flipped body
+// is a different picture), the same shunt strings with their up/down stance
+// and end-mark kinds, and the same standing census. Net names never enter:
+// PUMP-1 and PUMP-2 differ only in them, and must not differ here. Every
+// piece is emitted in walk order or sorted by naturalLess, so the key is as
+// deterministic as the plan it reads (spec 15.8).
+void Planner::fillShapeKeys() {
+    auto part = [&](std::uint32_t c) {
+        std::string s = d.components[c].partName;
+        s += '#';
+        s += std::to_string(static_cast<int>(m.kinds[c]));
+        return s;
+    };
+    // The KIND of mark a net keeps (rail, ground, plain label...), never its
+    // text: the kind picks the drawn glyph and the up/down absorption.
+    auto markOf = [&](std::int32_t net) {
+        if (net < 0) return std::string("x");
+        return std::to_string(static_cast<int>(pg.nets[static_cast<std::size_t>(net)].mark));
+    };
+    auto sortedParts = [&](std::string& key, const std::vector<std::string>& raw) {
+        std::vector<std::string> names = raw;
+        std::sort(names.begin(), names.end(), [](const std::string& a, const std::string& b) {
+            if (naturalLess(a, b)) return true;
+            if (naturalLess(b, a)) return false;
+            return a < b;
+        });
+        for (const std::string& n : names) {
+            key += n;
+            key += ',';
+        }
+    };
+    auto vertParts = [&](const std::vector<std::uint32_t>& vs) {
+        std::vector<std::string> names;
+        names.reserve(vs.size());
+        for (std::uint32_t v : vs) names.push_back(d.components[flow.verts[v].comps[0]].partName);
+        return names;
+    };
+
+    for (Cluster& cl : plan.clusters) {
+        if (cl.anchorVert < 0) continue;  // the free cluster aligns on nothing
+        const FlowVertex& v = flow.verts[static_cast<std::size_t>(cl.anchorVert)];
+        if (v.kind != FlowVertex::Kind::Anchor) continue;  // nor does a child sheet
+        std::string key = part(v.comps[0]);
+        for (const std::vector<Artery>* side : {&cl.left, &cl.right}) {
+            key += '/';
+            for (const Artery& a : *side) {
+                key += 'A';
+                key += std::to_string(a.anchorPin);
+                key += ':';
+                for (const ArteryStep& s : a.steps) {
+                    if (s.kind == ArteryStep::Kind::Inline) {
+                        key += 'i';
+                        key += part(s.elem.comp);
+                        key += '@';
+                        key += std::to_string(s.elem.entryPin);
+                        key += ';';
+                        continue;
+                    }
+                    key += "J{";
+                    for (const Shunt& sh : s.shunts) {
+                        for (const ChainElem& e : sh.elems) {
+                            key += part(e.comp);
+                            key += '@';
+                            key += std::to_string(e.entryPin);
+                            key += ';';
+                        }
+                        key += sh.up ? '^' : 'v';
+                        key += markOf(sh.endNet);
+                        key += ',';
+                    }
+                    key += '}';
+                }
+                key += '>';
+                key += a.namedEnd ? 'N' : '-';
+                key += markOf(a.endNet);
+                key += '|';
+            }
+        }
+        // The standing census. Satellites and loose cells sort whole (their
+        // row order tracks room order, which two identical channels need not
+        // share); ladder groups keep their boundaries -- two one-cap rows
+        // and one two-cap row are different pictures -- with members sorted.
+        key += "/U[";
+        sortedParts(key, vertParts(cl.satUps));
+        key += "]D[";
+        sortedParts(key, vertParts(cl.satDowns));
+        key += "]C";
+        for (const DecapGroup& g : cl.decaps) {
+            std::vector<std::string> names;
+            names.reserve(g.comps.size());
+            for (std::uint32_t c : g.comps) names.push_back(d.components[c].partName);
+            key += '[';
+            sortedParts(key, names);
+            key += ']';
+        }
+        key += "L[";
+        sortedParts(key, vertParts(cl.looseVerts));
+        key += ']';
+        cl.shapeKey = std::move(key);
+    }
+}
+
 }  // namespace
 
 RoomPlan buildRoomPlan(const RenderPage& page, const RenderRoom& room, const RoomFlow& flow,
@@ -718,6 +823,7 @@ RoomPlan buildRoomPlan(const RenderPage& page, const RenderRoom& room, const Roo
     pl.claimDecaps();
     pl.claimLoose();
     pl.claimFreeRuns();
+    pl.fillShapeKeys();
 
 #ifndef NDEBUG
     // The netState invariant: a Drawn net's every pin sits on a consumed

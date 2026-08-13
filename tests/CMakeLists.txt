@@ -76,6 +76,16 @@ add_test(NAME render_nodes
                  -DWORK=${CMAKE_CURRENT_BINARY_DIR}/render-nodes-work
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/nodes.cmake)
 
+# The cluster placer's reference vocabulary: identical channels drawn
+# identically (shapeKey metric union, adjacent packing), single-trunk
+# arteries, group-width rail segments, wordless chain interiors, and the
+# crystal beside its anchor.
+add_test(NAME render_cluster
+         COMMAND ${CMAKE_COMMAND}
+                 -DMANTA=$<TARGET_FILE:manta>
+                 -DWORK=${CMAKE_CURRENT_BINARY_DIR}/render-cluster-work
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/cluster.cmake)
+
 # A complete design that must pass every check with nothing to report -- the
 # other half of the conformance argument.
 add_test(NAME example
