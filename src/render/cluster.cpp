@@ -155,9 +155,9 @@ struct Planner {
                         std::vector<std::uint32_t>& right) const;
     void walkArteries();
     void walkPin(std::uint32_t anchor, std::uint32_t pin, std::vector<Artery>& out);
-    [[nodiscard]] bool junctionNet(std::int32_t net) const;
+    [[nodiscard]] bool junctionNet(std::int32_t net, std::uint32_t anchor) const;
     [[nodiscard]] bool buildJunction(Artery& art, std::int32_t net, std::uint32_t anchor,
-                                     std::uint32_t fromComp);
+                                     std::uint32_t fromComp, std::uint32_t fromPin);
     void walkString(Shunt& s, std::uint32_t comp, std::uint32_t exitPin);
     void claimDecaps();
     void claimPulls();
@@ -316,8 +316,12 @@ void Planner::walkArteries() {
 // A junction may form on a room-local multi-pin label net: every pin in this
 // room, no mark, no port flag, three or more pins, and no earlier artery has
 // spoken for it (a second arrival is a plain stop -- the drawn junction is
-// already there).
-bool Planner::junctionNet(std::int32_t net) const {
+// already there). A net touching a SECOND anchor never junctions (drawing
+// gap, WP6): the junction geometry cannot reach across clusters, so claiming
+// the heads would force the net Named and hang a label on a net the router
+// can draw whole. Left Free, the router joins every pin wordlessly, with the
+// stub+mark ladder below it as ever.
+bool Planner::junctionNet(std::int32_t net, std::uint32_t anchor) const {
     if (net < 0) return false;
     const Net& n = d.nets[static_cast<std::size_t>(net)];
     const RenderNet& rn = pg.nets[static_cast<std::size_t>(net)];
@@ -326,6 +330,7 @@ bool Planner::junctionNet(std::int32_t net) const {
     if (plan.netState[static_cast<std::size_t>(net)] != NetState::Free) return false;
     for (const PinRef& pr : n.pins) {
         if (!inRoom[pr.component]) return false;
+        if (role[pr.component] == Role::Anchor && pr.component != anchor) return false;
     }
     return true;
 }
@@ -360,8 +365,8 @@ void Planner::walkPin(std::uint32_t anchor, std::uint32_t pin, std::vector<Arter
             art.endNet = net;
             break;
         }
-        if (junctionNet(net)) {
-            if (!buildJunction(art, net, anchor, fromComp)) art.endNet = net;
+        if (junctionNet(net, anchor)) {
+            if (!buildJunction(art, net, anchor, fromComp, fromPin)) art.endNet = net;
             break;  // a junction always ends the artery (rail continuation included)
         }
         // Rail, ground, no-connect, crossing, port, foreign label, or an
@@ -392,7 +397,7 @@ void Planner::walkString(Shunt& s, std::uint32_t comp, std::uint32_t exitPin) {
 }
 
 bool Planner::buildJunction(Artery& art, std::int32_t net, std::uint32_t anchor,
-                            std::uint32_t fromComp) {
+                            std::uint32_t fromComp, std::uint32_t fromPin) {
     const Net& n = d.nets[static_cast<std::size_t>(net)];
 
     // Shunt heads in net-pin order: unclaimed two-terminal parts with exactly
@@ -416,11 +421,37 @@ bool Planner::buildJunction(Artery& art, std::int32_t net, std::uint32_t anchor,
     }
     if (shunts.empty()) return false;  // nothing to join: no junction step
 
+    // Coverage: a pin counts as drawn when it sits on the part the artery
+    // arrived through, on the seeding pin ITSELF, or on a claimed head (the
+    // continuation head included). Anything else -- a second pin of the
+    // anchor (the artery lands on one pin only; drawing gap, WP6), a Loose
+    // part, a short, an overflow head, a child sheet port -- keeps a stub
+    // with the net's mark, so the net is Named rather than Drawn.
+    bool covered = true;
+    for (const PinRef& pr : n.pins) {
+        if (pr.component == fromComp && (fromComp != anchor || pr.pin == fromPin)) continue;
+        bool isHead = false;
+        for (std::uint32_t h : headComps) {
+            if (h == pr.component) isHead = true;
+        }
+        if (!isHead) covered = false;
+    }
+    for (std::uint32_t b : room.children) {
+        for (const BlockPort& p : d.blocks[b].ports) {
+            if (p.net == net) covered = false;
+        }
+    }
+    plan.netState[static_cast<std::size_t>(net)] = covered ? NetState::Drawn : NetState::Named;
+
     // Continuation: the longest rail-ending string straightens onto the
     // artery, so the wire reads anchor -> junction -> rail. Most elements
     // wins; ties by head designator (naturalLess), then head component index.
+    // Only a fully covered junction may straighten (drawing gap, WP6): a
+    // partial one must end on its own trunk so the trunk can carry the net's
+    // name -- with a rail continuation there would be no trunk end to name,
+    // and the uncovered stubs' labels would pair with nothing visible.
     std::int32_t best = -1;
-    for (std::size_t i = 0; i < shunts.size(); ++i) {
+    for (std::size_t i = 0; covered && i < shunts.size(); ++i) {
         if (!shunts[i].up) continue;
         if (best < 0) {
             best = static_cast<std::int32_t>(i);
@@ -442,27 +473,6 @@ bool Planner::buildJunction(Artery& art, std::int32_t net, std::uint32_t anchor,
         }
         if (take) best = static_cast<std::int32_t>(i);
     }
-
-    // Coverage: a pin counts as drawn when it sits on the seeding anchor, on
-    // the part the artery arrived through, or on a claimed head (the
-    // continuation head included). Anything else -- another anchor, a Loose
-    // part, a short, an overflow head, a child sheet port -- keeps a stub
-    // with the net's mark, so the net is Named rather than Drawn.
-    bool covered = true;
-    for (const PinRef& pr : n.pins) {
-        if (pr.component == anchor || pr.component == fromComp) continue;
-        bool isHead = false;
-        for (std::uint32_t h : headComps) {
-            if (h == pr.component) isHead = true;
-        }
-        if (!isHead) covered = false;
-    }
-    for (std::uint32_t b : room.children) {
-        for (const BlockPort& p : d.blocks[b].ports) {
-            if (p.net == net) covered = false;
-        }
-    }
-    plan.netState[static_cast<std::size_t>(net)] = covered ? NetState::Drawn : NetState::Named;
 
     ArteryStep js;
     js.kind = ArteryStep::Kind::Junction;

@@ -1,49 +1,51 @@
 // SPDX-FileCopyrightText: 2026 Tom
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// WP4: the flow placer. Each room is laid out from its RoomFlow -- rank
-// columns left to right, barycentre order top to bottom -- instead of the
-// classic bands. Rails with two or more consumers become one horizontal bar
-// spanning the room, named once at its left end (the SVG emitter draws the
-// name from the RailBarItem itself), with decoupling ladders hanging from it
-// and taps dropping to top-side consumer pins. Room-local label nets are
-// routed by routeNet; a net the router declines keeps stub+label, which is
-// always electrically correct. Rooms are tiled by tileRooms, whose placed
-// rectangles partition their bounding box exactly.
+// WP6: cluster composition. Each room is drawn from its RoomPlan (cluster.cpp)
+// the way a datasheet reference schematic is drawn: one cluster per anchor,
+// each cluster a self-contained cell -- decap rows on top, pull-up satellites,
+// the anchor body with its ARTERIES (one horizontal wire per seeded pin:
+// series parts inline on the wire, shunt strings hanging from junction dots,
+// grounds below, the rail flag or the router handoff at the end), pull-down
+// satellites and loose cells below -- and the cells shelf-packed into the
+// room at natural content size.
 //
 // Structural choices, documented per the work package:
-//   - Rail bars are two-pass: the bars and their ladders go in first at the
-//     top of the room, the columns after, and only then is each bar
-//     stretched to the room's content width and its taps joined -- straight
-//     corridor drop first, routed fallback second, and only when both refuse
-//     the classic per-pin rail flag. Every bar-rail consumer taps: top pins
-//     by a riser to the cell's top edge, pull-up tops, series-string ends,
-//     and side pins by their bare stub. Bars sit at y = 12 (mod P), never on
-//     the P routing grid, so a routed wire can never run collinearly along a
-//     bar.
-//   - Bare stubs (pins of nets the router will attempt) are snapped OUTWARD
-//     to the P grid, since routeNet refuses off-grid endpoints; marked stubs
-//     keep the classic kStubLen.
-//   - Series vertices sit in their rank column at their barycentre order --
-//     the "y of its context" refinement is left to the router, which joins
-//     the string's end nets across the gutters.
-//   - The alignment pass is a group-max prepass on each vertex's body
-//     offset: vertices with identical (SymbolKind of comps[0], partName,
-//     Kind, rank) share the maximum of their natural offsets. Cells stack
-//     without overlap by construction, so the snap can never collide.
-//   - Route fallback marks are added after routing, into space the cell
-//     extents kept free of every body; a routed foreign wire may in rare
-//     crowded cases pass under such a late label, which is cosmetic only.
+//   - Rails are LOCAL. A decap group draws one short RailBarItem spanning
+//     just its ladder and the cluster's own tap columns (finishBars widens
+//     it to the taps, never to the room); rail pins outside the owning
+//     cluster keep the classic per-part flag. Bars still sit at y = 12
+//     (mod P), off the routing grid.
+//   - Artery strips are allocated by measure, not search: side slots top to
+//     bottom, stripY = max(anchor pin row, previous strip bottom + up-half
+//     + P), and the cluster cell reserves the whole envelope, so cells can
+//     never collide by construction.
+//   - Junction taps use the classic node mechanics verbatim: pitch from the
+//     far-end name widths, firstTap = max(2P, pitch/2 + P), only the last
+//     gap of a string carries its end mark, and junction dots are COUNTED
+//     over the drawn segments, never assumed.
+//   - An artery ending on a rail taps the cluster's own decap segment only
+//     from the side's top strip (a lower strip's riser would cross the
+//     strips above it); everywhere else the classic flag stands.
+//   - Cluster alignment by rank is deliberately absent in this package:
+//     cells take natural metrics; a later package keys alignment on cluster
+//     structure.
+//   - Bare shunt ends are drawn as marks, not router handoffs: a tap column
+//     sits at an element-width x that is rarely on the P grid, and a label
+//     connects correctly where a refused route would only fall back to one.
 //
 // Determinism (spec 15.8): integer math, vectors in index/insertion order,
 // explicit tie-breaks; nothing here reads an unordered container or a float.
 #include "render/place.h"
 
 #include <algorithm>
+#include <cassert>
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "render/cluster.h"
 #include "render/flow.h"
 #include "render/route.h"
 #include "render/sides.h"
@@ -112,12 +114,8 @@ std::string upperCopy(std::string_view s) {
     return out;
 }
 
-// What a Vertical vertex stands for. Re-derived from the component's two
-// nets, exactly as flow.cpp classified it (RoomFlow does not export roles).
-enum class VRole : std::uint8_t { Ladder, PullUp, PullDown, Other };
-
 // ---------------------------------------------------------------------------
-// One room, placed from its flow graph.
+// One room, drawn from its cluster plan.
 // ---------------------------------------------------------------------------
 
 struct RoomPlacer {
@@ -127,11 +125,13 @@ struct RoomPlacer {
     const SymbolCache& cache;
     const RenderRoom& room;
     const RoomFlow& flow;
+    const std::vector<SidePlan>& plans;
     RoomBuf buf;
+    RoomPlan plan;
 
     RoomPlacer(const RenderModel& model, const RenderPage& page, const SymbolCache& geoms,
-               const RenderRoom& rm, const RoomFlow& fl)
-        : m(model), pg(page), d(*model.design), cache(geoms), room(rm), flow(fl) {}
+               const RenderRoom& rm, const RoomFlow& fl, const std::vector<SidePlan>& sp)
+        : m(model), pg(page), d(*model.design), cache(geoms), room(rm), flow(fl), plans(sp) {}
 
     void run();
 
@@ -141,99 +141,177 @@ private:
         Side side = Side::Right;
     };
     // One rail-bar consumer. The placer pre-draws the riser from the pin to
-    // the tap point -- a grid point on the cell's top edge (or a side stub's
-    // free end) that no solid covers -- so finishBars can join it to the bar
-    // three ways: the straight corridor drop, the routed fallback, or, when
-    // both fail, the classic per-pin rail flag drawn at the tap point.
+    // the tap point -- a grid point on the cluster zone's top edge (or a side
+    // stub's free end) that no solid covers -- so finishBars can join it to
+    // the cluster's own bar three ways: the straight corridor drop, the
+    // routed fallback, or, when both fail, the classic per-pin rail flag
+    // drawn at the tap point.
     struct Tap {
-        int px = 0, py = 0;  // the tap point, room coords, on the P grid
+        int px = 0, py = 0;  // the tap point, room coords
         std::int32_t net = -1;
         Side fbSide = Side::Top;  // the failure mark's direction
     };
-    // One element of a series string, with its orientation resolved so the
-    // entry pin faces the string's source (placeRun's R0/R180 rule).
-    struct SeriesElem {
+
+    // ------------------------------------------------------------------
+    // Geometry plans, all measured before anything is drawn.
+    // ------------------------------------------------------------------
+
+    // One horizontal element of an artery or free run, orientation resolved
+    // so the entry pin faces the source (classic placeRun's R0/R180 rule).
+    struct ElemGeom {
         std::uint32_t comp = 0;
-        std::uint32_t entryPin = 0;  // component pin facing the source
+        int gp = 0;  // geometry pin index of the entry pin
         Rot rot = Rot::R0;
+        int w = 0;    // rotated width
+        int ery = 0;  // rotated entry-pin y offset
     };
-    struct SeriesGeom {
-        std::vector<SeriesElem> elems;
+    // One vertical element of a shunt string (classic placeNode's ElemGeom).
+    struct VElem {
+        std::uint32_t comp = 0;
+        int gp = 0;  // geometry pin index of the entry pin
+        Rot rot = Rot::R0;
+        int h = 0;  // rotated height
+    };
+    struct ShuntGeom {
+        std::vector<VElem> elems;
+        std::int32_t endNet = -1;
+        bool up = false;
+        int reach = 0;  // trunk row to the far side of the end mark
+    };
+    struct JuncGeom {
+        std::int32_t net = -1;
+        std::vector<ShuntGeom> shunts;
+        int pitch = 3 * P, firstTap = 2 * P, lastTap = 0;
+    };
+    // How a horizontal strip terminates.
+    enum class StripEnd : std::uint8_t {
+        Bare,      // endNet < 0: a short dead wire
+        Handoff,   // Free + routable: bare grid stub for the router
+        Ground,    // step, drop, ground mark
+        RailFlag,  // step, rise, flag
+        RailTap,   // step, rise to the zone top, Tap onto the cluster's bar
+        Mark,      // step + label/port/nc mark
+        JuncNamed, // ends at the junction, trunk carries the net's mark
+        JuncBare,  // ends at the junction, fully drawn: no mark, no dot
+    };
+    struct ArtGeom {
+        const Artery* art = nullptr;
+        int gp = 0;  // anchor geometry pin index
+        bool rightward = true;
+        std::vector<ElemGeom> inls;  // one per Inline step, walk order
+        bool hasJunc = false;
+        JuncGeom junc;
+        StripEnd end = StripEnd::Bare;
+        int up = 16, dn = 14;  // strip half-heights
+        int inner = 0;         // midX -> reserve end
+        int pinYRel = 0;       // pin row, relative to the anchor body top
+        int midOff = 0;        // pin -> jog column distance (ext + 6 + stagger)
+        int stripRel = 0;      // strip row, relative to the anchor body top
+    };
+    struct RunGeom {
+        std::vector<ElemGeom> elems;
         std::int32_t startNet = -1, endNet = -1;
-        int up = 16, dn = 14;  // strip half-heights around the pin row
+        StripEnd end = StripEnd::Bare;
+        int up = 16, dn = 14;
+        int startExt = 0;  // room for the start mark, P-rounded
+        int inner = 0;     // startX -> reserve end
+    };
+
+    // The per-cluster draw plan: every position is relative to the cell's
+    // top-left corner, decided by measure alone.
+    struct DecapDraw {
+        std::size_t idx = 0;  // into Cluster::decaps
+        int y = 0, ladderX = 0;
+    };
+    struct SatDraw {
+        std::uint32_t vi = 0;
+        int x = 0, y = 0;
+    };
+    struct LooseDraw {
+        std::uint32_t vi = 0;
+        int x = 0, y = 0;
+        bool vert = false;
+    };
+    struct RunDraw {
+        RunGeom g;
+        int x = 0, y = 0;
+    };
+    struct CMetric {
+        int w = 0, h = 0;
+        int bodyOff = 0;  // cell top -> anchor body top, for row alignment
+        bool hasBody = false;
+        std::uint32_t anchorComp = 0;
+        int bodyX = 0, bodyY = 0, zoneTop = 0;  // rel cell origin
+        std::vector<ArtGeom> arts;              // left bucket then right bucket
+        std::vector<DecapDraw> decaps;
+        std::vector<SatDraw> ups, downs;
+        std::vector<LooseDraw> loose;
+        std::vector<RunDraw> runs;
+        bool isChild = false;
+        std::uint32_t childVert = 0;
+        int childY = 0;
+        int x = 0, y = 0;  // pack position, room coords
     };
 
     std::vector<char> inRoom;                 // component -> member of this room
     std::vector<char> routable;               // net -> the router may claim it
     std::vector<std::vector<StubPt>> netPts;  // net -> bare stub ends collected
     std::vector<std::int32_t> barOf;          // net -> index into buf.bars, -1
+    std::vector<std::int32_t> barOwner;       // net -> owning cluster index, -1
     std::vector<Tap> taps;
-    std::vector<char> vertPlaced;             // vertex -> consumed by the bar phase
-    std::vector<VRole> vrole;                 // vertex -> vertical sub-role
-    std::vector<std::uint32_t> vTopPin;       // vertex -> component pin facing up
-    std::vector<std::int32_t> vTopNet, vBotNet;
-    std::vector<SeriesGeom> sgeom;            // vertex -> series drawing plan
-    std::vector<int> effOff;                  // vertex -> aligned body offset
+    std::vector<CMetric> mets;
+    std::size_t curCluster = 0;
 
     [[nodiscard]] bool isRoutable(std::int32_t net) const {
         return net >= 0 && routable[static_cast<std::size_t>(net)] != 0;
     }
+    // A rail pin taps a bar only inside the bar's own cluster; outside it
+    // the pin keeps its per-part flag (rails are local now).
+    [[nodiscard]] bool tapsHere(std::int32_t net) const {
+        return net >= 0 && barOf[static_cast<std::size_t>(net)] >= 0 &&
+               barOwner[static_cast<std::size_t>(net)] ==
+                   static_cast<std::int32_t>(curCluster);
+    }
 
-    void classifyVerticals();
     void computeRoutable();
-    int placeBars();
-    void computeMetrics();
-    void placeColumns(int yStart);
+
+    // Metrics.
+    [[nodiscard]] ElemGeom horizElem(std::uint32_t comp, std::uint32_t entryPin,
+                                     bool rightward) const;
+    [[nodiscard]] ShuntGeom planShunt(const Shunt& sh) const;
+    [[nodiscard]] StripEnd classifyEnd(std::int32_t net, std::size_t ci, bool railTapOk) const;
+    [[nodiscard]] int endExtent(StripEnd end, std::int32_t net, const JuncGeom& jg) const;
+    void absorbEnd(StripEnd end, int& up, int& dn) const;
+    [[nodiscard]] ArtGeom planArtery(const Artery& a, const SymbolGeom& g, std::size_t ci,
+                                     bool topSlot) const;
+    [[nodiscard]] RunGeom planRun(const std::vector<ChainElem>& run, std::size_t ci) const;
+    void vertOrient(std::uint32_t comp, std::uint32_t& topPin, std::int32_t& topNet,
+                    std::int32_t& botNet) const;
+    void measureVertical(std::uint32_t vi, int& w, int& h) const;
+    void measureLooseBody(std::uint32_t vi, int& w, int& h) const;
+    void measureChild(std::uint32_t vi, int& off, int& w, int& h) const;
+    void clusterMetrics();
+    void packClusters();
+
+    // Drawing.
+    void drawClusters();
+    void drawDecapRow(const DecapGroup& gr, const DecapDraw& dd, int cx, int cy);
+    void drawAnchor(CMetric& cm, int cx, int cy);
+    void drawArtery(const PlacedSymbol& anchor, const ArtGeom& ag, int zoneTopY);
+    int drawStripEnd(StripEnd end, std::int32_t net, int cursor, int stripY, int dir,
+                     int riserTopY);
+    void drawRun(const RunDraw& rd, int cx, int cy);
+    void pinStub(const PlacedSymbol& s, std::size_t gp);
+    void placeBody(std::uint32_t vi, int colX, int off, int y);
+    void placeVerticalCell(std::uint32_t vi, int colX, int y);
+    void placeChild(std::uint32_t vi, int colX, int off, int y);
+
     void finishBars();
     void routeAll();
-
-    void pinStub(const PlacedSymbol& s, std::size_t gp);
-    void placeBody(std::uint32_t vi, int colX, int off, int y, int& cellW, int& cellH);
-    void placeVerticalCell(std::uint32_t vi, int colX, int off, int y, int& cellW, int& cellH);
-    void placeSeries(std::uint32_t vi, int colX, int off, int y, int& cellW, int& cellH);
-    void placeChild(std::uint32_t vi, int colX, int off, int y, int& cellW, int& cellH);
 
     [[nodiscard]] int verticalCellW(std::int32_t topNet, std::int32_t botNet) const;
     void bodyExtents(std::uint32_t comp, int& extL, int& extR, int& extT, int& extB) const;
 };
-
-void RoomPlacer::classifyVerticals() {
-    const std::size_t nv = flow.verts.size();
-    vrole.assign(nv, VRole::Other);
-    vTopPin.assign(nv, 0);
-    vTopNet.assign(nv, -1);
-    vBotNet.assign(nv, -1);
-    vertPlaced.assign(nv, 0);
-    for (std::size_t vi = 0; vi < nv; ++vi) {
-        const FlowVertex& v = flow.verts[vi];
-        if (v.kind != FlowVertex::Kind::Vertical) continue;
-        const Component& c = d.components[v.comps[0]];
-        if (c.pins.size() != 2) continue;
-        std::int32_t a = c.pins[0].net, b = c.pins[1].net;
-        bool railA = isRail(pg, a), railB = isRail(pg, b);
-        bool gndA = isGround(pg, a), gndB = isGround(pg, b);
-        if ((railA && gndB) || (railB && gndA)) {
-            vrole[vi] = VRole::Ladder;
-            vTopPin[vi] = railA ? 0u : 1u;
-            vTopNet[vi] = railA ? a : b;
-            vBotNet[vi] = railA ? b : a;
-        } else if (railA != railB && !gndA && !gndB) {
-            vrole[vi] = VRole::PullUp;
-            vTopPin[vi] = railA ? 0u : 1u;
-            vTopNet[vi] = railA ? a : b;
-            vBotNet[vi] = railA ? b : a;
-        } else if (gndA != gndB && !railA && !railB) {
-            vrole[vi] = VRole::PullDown;
-            vTopPin[vi] = gndA ? 1u : 0u;  // the signal pin faces up
-            vTopNet[vi] = gndA ? b : a;
-            vBotNet[vi] = gndA ? a : b;
-        } else {
-            vTopPin[vi] = 0;
-            vTopNet[vi] = a;
-            vBotNet[vi] = b;
-        }
-    }
-}
 
 // A net the router may claim: plain room-local label net, two or more pins,
 // every pin a live pin of this room's components, and no block port anywhere
@@ -272,74 +350,7 @@ void RoomPlacer::computeRoutable() {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 1: rail bars and their ladders, at the top of the room. The ladder
-// drawing is the classic one (bar tap dot, hanging body, ground below).
-// ---------------------------------------------------------------------------
-
-int RoomPlacer::placeBars() {
-    barOf.assign(pg.nets.size(), -1);
-    int yCur = 0;
-    for (std::int32_t rail : flow.roomRails) {
-        // Pins, not components: an MCU drinking a rail through five supply
-        // pins wants the bar exactly as much as five separate consumers do.
-        int touch = 0;
-        for (std::uint32_t idx : room.components) {
-            for (const ComponentPin& p : d.components[idx].pins) {
-                if (p.net == rail) ++touch;
-            }
-        }
-        if (touch < 2) continue;  // a single consumer pin keeps its flag
-
-        // 12 above a P-multiple: never on the routing grid, so no routed wire
-        // can ever run collinearly along the bar.
-        const int barY = yCur + 12;
-        barOf[static_cast<std::size_t>(rail)] = static_cast<std::int32_t>(buf.bars.size());
-        buf.bars.push_back(RailBarItem{0, 2 * P, barY, rail});
-
-        int tapX = 2 * P;
-        int bottom = barY;
-        int nCaps = 0;
-        for (std::size_t vi = 0; vi < flow.verts.size(); ++vi) {
-            if (flow.verts[vi].kind != FlowVertex::Kind::Vertical) continue;
-            if (vrole[vi] != VRole::Ladder || vTopNet[vi] != rail || vertPlaced[vi]) continue;
-            vertPlaced[vi] = 1;
-            ++nCaps;
-            std::uint32_t comp = flow.verts[vi].comps[0];
-            buf.dots.push_back(DotItem{tapX, barY, rail});
-            buf.wire({tapX, barY, tapX, barY + P}, rail);
-            PlacedSymbol s;
-            s.component = comp;
-            s.geom = cache[comp];
-            s.rot = verticalRot(s.geom, vTopPin[vi]);
-            int gp = geomPinFor(s.geom, vTopPin[vi]);
-            int lx = 0, ly = 0, rx = 0, ry = 0;
-            localPin(s.geom, s.geom.pins[static_cast<std::size_t>(gp)], lx, ly);
-            rotatePoint(s.geom, s.rot, lx, ly, rx, ry);
-            s.x = tapX - rx;
-            s.y = barY + P;
-            int bodyBot = s.y + rotatedH(s.geom, s.rot);
-            std::int32_t gnd = vBotNet[vi];
-            buf.wire({tapX, bodyBot, tapX, bodyBot + P}, gnd);
-            buf.mark(MarkKind::Ground, tapX, bodyBot + P, Side::Bottom, gnd);
-            buf.symbols.push_back(std::move(s));
-            bottom = std::max(bottom, bodyBot + P + 10);
-            tapX += 3 * P;
-        }
-
-        if (nCaps > 0) {
-            buf.reserve(Rect{0, yCur, (tapX - 3 * P) + 2 * P + 30, bottom + 4});
-            yCur = roundUpP(bottom + 4) + P;
-        } else {
-            // A bar with taps only: reserve just the name at the left end.
-            buf.reserve(Rect{0, yCur, textW(netName(pg, rail)) + 10, barY + 4});
-            yCur = roundUpP(barY + 4) + P;
-        }
-    }
-    return yCur == 0 ? 0 : yCur + P;
-}
-
-// ---------------------------------------------------------------------------
-// Cell metrics and the alignment prepass.
+// Shared cell measures.
 // ---------------------------------------------------------------------------
 
 void RoomPlacer::bodyExtents(std::uint32_t comp, int& extL, int& extR, int& extT,
@@ -369,116 +380,502 @@ int RoomPlacer::verticalCellW(std::int32_t topNet, std::int32_t botNet) const {
     return w;
 }
 
-void RoomPlacer::computeMetrics() {
-    const std::size_t nv = flow.verts.size();
-    sgeom.assign(nv, {});
-    std::vector<int> natOff(nv, 0);
+// A standing two-terminal part's orientation: the rail pin up when it has
+// one, the signal pin up over a ground, pin 0 up otherwise. The plan carries
+// the ROLE (satUp, satDown, decap member); this is only the geometry of it.
+void RoomPlacer::vertOrient(std::uint32_t comp, std::uint32_t& topPin, std::int32_t& topNet,
+                            std::int32_t& botNet) const {
+    const Component& c = d.components[comp];
+    std::int32_t a = c.pins[0].net, b = c.pins[1].net;
+    bool railA = isRail(pg, a), railB = isRail(pg, b);
+    bool gndA = isGround(pg, a), gndB = isGround(pg, b);
+    if (railA) {
+        topPin = 0;
+    } else if (railB) {
+        topPin = 1;
+    } else if (gndA) {
+        topPin = 1;  // the signal pin faces up
+    } else {
+        topPin = 0;
+    }
+    (void)gndB;
+    topNet = topPin == 0 ? a : b;
+    botNet = topPin == 0 ? b : a;
+}
 
-    // The net shared by two consecutive elements of a series string.
-    auto sharedNet = [&](std::uint32_t a, std::uint32_t b) -> std::int32_t {
-        for (const ComponentPin& pa : d.components[a].pins) {
-            if (pa.net < 0) continue;
-            for (const ComponentPin& pb : d.components[b].pins) {
-                if (pa.net == pb.net) return pa.net;
-            }
+void RoomPlacer::measureVertical(std::uint32_t vi, int& w, int& h) const {
+    const std::uint32_t comp = flow.verts[vi].comps[0];
+    std::uint32_t topPin = 0;
+    std::int32_t topNet = -1, botNet = -1;
+    vertOrient(comp, topPin, topNet, botNet);
+    const int cw = verticalCellW(topNet, botNet);
+    const int off = roundUpP(cw / 2);
+    const SymbolGeom& g = cache[comp];
+    w = off + cw / 2 + 24;  // +24: the refdes/value text right of the body
+    h = roundUpP(3 * P + rotatedH(g, verticalRot(g, topPin)) + P + 16);
+}
+
+void RoomPlacer::measureLooseBody(std::uint32_t vi, int& w, int& h) const {
+    const std::uint32_t comp = flow.verts[vi].comps[0];
+    int extL = 0, extR = 0, extT = 0, extB = 0;
+    bodyExtents(comp, extL, extR, extT, extB);
+    const SymbolGeom& g = cache[comp];
+    w = extL + g.w + extR;
+    h = extT + g.h + extB;
+}
+
+void RoomPlacer::measureChild(std::uint32_t vi, int& off, int& w, int& h) const {
+    const BlockInstance& b = d.blocks[flow.verts[vi].comps[0]];
+    int extL = kStubLen + 4;
+    for (const BlockPort& p : b.ports) {
+        if (p.net >= 0) extL = std::max(extL, markExtent(pg, p.net, Side::Left));
+    }
+    off = roundUpP(extL);
+    int bw = std::max(textW(b.block) + 16, 6 * P);
+    for (const BlockPort& p : b.ports) bw = std::max(bw, 16 + textW(p.name) + 8);
+    w = off + bw + P;
+    h = roundUpP(14 + sheetSymBodyH(static_cast<int>(b.ports.size())) + P);
+}
+
+// ---------------------------------------------------------------------------
+// Strip geometry: the classic element and node measures, plan-driven.
+// ---------------------------------------------------------------------------
+
+RoomPlacer::ElemGeom RoomPlacer::horizElem(std::uint32_t comp, std::uint32_t entryPin,
+                                           bool rightward) const {
+    ElemGeom e;
+    e.comp = comp;
+    const SymbolGeom& g = cache[comp];
+    int gp = geomPinFor(g, entryPin);
+    if (gp < 0) gp = 0;
+    e.gp = gp;
+    bool entryLeft = g.pins[static_cast<std::size_t>(gp)].side == Side::Left;
+    e.rot = (entryLeft == rightward) ? Rot::R0 : Rot::R180;
+    int lx = 0, ly = 0, rx = 0, ry = 0;
+    localPin(g, g.pins[static_cast<std::size_t>(gp)], lx, ly);
+    rotatePoint(g, e.rot, lx, ly, rx, ry);
+    e.w = rotatedW(g, e.rot);
+    e.ery = ry;
+    return e;
+}
+
+RoomPlacer::ShuntGeom RoomPlacer::planShunt(const Shunt& sh) const {
+    ShuntGeom sg;
+    sg.endNet = sh.endNet;
+    sg.up = sh.up;
+    sg.reach = P + 16;  // the last gap and the end mark's text
+    for (const ChainElem& ce : sh.elems) {
+        VElem ve;
+        ve.comp = ce.comp;
+        const SymbolGeom& g = cache[ce.comp];
+        int gp = geomPinFor(g, ce.entryPin);
+        if (gp < 0) gp = 0;
+        ve.gp = gp;
+        // verticalRot puts the named pin on top: an element of a string
+        // hanging below wants its own entry pin up, one standing above
+        // wants its exit pin up so the entry still faces the trunk.
+        std::uint32_t exitPin = ce.entryPin == 0 ? 1u : 0u;
+        ve.rot = verticalRot(g, sh.up ? exitPin : ce.entryPin);
+        ve.h = rotatedH(g, ve.rot);
+        sg.reach += P + ve.h;
+        sg.elems.push_back(ve);
+    }
+    return sg;
+}
+
+RoomPlacer::StripEnd RoomPlacer::classifyEnd(std::int32_t net, std::size_t ci,
+                                             bool railTapOk) const {
+    if (net < 0) return StripEnd::Bare;
+    if (isRoutable(net)) return StripEnd::Handoff;
+    switch (markKindFor(pg, net)) {
+        case MarkKind::Ground: return StripEnd::Ground;
+        case MarkKind::RailFlag:
+            return railTapOk &&
+                           barOwner[static_cast<std::size_t>(net)] ==
+                               static_cast<std::int32_t>(ci)
+                       ? StripEnd::RailTap
+                       : StripEnd::RailFlag;
+        default: return StripEnd::Mark;
+    }
+}
+
+int RoomPlacer::endExtent(StripEnd end, std::int32_t net, const JuncGeom& jg) const {
+    switch (end) {
+        case StripEnd::Bare: return P;
+        case StripEnd::Handoff: return 2 * P;  // the grid-rounded step
+        case StripEnd::Ground: return P + 10;
+        case StripEnd::RailFlag:
+            return P + (net >= 0 ? textW(netName(pg, net)) / 2 : 0) + 8;
+        case StripEnd::RailTap: return P + 4;
+        case StripEnd::Mark:
+        case StripEnd::JuncNamed: return markTail(pg, net);
+        case StripEnd::JuncBare: return jg.shunts.empty() ? P : jg.pitch / 2 + 4;
+    }
+    return P;
+}
+
+void RoomPlacer::absorbEnd(StripEnd end, int& up, int& dn) const {
+    if (end == StripEnd::Ground) dn = std::max(dn, P + 16);
+    if (end == StripEnd::RailFlag) up = std::max(up, P + 16);
+}
+
+RoomPlacer::ArtGeom RoomPlacer::planArtery(const Artery& a, const SymbolGeom& g,
+                                           std::size_t ci, bool topSlot) const {
+    ArtGeom ag;
+    ag.art = &a;
+    ag.gp = geomPinFor(g, a.anchorPin);
+    assert(ag.gp >= 0 && "an artery seeded on a pin the symbol does not expose");
+    if (ag.gp < 0) ag.gp = 0;
+    const SymPin& sp = g.pins[static_cast<std::size_t>(ag.gp)];
+    ag.rightward = sp.side != Side::Left;
+    int lx = 0, ly = 0;
+    localPin(g, sp, lx, ly);
+    ag.pinYRel = ly;
+
+    int len = 0;
+    for (const ArteryStep& s : a.steps) {
+        if (s.kind == ArteryStep::Kind::Inline) {
+            ElemGeom e = horizElem(s.elem.comp, s.elem.entryPin, ag.rightward);
+            ag.up = std::max(ag.up, e.ery + 16);
+            ag.dn = std::max(ag.dn, rotatedH(cache[e.comp], e.rot) - e.ery + 18);
+            len += P + e.w;
+            ag.inls.push_back(std::move(e));
+            continue;
         }
-        return -1;
-    };
+        ag.hasJunc = true;
+        ag.junc.net = s.net;
+        // Tap pitch from the far-end name widths (classic nodeMetrics): only
+        // the mark at a string's far end sits under its column, so the widest
+        // name is what sets the pitch.
+        int pitch = 3 * P;
+        for (const Shunt& sh : s.shunts) {
+            int w = 3 * P;
+            if (sh.endNet >= 0 && markKindFor(pg, sh.endNet) != MarkKind::Ground &&
+                markKindFor(pg, sh.endNet) != MarkKind::NoConnect) {
+                w = textW(netName(pg, sh.endNet));
+            }
+            pitch = std::max(pitch, w + P);
+        }
+        pitch = roundUpP(pitch);
+        ag.junc.pitch = pitch;
+        // The first tap clears the entry by half a label, so the leftmost
+        // far-end name cannot reach back over the wire arriving.
+        ag.junc.firstTap = std::max(2 * P, pitch / 2 + P);
+        const int n = static_cast<int>(s.shunts.size());
+        ag.junc.lastTap = n > 0 ? ag.junc.firstTap + (n - 1) * pitch : 0;
+        for (const Shunt& sh : s.shunts) {
+            ShuntGeom sg = planShunt(sh);
+            if (sg.up) ag.up = std::max(ag.up, sg.reach);
+            else ag.dn = std::max(ag.dn, sg.reach);
+            ag.junc.shunts.push_back(std::move(sg));
+        }
+        len += ag.junc.lastTap;
+    }
 
-    for (std::size_t vi = 0; vi < nv; ++vi) {
-        const FlowVertex& v = flow.verts[vi];
-        switch (v.kind) {
-            case FlowVertex::Kind::Anchor:
-            case FlowVertex::Kind::Loose: {
-                int extL = 0, extR = 0, extT = 0, extB = 0;
-                bodyExtents(v.comps[0], extL, extR, extT, extB);
-                natOff[vi] = extL;
-                break;
-            }
-            case FlowVertex::Kind::Vertical:
-                natOff[vi] = roundUpP(verticalCellW(vTopNet[vi], vBotNet[vi]) / 2);
-                break;
-            case FlowVertex::Kind::Child: {
-                const BlockInstance& b = d.blocks[v.comps[0]];
-                int extL = kStubLen + 4;
-                for (const BlockPort& p : b.ports) {
-                    if (p.net >= 0) extL = std::max(extL, markExtent(pg, p.net, Side::Left));
-                }
-                natOff[vi] = roundUpP(extL);
-                break;
-            }
-            case FlowVertex::Kind::Series: {
-                SeriesGeom sg;
-                const std::vector<std::uint32_t>& comps = v.comps;
-                std::uint32_t entry = 0;
-                if (comps.size() > 1) {
-                    std::int32_t link = sharedNet(comps[0], comps[1]);
-                    entry = d.components[comps[0]].pins[0].net == link ? 1u : 0u;
-                }
-                for (std::size_t i = 0; i < comps.size(); ++i) {
-                    if (i > 0) {
-                        std::int32_t link = sharedNet(comps[i - 1], comps[i]);
-                        entry = d.components[comps[i]].pins[0].net == link ? 0u : 1u;
-                    }
-                    SeriesElem e;
-                    e.comp = comps[i];
-                    e.entryPin = entry;
-                    const SymbolGeom& g = cache[comps[i]];
-                    int gp = geomPinFor(g, entry);
-                    if (gp < 0) gp = 0;
-                    bool entryLeft = g.pins[static_cast<std::size_t>(gp)].side == Side::Left;
-                    e.rot = entryLeft ? Rot::R0 : Rot::R180;
-                    int lx = 0, ly = 0, rx = 0, ry = 0;
-                    localPin(g, g.pins[static_cast<std::size_t>(gp)], lx, ly);
-                    rotatePoint(g, e.rot, lx, ly, rx, ry);
-                    sg.up = std::max(sg.up, ry + 16);
-                    sg.dn = std::max(sg.dn, rotatedH(g, e.rot) - ry + 18);
-                    sg.elems.push_back(e);
-                }
-                sg.startNet = d.components[comps[0]].pins[sg.elems[0].entryPin].net;
-                std::uint32_t lastExit = sg.elems.back().entryPin == 0 ? 1u : 0u;
-                sg.endNet = d.components[comps.back()].pins[lastExit].net;
-                // A ground/rail terminal jogs a row down/up; make room for it.
-                if (sg.endNet >= 0 && !isRoutable(sg.endNet)) {
-                    switch (markKindFor(pg, sg.endNet)) {
-                        case MarkKind::Ground: sg.dn = std::max(sg.dn, P + 16); break;
-                        case MarkKind::RailFlag: sg.up = std::max(sg.up, P + 16); break;
-                        default: break;
-                    }
-                }
-                // Full mark extent even when the start will be a bare routed
-                // stub: the space is what guarantees a route-failure label
-                // fits without reaching into the previous column.
-                natOff[vi] = roundUpP(markExtent(pg, sg.startNet, Side::Left));
-                sgeom[vi] = std::move(sg);
-                break;
-            }
+    // Terminal classification. An artery whose last step is the junction ends
+    // on the trunk itself: with a mark when the plan named it, bare when the
+    // junction is fully drawn (the trunk stops on the last tap, a corner).
+    if (!a.steps.empty() && a.steps.back().kind == ArteryStep::Kind::Junction) {
+        ag.end = a.namedEnd ? StripEnd::JuncNamed : StripEnd::JuncBare;
+        if (a.namedEnd) len += P;  // the step the mark sits at
+    } else {
+        ag.end = classifyEnd(a.endNet, ci, topSlot);
+        absorbEnd(ag.end, ag.up, ag.dn);
+    }
+    len += endExtent(ag.end, a.endNet, ag.junc);
+    ag.inner = len;
+    return ag;
+}
+
+RoomPlacer::RunGeom RoomPlacer::planRun(const std::vector<ChainElem>& run,
+                                        std::size_t ci) const {
+    RunGeom rg;
+    const Component& head = d.components[run[0].comp];
+    rg.startNet = head.pins[run[0].entryPin].net;
+    std::uint32_t cur = run[0].comp, entry = run[0].entryPin;
+    int len = 0;
+    for (const ChainElem& ce : run) {
+        ElemGeom e = horizElem(ce.comp, ce.entryPin, true);
+        rg.up = std::max(rg.up, e.ery + 16);
+        rg.dn = std::max(rg.dn, rotatedH(cache[e.comp], e.rot) - e.ery + 18);
+        len += P + e.w;
+        rg.elems.push_back(std::move(e));
+        cur = ce.comp;
+        entry = ce.entryPin;
+    }
+    rg.endNet = d.components[cur].pins[entry == 0 ? 1u : 0u].net;
+    rg.end = classifyEnd(rg.endNet, ci, true);
+    absorbEnd(rg.end, rg.up, rg.dn);
+    len += endExtent(rg.end, rg.endNet, JuncGeom{});
+    rg.inner = len;
+    // Full mark extent even when the start will be a bare routed stub: the
+    // space is what guarantees a route-failure label fits inside the cell.
+    rg.startExt = roundUpP(markExtent(pg, rg.startNet, Side::Left));
+    // A rail/ground start needs headroom exactly like an end would.
+    if (rg.startNet >= 0 && !isRoutable(rg.startNet)) {
+        switch (markKindFor(pg, rg.startNet)) {
+            case MarkKind::Ground: rg.dn = std::max(rg.dn, P + 16); break;
+            case MarkKind::RailFlag: rg.up = std::max(rg.up, P + 16); break;
+            default: break;
+        }
+    }
+    return rg;
+}
+
+// ---------------------------------------------------------------------------
+// Cluster metrics: every cell is measured whole -- decap rows, satellite
+// rows, the anchor zone with its artery strips, loose cells, free runs --
+// before anything is drawn, so packing needs no collision search.
+// ---------------------------------------------------------------------------
+
+void RoomPlacer::clusterMetrics() {
+    barOwner.assign(pg.nets.size(), -1);
+    for (std::size_t ci = 0; ci < plan.clusters.size(); ++ci) {
+        for (const DecapGroup& g : plan.clusters[ci].decaps) {
+            barOwner[static_cast<std::size_t>(g.rail)] = static_cast<std::int32_t>(ci);
         }
     }
 
-    // Alignment: vertices with identical (SymbolKind of comps[0], partName,
-    // Kind, rank) share one offset -- the maximum of the group -- so
-    // identical resistors and testpoints in one column stop staircasing.
-    // Children key on the definition name instead of a SymbolKind. Cells
-    // stack without overlap by construction, so the snap cannot collide.
-    auto sameKey = [&](std::size_t a, std::size_t b) {
-        const FlowVertex& va = flow.verts[a];
-        const FlowVertex& vb = flow.verts[b];
-        if (va.kind != vb.kind || va.rank != vb.rank) return false;
-        if (va.kind == FlowVertex::Kind::Child) {
-            return d.blocks[va.comps[0]].block == d.blocks[vb.comps[0]].block;
+    mets.assign(plan.clusters.size(), {});
+    for (std::size_t ci = 0; ci < plan.clusters.size(); ++ci) {
+        const Cluster& cl = plan.clusters[ci];
+        CMetric& cm = mets[ci];
+        const FlowVertex* av =
+            cl.anchorVert >= 0 ? &flow.verts[static_cast<std::size_t>(cl.anchorVert)] : nullptr;
+
+        int extL = 0, extR = 0, extT = 0, extB = 0;
+        const SymbolGeom* g = nullptr;
+        int zoneUp = 0, zoneDn = 0, leftW = 0, rightW = 0;
+        if (av != nullptr && av->kind == FlowVertex::Kind::Anchor) {
+            cm.hasBody = true;
+            cm.anchorComp = av->comps[0];
+            g = &cache[cm.anchorComp];
+            bodyExtents(cm.anchorComp, extL, extR, extT, extB);
+
+            // Bucket the arteries by the GEOMETRY side of their pin -- the
+            // side plan and the cluster walk agree, but the drawn side is
+            // what the strip mechanics need -- keeping list order per side.
+            std::vector<const Artery*> lefts, rights;
+            for (const std::vector<Artery>* side : {&cl.left, &cl.right}) {
+                for (const Artery& a : *side) {
+                    int gp = geomPinFor(*g, a.anchorPin);
+                    assert(gp >= 0 && "an artery seeded on a pin the symbol hides");
+                    if (gp < 0) continue;
+                    if (g->pins[static_cast<std::size_t>(gp)].side == Side::Left) {
+                        lefts.push_back(&a);
+                    } else {
+                        rights.push_back(&a);
+                    }
+                }
+            }
+            // Per side: slot k of nSide chains jogs (nSide-1-k)*2P beyond the
+            // side's mark extent (the classic fan-out), and strip rows go by
+            // measure: stripY = max(pin row, previous bottom + up-half + P).
+            auto planSide = [&](const std::vector<const Artery*>& list, bool rightSide) {
+                const int n = static_cast<int>(list.size());
+                const int ext = rightSide ? extR : extL;
+                int prevBot = 0;
+                bool first = true;
+                for (int k = 0; k < n; ++k) {
+                    ArtGeom ag = planArtery(*list[static_cast<std::size_t>(k)], *g, ci, k == 0);
+                    ag.midOff = ext + 6 + (n - 1 - k) * 2 * P;
+                    int y = ag.pinYRel;
+                    if (!first) y = std::max(y, roundUpP(prevBot + ag.up + P));
+                    ag.stripRel = y;
+                    prevBot = y + ag.dn;
+                    first = false;
+                    zoneUp = std::max(zoneUp, ag.up - ag.stripRel);
+                    zoneDn = std::max(zoneDn, ag.stripRel + ag.dn - g->h);
+                    int reach = ag.midOff + ag.inner;
+                    if (rightSide) rightW = std::max(rightW, reach);
+                    else leftW = std::max(leftW, reach);
+                    cm.arts.push_back(std::move(ag));
+                }
+            };
+            planSide(lefts, false);
+            planSide(rights, true);
+
+            zoneUp = roundUpP(std::max(zoneUp, extT));
+            zoneDn = roundUpP(std::max(zoneDn, extB));
+            leftW = roundUpP(std::max(leftW, extL));
+            rightW = roundUpP(std::max(rightW, extR));
+            cm.bodyX = leftW;
         }
-        return m.kinds[va.comps[0]] == m.kinds[vb.comps[0]] &&
-               d.components[va.comps[0]].partName == d.components[vb.comps[0]].partName;
-    };
-    effOff.assign(nv, 0);
-    for (std::size_t a = 0; a < nv; ++a) {
-        int best = natOff[a];
-        for (std::size_t b = 0; b < nv; ++b) {
-            if (a != b && sameKey(a, b)) best = std::max(best, natOff[b]);
+
+        int yCur = 0;
+        int wMax = 0;
+
+        // Decap rows first, at the top of the cell: the ladder columns sit
+        // to the right of the anchor's top-pin block, so the pins' riser
+        // corridors drop straight onto their own bar.
+        for (std::size_t gi = 0; gi < cl.decaps.size(); ++gi) {
+            const DecapGroup& gr = cl.decaps[gi];
+            const int ladderX =
+                cm.hasBody ? roundUpP(cm.bodyX + g->w) + 2 * P : 2 * P;
+            int capH = 0;
+            for (std::uint32_t comp : gr.comps) {
+                const SymbolGeom& cg = cache[comp];
+                std::uint32_t railPin =
+                    d.components[comp].pins[0].net == gr.rail ? 0u : 1u;
+                capH = std::max(capH, rotatedH(cg, verticalRot(cg, railPin)));
+            }
+            const int n = static_cast<int>(gr.comps.size());
+            const int bottom = yCur + 12 + P + capH + P + 10;
+            cm.decaps.push_back(DecapDraw{gi, yCur, ladderX});
+            wMax = std::max(wMax, ladderX + (n - 1) * 3 * P + 2 * P + 30);
+            yCur = roundUpP(bottom + 4) + P;
         }
-        effOff[a] = best;
+
+        // Satellite rows: pull-ups above the body, pull-downs below, each a
+        // standing cell at the classic vertical metrics.
+        auto satRow = [&](const std::vector<std::uint32_t>& vis, std::vector<SatDraw>& out) {
+            if (vis.empty()) return;
+            int x = cm.hasBody ? cm.bodyX : 0;
+            int rowH = 0;
+            for (std::uint32_t vi : vis) {
+                int w = 0, h = 0;
+                measureVertical(vi, w, h);
+                out.push_back(SatDraw{vi, x, yCur});
+                x += roundUpP(w) + P;
+                rowH = std::max(rowH, h);
+            }
+            wMax = std::max(wMax, x);
+            yCur += roundUpP(rowH) + P;
+        };
+        satRow(cl.satUps, cm.ups);
+
+        if (cm.hasBody) {
+            cm.zoneTop = yCur;
+            cm.bodyY = yCur + zoneUp;
+            cm.bodyOff = cm.bodyY;
+            yCur = roundUpP(cm.bodyY + g->h + zoneDn);
+            wMax = std::max(wMax, cm.bodyX + g->w + rightW);
+        } else if (av != nullptr && av->kind == FlowVertex::Kind::Child) {
+            cm.isChild = true;
+            cm.childVert = static_cast<std::uint32_t>(cl.anchorVert);
+            cm.childY = yCur;
+            int off = 0, w = 0, h = 0;
+            measureChild(cm.childVert, off, w, h);
+            wMax = std::max(wMax, w);
+            yCur += h;
+        }
+
+        satRow(cl.satDowns, cm.downs);
+
+        // Loose cells and free runs, wrapped rows under everything else. The
+        // budget is per-cluster: enough for the widest item, aiming at a
+        // roughly landscape block.
+        {
+            struct Item {
+                bool isRun = false;
+                std::uint32_t vi = 0;
+                std::size_t run = 0;
+                int w = 0, h = 0;
+                bool vert = false;
+            };
+            std::vector<Item> items;
+            for (std::uint32_t vi : cl.looseVerts) {
+                Item it;
+                it.vi = vi;
+                it.vert = flow.verts[vi].kind == FlowVertex::Kind::Vertical;
+                if (it.vert) measureVertical(vi, it.w, it.h);
+                else measureLooseBody(vi, it.w, it.h);
+                items.push_back(it);
+            }
+            for (std::size_t riIdx = 0; riIdx < cl.freeRuns.size(); ++riIdx) {
+                Item it;
+                it.isRun = true;
+                it.run = riIdx;
+                RunGeom rg = planRun(cl.freeRuns[riIdx], ci);
+                it.w = rg.startExt + rg.inner + P;
+                it.h = roundUpP(roundUpP(rg.up) + rg.dn);
+                items.push_back(it);
+            }
+            if (!items.empty()) {
+                std::int64_t area = 0;
+                int widest = wMax;
+                for (const Item& it : items) {
+                    area += static_cast<std::int64_t>(it.w) * it.h;
+                    widest = std::max(widest, it.w);
+                }
+                const int budget =
+                    std::max(widest, static_cast<int>(isqrtCeil(area * 3 / 2)));
+                int x = 0, rowH = 0;
+                for (const Item& it : items) {
+                    if (x > 0 && x + it.w > budget) {
+                        x = 0;
+                        yCur += roundUpP(rowH) + P;
+                        rowH = 0;
+                    }
+                    if (it.isRun) {
+                        RunDraw rd;
+                        rd.g = planRun(cl.freeRuns[it.run], ci);
+                        rd.x = x;
+                        rd.y = yCur;
+                        cm.runs.push_back(std::move(rd));
+                    } else {
+                        cm.loose.push_back(LooseDraw{it.vi, x, yCur, it.vert});
+                    }
+                    x += roundUpP(it.w) + 2 * P;
+                    rowH = std::max(rowH, it.h);
+                    wMax = std::max(wMax, x);
+                }
+                yCur += roundUpP(rowH) + P;
+            }
+        }
+
+        cm.w = roundUpP(wMax);
+        cm.h = roundUpP(yCur);
     }
+}
+
+// Shelf rows over the cluster cells: packing order is the plan's own (rank,
+// order, free cluster last); gutters 4P between anchor-bearing cells, 2P
+// otherwise; within a row the anchor body TOPS align (a cell may extend
+// upward further than its neighbour because of pull-up or decap rows).
+void RoomPlacer::packClusters() {
+    std::vector<std::size_t> live;
+    std::int64_t area = 0;
+    int widest = 0;
+    for (std::size_t i = 0; i < mets.size(); ++i) {
+        if (mets[i].w <= 0 || mets[i].h <= 0) continue;
+        live.push_back(i);
+        area += static_cast<std::int64_t>(mets[i].w) * mets[i].h;
+        widest = std::max(widest, mets[i].w);
+    }
+    const int budget = std::max(widest, static_cast<int>(isqrtCeil(area * 3 / 2)));
+
+    int rowY = 0, x = 0;
+    bool prevAnchor = false;
+    std::vector<std::size_t> row;
+    auto flushRow = [&]() {
+        if (row.empty()) return;
+        int maxOff = 0;
+        for (std::size_t j : row) {
+            if (mets[j].hasBody) maxOff = std::max(maxOff, mets[j].bodyOff);
+        }
+        int rowH = 0;
+        for (std::size_t j : row) {
+            const int drop = mets[j].hasBody ? maxOff - mets[j].bodyOff : 0;
+            mets[j].y = rowY + drop;
+            rowH = std::max(rowH, drop + mets[j].h);
+        }
+        rowY += roundUpP(rowH) + 2 * P;
+        row.clear();
+    };
+    for (std::size_t i : live) {
+        int gutter = row.empty() ? 0 : ((prevAnchor && mets[i].hasBody) ? 4 * P : 2 * P);
+        if (!row.empty() && x + gutter + mets[i].w > budget) {
+            flushRow();
+            x = 0;
+            gutter = 0;
+        }
+        mets[i].x = x + gutter;
+        x = mets[i].x + mets[i].w;
+        row.push_back(i);
+        prevAnchor = mets[i].hasBody;
+    }
+    flushRow();
 }
 
 // ---------------------------------------------------------------------------
@@ -494,8 +891,7 @@ void RoomPlacer::pinStub(const PlacedSymbol& s, std::size_t gp) {
     Side side = Side::Left;
     pinPos(s, gp, px, py, side);
 
-    const bool tapToBar =
-        !p.nc && p.net >= 0 && barOf[static_cast<std::size_t>(p.net)] >= 0;
+    const bool tapToBar = !p.nc && tapsHere(p.net);
     if (!p.nc && (isRoutable(p.net) || tapToBar)) {
         int sx = px, sy = py;
         switch (side) {
@@ -508,15 +904,21 @@ void RoomPlacer::pinStub(const PlacedSymbol& s, std::size_t gp) {
         buf.reserveWire(Rect{std::min(px, sx) - 2, std::min(py, sy) - 2, std::max(px, sx) + 2,
                              std::max(py, sy) + 2});
         if (tapToBar) {
-            // A left/right/bottom pin of a bar rail: the bare stub's free end
-            // is the tap point (top-side pins never reach here -- placeBody
-            // intercepts them with a riser to the cell top).
+            // A left/right/bottom pin of the cluster's own bar rail: the bare
+            // stub's free end is the tap point (top-side pins never reach
+            // here -- drawAnchor intercepts them with a riser).
             taps.push_back(Tap{sx, sy, p.net, side});
         } else {
             netPts[static_cast<std::size_t>(p.net)].push_back(StubPt{sx, sy, side});
         }
         return;
     }
+
+    // A Drawn net's every pin sits on plan geometry that WAS drawn, so no
+    // pin of one may reach this fallback; the debug build proves it, and the
+    // stub+mark below keeps even a hypothetical escapee connected by name.
+    assert(p.nc || p.net < 0 ||
+           plan.netState[static_cast<std::size_t>(p.net)] != NetState::Drawn);
 
     int e = markExtent(pg, p.net, side);
     int sx = px, sy = py;
@@ -543,26 +945,25 @@ void RoomPlacer::pinStub(const PlacedSymbol& s, std::size_t gp) {
 }
 
 // ---------------------------------------------------------------------------
-// Cells. Every cell is placed at a P-aligned (colX + off, y), reserves what
-// it draws, and reports its outer size; the column stacks them without any
-// collision search.
+// Cells the plan keeps as their own bodies: loose parts, satellites,
+// children. Each is placed at a P-aligned position its cluster's metrics
+// reserved, so no collision search is needed.
 // ---------------------------------------------------------------------------
 
-// Anchor and Loose vertices: the body with per-pin furniture. A top-side pin
-// on a bar rail defers to the tap pass instead of drawing anything now.
-void RoomPlacer::placeBody(std::uint32_t vi, int colX, int off, int y, int& cellW, int& cellH) {
+// A loose body: the symbol with per-pin furniture. A top-side pin on the
+// cluster's own bar rail defers to the tap pass instead of drawing anything.
+void RoomPlacer::placeBody(std::uint32_t vi, int colX, int off, int y) {
     const std::uint32_t comp = flow.verts[vi].comps[0];
     const SymbolGeom& g = cache[comp];
     int extL = 0, extR = 0, extT = 0, extB = 0;
     bodyExtents(comp, extL, extR, extT, extB);
+    (void)off;
 
     PlacedSymbol placed;
     placed.component = comp;
     placed.geom = g;
-    placed.x = colX + off;
+    placed.x = colX + extL;
     placed.y = y + extT;
-    // One solid over the body, the top/bottom mark strips and the refdes and
-    // part-name text rows; left/right strips are reserved per pin below.
     buf.reserve(Rect{placed.x - 2, y, placed.x + g.w + 2, placed.y + g.h + extB});
 
     for (std::size_t gp = 0; gp < g.pins.size(); ++gp) {
@@ -570,11 +971,7 @@ void RoomPlacer::placeBody(std::uint32_t vi, int colX, int off, int y, int& cell
         int px = 0, py = 0;
         Side side = Side::Left;
         pinPos(placed, gp, px, py, side);
-        if (side == Side::Top && !p.nc && p.net >= 0 &&
-            barOf[static_cast<std::size_t>(p.net)] >= 0) {
-            // Riser to the cell's top edge, through the pin's own mark strip;
-            // the tap point is outside every solid, so the routed fallback
-            // can leave it when the straight corridor is blocked.
+        if (side == Side::Top && !p.nc && tapsHere(p.net)) {
             buf.wire({px, py, px, y}, p.net);
             buf.reserveWire(Rect{px - 2, y, px + 2, py});
             taps.push_back(Tap{px, y, p.net, Side::Top});
@@ -583,29 +980,25 @@ void RoomPlacer::placeBody(std::uint32_t vi, int colX, int off, int y, int& cell
         pinStub(placed, gp);
     }
     buf.symbols.push_back(std::move(placed));
-
-    cellW = off + g.w + extR;
-    cellH = extT + g.h + extB;
-    // The extents include the mark space of bare-stub pins too, so grow the
-    // whole cell: a route-failure label must stay inside the room.
-    buf.grow(Rect{colX, y, colX + cellW, y + cellH});
+    buf.grow(Rect{colX, y, colX + extL + g.w + extR, y + extT + g.h + extB});
 }
 
 // A standing two-terminal cell: mark (or bare stub, or a bar tap's riser)
 // above, body, mark (or bare stub) below. The attach rows sit on the P grid
 // so a bare end is routable.
-void RoomPlacer::placeVerticalCell(std::uint32_t vi, int colX, int off, int y, int& cellW,
-                                   int& cellH) {
+void RoomPlacer::placeVerticalCell(std::uint32_t vi, int colX, int y) {
     const std::uint32_t comp = flow.verts[vi].comps[0];
-    const std::int32_t topNet = vTopNet[vi], botNet = vBotNet[vi];
+    std::uint32_t topPin = 0;
+    std::int32_t topNet = -1, botNet = -1;
+    vertOrient(comp, topPin, topNet, botNet);
     const int cw = verticalCellW(topNet, botNet);
-    const int cx = colX + off;
+    const int cx = colX + roundUpP(cw / 2);
 
     PlacedSymbol s;
     s.component = comp;
     s.geom = cache[comp];
-    s.rot = verticalRot(s.geom, vTopPin[vi]);
-    int gp = geomPinFor(s.geom, vTopPin[vi]);
+    s.rot = verticalRot(s.geom, topPin);
+    int gp = geomPinFor(s.geom, topPin);
     int lx = 0, ly = 0, rx = 0, ry = 0;
     localPin(s.geom, s.geom.pins[static_cast<std::size_t>(gp < 0 ? 0 : gp)], lx, ly);
     rotatePoint(s.geom, s.rot, lx, ly, rx, ry);
@@ -617,11 +1010,12 @@ void RoomPlacer::placeVerticalCell(std::uint32_t vi, int colX, int off, int y, i
     const int bodyBot = bodyTop + rotatedH(s.geom, s.rot);
 
     const bool bareTop = isRoutable(topNet);
-    const bool tapTop = topNet >= 0 && barOf[static_cast<std::size_t>(topNet)] >= 0;
+    const bool tapTop = tapsHere(topNet);
     const bool bareBot = isRoutable(botNet);
     if (tapTop) {
-        // A pull-up on a bar rail: the attach wire runs to the cell's top
-        // edge and becomes the tap's riser instead of taking a rail flag.
+        // A pull-up or lone cap on the cluster's own bar rail: the attach
+        // wire runs to the cell's top edge and becomes the tap's riser
+        // instead of taking a rail flag.
         buf.wire({cx, y, cx, bodyTop}, topNet);
         buf.reserveWire(Rect{cx - 2, y, cx + 2, bodyTop});
         taps.push_back(Tap{cx, y, topNet, Side::Top});
@@ -644,8 +1038,8 @@ void RoomPlacer::placeVerticalCell(std::uint32_t vi, int colX, int off, int y, i
     }
     buf.symbols.push_back(std::move(s));
 
-    cellH = roundUpP(3 * P + (bodyBot - bodyTop) + P + 16);
-    cellW = off + cw / 2 + 24;  // +24: the refdes/value text right of the body
+    const int cellH = roundUpP(3 * P + (bodyBot - bodyTop) + P + 16);
+    const int cellW = roundUpP(cw / 2) + cw / 2 + 24;
     // The solid stops at a bare end's stub row, so the router can leave it;
     // a tapped top keeps its whole riser clear the same way.
     const int top = bareTop ? attachY : tapTop ? bodyTop : y;
@@ -654,113 +1048,9 @@ void RoomPlacer::placeVerticalCell(std::uint32_t vi, int colX, int off, int y, i
     buf.grow(Rect{colX, y, colX + cellW, y + cellH});
 }
 
-// A series string laid horizontally pin to pin: placeRun's element mechanics
-// without the anchor lead-in. The two end nets are marked, or left as bare
-// grid stubs for the router.
-void RoomPlacer::placeSeries(std::uint32_t vi, int colX, int off, int y, int& cellW,
-                             int& cellH) {
-    const SeriesGeom& sg = sgeom[vi];
-    const int up = roundUpP(sg.up);
-    const int stripY = y + up;
-    const int sx0 = colX + off;
-
-    if (isRoutable(sg.startNet)) {
-        netPts[static_cast<std::size_t>(sg.startNet)].push_back(
-            StubPt{sx0, stripY, Side::Left});
-    } else if (sg.startNet >= 0 && barOf[static_cast<std::size_t>(sg.startNet)] >= 0) {
-        // The string starts on a bar rail: riser to the cell's top edge.
-        buf.wire({sx0, stripY, sx0, y}, sg.startNet);
-        taps.push_back(Tap{sx0, y, sg.startNet, Side::Top});
-    } else if (sg.startNet >= 0) {
-        buf.mark(markKindFor(pg, sg.startNet), sx0, stripY, Side::Left, sg.startNet);
-    }
-
-    int cursor = sx0;
-    std::int32_t net = sg.startNet;
-    for (const SeriesElem& e : sg.elems) {
-        PlacedSymbol s;
-        s.component = e.comp;
-        s.geom = cache[e.comp];
-        s.rot = e.rot;
-        // The entry terminal is the one whose rotated side faces the source.
-        int entryIdx = -1;
-        for (std::size_t i = 0; i < s.geom.pins.size(); ++i) {
-            if (rotatedSide(s.geom.pins[i].side, s.rot) == Side::Left) {
-                entryIdx = static_cast<int>(i);
-            }
-        }
-        if (entryIdx < 0) entryIdx = 0;
-        int lx = 0, ly = 0, ex = 0, ey = 0;
-        localPin(s.geom, s.geom.pins[static_cast<std::size_t>(entryIdx)], lx, ly);
-        rotatePoint(s.geom, s.rot, lx, ly, ex, ey);
-        const int entryX = cursor + P;
-        s.x = entryX - ex;
-        s.y = stripY - ey;
-        buf.wire({cursor, stripY, entryX, stripY}, net);
-        const int exitIdx = entryIdx == 0 ? 1 : 0;
-        int ox = 0, oy = 0;
-        localPin(s.geom, s.geom.pins[static_cast<std::size_t>(exitIdx)], lx, ly);
-        rotatePoint(s.geom, s.rot, lx, ly, ox, oy);
-        cursor = s.x + ox;
-        net =
-            d.components[e.comp].pins[s.geom.pins[static_cast<std::size_t>(exitIdx)].pin].net;
-        buf.symbols.push_back(std::move(s));
-    }
-
-    // The end terminal (classic placeRun's switch, rightward only).
-    const std::int32_t end = sg.endNet;
-    int bandX1;
-    if (end >= 0 && isRoutable(end)) {
-        const int ex2 = roundUpP(cursor + P);
-        buf.wire({cursor, stripY, ex2, stripY}, end);
-        netPts[static_cast<std::size_t>(end)].push_back(StubPt{ex2, stripY, Side::Right});
-        bandX1 = ex2;
-    } else if (end < 0) {
-        buf.wire({cursor, stripY, cursor + P, stripY}, -1);
-        bandX1 = cursor + P;
-    } else {
-        switch (markKindFor(pg, end)) {
-            case MarkKind::Ground:
-                buf.wire({cursor, stripY, cursor + P, stripY, cursor + P, stripY + P}, end);
-                buf.mark(MarkKind::Ground, cursor + P, stripY + P, Side::Bottom, end);
-                break;
-            case MarkKind::RailFlag:
-                if (barOf[static_cast<std::size_t>(end)] >= 0) {
-                    // The string ends on a bar rail: the jog keeps rising to
-                    // the cell's top edge and taps the bar from there.
-                    buf.wire({cursor, stripY, cursor + P, stripY, cursor + P, y}, end);
-                    taps.push_back(Tap{cursor + P, y, end, Side::Top});
-                } else {
-                    buf.wire({cursor, stripY, cursor + P, stripY, cursor + P, stripY - P},
-                             end);
-                    buf.mark(MarkKind::RailFlag, cursor + P, stripY - P, Side::Top, end);
-                }
-                break;
-            case MarkKind::Label:
-            case MarkKind::NoConnect:
-            case MarkKind::PortFlag:
-                buf.wire({cursor, stripY, cursor + P, stripY}, end);
-                buf.mark(markKindFor(pg, end), cursor + P, stripY, Side::Right, end);
-                break;
-        }
-        bandX1 = cursor + markTail(pg, end);
-    }
-
-    // The band solid stops at a bare end so the router can leave the stub;
-    // a marked end's text is covered by markTail above. The cell itself
-    // always spans the full mark extents, so a route-failure label at either
-    // bare end still lands in space nothing else claimed.
-    const int bandX0 = isRoutable(sg.startNet) ? sx0 : colX;
-    buf.reserve(Rect{bandX0, stripY - sg.up, bandX1, stripY + sg.dn});
-    cellH = roundUpP(up + sg.dn);
-    cellW = std::max(bandX1, end >= 0 ? cursor + markTail(pg, end) : bandX1) - colX + P;
-    buf.grow(Rect{colX, y, colX + cellW, y + cellH});
-}
-
 // A child block's sheet symbol: the classic green box, ports down the left
 // edge, stub and mark per port (port nets are never routed).
-void RoomPlacer::placeChild(std::uint32_t vi, int colX, int off, int y, int& cellW,
-                            int& cellH) {
+void RoomPlacer::placeChild(std::uint32_t vi, int colX, int off, int y) {
     const std::uint32_t bi = flow.verts[vi].comps[0];
     const BlockInstance& b = d.blocks[bi];
     const int n = static_cast<int>(b.ports.size());
@@ -785,83 +1075,404 @@ void RoomPlacer::placeChild(std::uint32_t vi, int colX, int off, int y, int& cel
     }
     buf.children.push_back(item);
 
-    cellW = off + w + P;
-    cellH = roundUpP(topPad + h + P);
-    buf.reserve(Rect{colX, y, colX + cellW, y + cellH});
+    buf.reserve(Rect{colX, y, colX + off + w + P, y + roundUpP(topPad + h + P)});
 }
 
 // ---------------------------------------------------------------------------
-// Phase 2: the rank columns, left to right; within a column pull-ups first,
-// then the rank's own order, then pull-downs, each rank's barycentre order
-// preserved within its group.
+// The decap row: one short rail segment with its ladder hanging below --
+// the classic placeBars interior, cluster-local. finishBars later widens the
+// bar to the cluster's consumer tap columns, never to the room.
 // ---------------------------------------------------------------------------
 
-void RoomPlacer::placeColumns(int yStart) {
-    int cursorX = 0;
-    bool prevHadAnchor = false;
-    bool anyColumn = false;
-    for (const std::vector<std::uint32_t>& layer : flow.ranks) {
-        std::vector<std::uint32_t> ups, mid, downs;
-        for (std::uint32_t vi : layer) {
-            if (vertPlaced[vi]) continue;  // a ladder the bar phase consumed
-            if (flow.verts[vi].kind == FlowVertex::Kind::Vertical &&
-                vrole[vi] == VRole::PullUp) {
-                ups.push_back(vi);
-            } else if (flow.verts[vi].kind == FlowVertex::Kind::Vertical &&
-                       vrole[vi] == VRole::PullDown) {
-                downs.push_back(vi);
-            } else {
-                mid.push_back(vi);
-            }
-        }
-        std::vector<std::uint32_t> ordered;
-        ordered.insert(ordered.end(), ups.begin(), ups.end());
-        ordered.insert(ordered.end(), mid.begin(), mid.end());
-        ordered.insert(ordered.end(), downs.begin(), downs.end());
-        if (ordered.empty()) continue;
+void RoomPlacer::drawDecapRow(const DecapGroup& gr, const DecapDraw& dd, int cx, int cy) {
+    const int rowY = cy + dd.y;
+    // 12 above a P-multiple: never on the routing grid, so no routed wire
+    // can ever run collinearly along the bar.
+    const int barY = rowY + 12;
+    const int firstTapX = cx + dd.ladderX;
+    barOf[static_cast<std::size_t>(gr.rail)] = static_cast<std::int32_t>(buf.bars.size());
+    const int n = static_cast<int>(gr.comps.size());
+    buf.bars.push_back(
+        RailBarItem{firstTapX - P, firstTapX + (n - 1) * 3 * P + P, barY, gr.rail});
 
-        bool hasAnchor = false;
-        for (std::uint32_t vi : ordered) {
-            if (flow.verts[vi].kind == FlowVertex::Kind::Anchor) hasAnchor = true;
-        }
-        if (anyColumn) cursorX += (prevHadAnchor && hasAnchor) ? 4 * P : 2 * P;
+    int tapX = firstTapX;
+    int bottom = barY;
+    for (std::uint32_t comp : gr.comps) {
+        buf.dots.push_back(DotItem{tapX, barY, gr.rail});
+        buf.wire({tapX, barY, tapX, barY + P}, gr.rail);
+        PlacedSymbol s;
+        s.component = comp;
+        s.geom = cache[comp];
+        std::uint32_t railPin = d.components[comp].pins[0].net == gr.rail ? 0u : 1u;
+        s.rot = verticalRot(s.geom, railPin);
+        int gp = geomPinFor(s.geom, railPin);
+        int lx = 0, ly = 0, rx = 0, ry = 0;
+        localPin(s.geom, s.geom.pins[static_cast<std::size_t>(gp < 0 ? 0 : gp)], lx, ly);
+        rotatePoint(s.geom, s.rot, lx, ly, rx, ry);
+        s.x = tapX - rx;
+        s.y = barY + P;
+        const int bodyBot = s.y + rotatedH(s.geom, s.rot);
+        const std::int32_t gnd = d.components[comp].pins[railPin == 0 ? 1u : 0u].net;
+        buf.wire({tapX, bodyBot, tapX, bodyBot + P}, gnd);
+        buf.mark(MarkKind::Ground, tapX, bodyBot + P, Side::Bottom, gnd);
+        buf.symbols.push_back(std::move(s));
+        bottom = std::max(bottom, bodyBot + P + 10);
+        tapX += 3 * P;
+    }
+    // The block solid covers the ladder and the name at the bar's left end;
+    // the bar LINE itself is reserved (widened) by finishBars.
+    buf.reserve(Rect{firstTapX - 2 * P, rowY, (tapX - 3 * P) + 2 * P + 30, bottom + 4});
+}
 
-        const int colX = cursorX;
-        int y = yStart;
-        int colW = 0;
-        for (std::uint32_t vi : ordered) {
-            int cw = 0, ch = 0;
-            switch (flow.verts[vi].kind) {
-                case FlowVertex::Kind::Anchor:
-                case FlowVertex::Kind::Loose: placeBody(vi, colX, effOff[vi], y, cw, ch); break;
-                case FlowVertex::Kind::Vertical:
-                    placeVerticalCell(vi, colX, effOff[vi], y, cw, ch);
-                    break;
-                case FlowVertex::Kind::Series: placeSeries(vi, colX, effOff[vi], y, cw, ch); break;
-                case FlowVertex::Kind::Child: placeChild(vi, colX, effOff[vi], y, cw, ch); break;
-            }
-            colW = std::max(colW, cw);
-            y += ch + 2 * P;
+// ---------------------------------------------------------------------------
+// The strip terminal, shared by arteries and free runs.
+// ---------------------------------------------------------------------------
+
+int RoomPlacer::drawStripEnd(StripEnd end, std::int32_t net, int cursor, int stripY, int dir,
+                             int riserTopY) {
+    const Side outSide = dir > 0 ? Side::Right : Side::Left;
+    switch (end) {
+        case StripEnd::Bare:
+            buf.wire({cursor, stripY, cursor + dir * P, stripY}, net);
+            return cursor;
+        case StripEnd::Handoff: {
+            const int ex2 =
+                dir > 0 ? roundUpP(cursor + P) : roundDownP(cursor - P);
+            buf.wire({cursor, stripY, ex2, stripY}, net);
+            buf.reserveWire(Rect{std::min(cursor, ex2) - 2, stripY - 2,
+                                 std::max(cursor, ex2) + 2, stripY + 2});
+            netPts[static_cast<std::size_t>(net)].push_back(StubPt{ex2, stripY, outSide});
+            return cursor;
         }
-        cursorX = colX + roundUpP(colW);
-        prevHadAnchor = hasAnchor;
-        anyColumn = true;
+        case StripEnd::Ground:
+            buf.wire({cursor, stripY, cursor + dir * P, stripY, cursor + dir * P, stripY + P},
+                     net);
+            buf.mark(MarkKind::Ground, cursor + dir * P, stripY + P, Side::Bottom, net);
+            return cursor + dir * (P + 10);
+        case StripEnd::RailFlag:
+            buf.wire({cursor, stripY, cursor + dir * P, stripY, cursor + dir * P, stripY - P},
+                     net);
+            buf.mark(MarkKind::RailFlag, cursor + dir * P, stripY - P, Side::Top, net);
+            return cursor + dir * (P + textW(netName(pg, net)) / 2 + 8);
+        case StripEnd::RailTap: {
+            const int tx = cursor + dir * P;
+            buf.wire({cursor, stripY, tx, stripY, tx, riserTopY}, net);
+            buf.reserveWire(Rect{tx - 2, riserTopY, tx + 2, stripY});
+            taps.push_back(Tap{tx, riserTopY, net, Side::Top});
+            return cursor + dir * (P + 4);
+        }
+        case StripEnd::Mark:
+            buf.wire({cursor, stripY, cursor + dir * P, stripY}, net);
+            buf.mark(markKindFor(pg, net), cursor + dir * P, stripY, outSide, net);
+            return cursor + dir * markTail(pg, net);
+        case StripEnd::JuncNamed:
+        case StripEnd::JuncBare: break;  // the artery handles its own trunk end
+    }
+    return cursor;
+}
+
+// ---------------------------------------------------------------------------
+// The artery: lead-in at the pin's own row, one jog at midX, then the classic
+// element stepping; at a junction the trunk runs on with shunt strings at
+// their tap columns; the terminal is the classic switch. Junction dots are
+// counted over the drawn segments.
+// ---------------------------------------------------------------------------
+
+void RoomPlacer::drawArtery(const PlacedSymbol& anchor, const ArtGeom& ag, int zoneTopY) {
+    int px = 0, py = 0;
+    Side side = Side::Left;
+    pinPos(anchor, static_cast<std::size_t>(ag.gp), px, py, side);
+    (void)side;  // the plan's bucket already fixed the direction
+    const int dir = ag.rightward ? 1 : -1;
+    const int midX = px + dir * ag.midOff;
+    const int stripY = anchor.y + ag.stripRel;
+    const std::int32_t startNet = ag.art->startNet;
+    const std::int32_t jnet = ag.hasJunc ? ag.junc.net : -1;
+
+    std::vector<Seg> jsegs;
+
+    // The Manhattan lead-in: straight when the strip kept the pin's row,
+    // else one jog at midX. The lead is a wire: it may cross other wires.
+    if (stripY == py) {
+        buf.wire({px, py, midX, py}, startNet);
+    } else {
+        buf.wire({px, py, midX, py, midX, stripY}, startNet);
+    }
+    buf.reserveWire(ag.rightward ? Rect{px + 4, py - 2, midX + 2, py + 2}
+                                 : Rect{midX - 2, py - 2, px - 4, py + 2});
+    if (stripY != py) {
+        buf.reserveWire(
+            Rect{midX - 2, std::min(py, stripY), midX + 2, std::max(py, stripY)});
+    }
+    if (startNet == jnet) {
+        jsegs.push_back(Seg{px, py, midX, py});
+        if (stripY != py) jsegs.push_back(Seg{midX, py, midX, stripY});
+    }
+
+    int cursor = midX;
+    std::int32_t net = startNet;
+    std::size_t ei = 0;
+    for (const ArteryStep& step : ag.art->steps) {
+        if (step.kind == ArteryStep::Kind::Inline) {
+            const ElemGeom& e = ag.inls[ei++];
+            const int entryX = cursor + dir * P;
+            buf.wire({cursor, stripY, entryX, stripY}, net);
+            if (net == jnet) jsegs.push_back(Seg{cursor, stripY, entryX, stripY});
+
+            PlacedSymbol s;
+            s.component = e.comp;
+            s.geom = cache[e.comp];
+            s.rot = e.rot;
+            int lx = 0, ly = 0, ex = 0, ey = 0;
+            localPin(s.geom, s.geom.pins[static_cast<std::size_t>(e.gp)], lx, ly);
+            rotatePoint(s.geom, s.rot, lx, ly, ex, ey);
+            s.x = entryX - ex;
+            s.y = stripY - ey;
+            const int exitIdx = e.gp == 0 ? 1 : 0;
+            int ox = 0, oy = 0;
+            localPin(s.geom, s.geom.pins[static_cast<std::size_t>(exitIdx)], lx, ly);
+            rotatePoint(s.geom, s.rot, lx, ly, ox, oy);
+            cursor = s.x + ox;
+            net = d.components[e.comp]
+                      .pins[s.geom.pins[static_cast<std::size_t>(exitIdx)].pin]
+                      .net;
+            buf.symbols.push_back(std::move(s));
+            continue;
+        }
+
+        // The junction: the trunk runs to the last tap column; each shunt
+        // string walks away from it one part at a time -- a gap wire, a
+        // body, the next gap on whatever net that body exits onto -- and
+        // ONLY the last gap carries the end mark.
+        const JuncGeom& jg = ag.junc;
+        const int n = static_cast<int>(jg.shunts.size());
+        if (n > 0) {
+            const int lastX = cursor + dir * jg.lastTap;
+            buf.wire({cursor, stripY, lastX, stripY}, jg.net);
+            jsegs.push_back(Seg{cursor, stripY, lastX, stripY});
+            for (int k = 0; k < n; ++k) {
+                const ShuntGeom& sh = jg.shunts[static_cast<std::size_t>(k)];
+                const int tapX = cursor + dir * (jg.firstTap + k * jg.pitch);
+                const int sgn = sh.up ? -1 : 1;
+                int vc = stripY;
+                std::int32_t link = jg.net;
+                for (std::size_t i = 0; i < sh.elems.size(); ++i) {
+                    const VElem& ve = sh.elems[i];
+                    buf.wire({tapX, vc, tapX, vc + sgn * P}, link);
+                    if (i == 0) jsegs.push_back(Seg{tapX, vc, tapX, vc + sgn * P});
+                    vc += sgn * P;
+
+                    PlacedSymbol s;
+                    s.component = ve.comp;
+                    s.geom = cache[ve.comp];
+                    s.rot = ve.rot;
+                    int lx = 0, ly = 0, rx = 0, ry = 0;
+                    localPin(s.geom, s.geom.pins[static_cast<std::size_t>(ve.gp)], lx, ly);
+                    rotatePoint(s.geom, s.rot, lx, ly, rx, ry);
+                    // The entry pin lands on the cursor; ry is 0 hanging
+                    // below and the body's height standing above.
+                    s.x = tapX - rx;
+                    s.y = vc - ry;
+                    vc += sgn * ve.h;
+                    const int exitIdx = ve.gp == 0 ? 1 : 0;
+                    link = d.components[ve.comp]
+                               .pins[s.geom.pins[static_cast<std::size_t>(exitIdx)].pin]
+                               .net;
+                    buf.symbols.push_back(std::move(s));
+                }
+                buf.wire({tapX, vc, tapX, vc + sgn * P}, sh.endNet);
+                if (sh.endNet >= 0) {
+                    buf.mark(markKindFor(pg, sh.endNet), tapX, vc + sgn * P,
+                             sh.up ? Side::Top : Side::Bottom, sh.endNet);
+                }
+            }
+            cursor = lastX;
+        }
+        net = jg.net;
+    }
+
+    // The terminal.
+    int bandX1 = cursor;
+    switch (ag.end) {
+        case StripEnd::JuncNamed: {
+            const int ex2 = cursor + dir * P;
+            buf.wire({cursor, stripY, ex2, stripY}, net);
+            jsegs.push_back(Seg{cursor, stripY, ex2, stripY});
+            buf.mark(markKindFor(pg, net), ex2, stripY,
+                     ag.rightward ? Side::Right : Side::Left, net);
+            bandX1 = cursor + dir * markTail(pg, net);
+            break;
+        }
+        case StripEnd::JuncBare:
+            // Fully drawn: the trunk stops dead on the last tap, which is
+            // then a corner and takes no dot.
+            bandX1 = cursor + dir * (ag.junc.pitch / 2 + 4);
+            break;
+        default:
+            bandX1 = drawStripEnd(ag.end, ag.art->endNet, cursor, stripY, dir, zoneTopY);
+            break;
+    }
+
+    // The band solid: element bodies, tap strings and marks. It starts past
+    // the jog column (a wire) and stops short of a bare handoff end so the
+    // router can leave the stub.
+    const int bandX0 = midX + dir * 4;
+    buf.reserve(Rect{std::min(bandX0, bandX1), stripY - ag.up, std::max(bandX0, bandX1),
+                     stripY + ag.dn});
+
+    // Junction dots are counted, never assumed.
+    if (jnet >= 0) addJunctionDots(buf.dots, jsegs, jnet);
+}
+
+// A free run: start mark (or bare stub, or riser), the elements, the shared
+// terminal. Interior nets are drawn conductors, exactly like an artery's.
+void RoomPlacer::drawRun(const RunDraw& rd, int cx, int cy) {
+    const RunGeom& rg = rd.g;
+    const int startX = cx + rd.x + rg.startExt;
+    const int up = roundUpP(rg.up);
+    const int stripY = cy + rd.y + up;
+    const int rowTopY = cy + rd.y;
+
+    if (rg.startNet >= 0 && isRoutable(rg.startNet)) {
+        netPts[static_cast<std::size_t>(rg.startNet)].push_back(
+            StubPt{startX, stripY, Side::Left});
+    } else if (tapsHere(rg.startNet)) {
+        buf.wire({startX, stripY, startX, rowTopY}, rg.startNet);
+        buf.reserveWire(Rect{startX - 2, rowTopY, startX + 2, stripY});
+        taps.push_back(Tap{startX, rowTopY, rg.startNet, Side::Top});
+    } else if (rg.startNet >= 0) {
+        buf.mark(markKindFor(pg, rg.startNet), startX, stripY, Side::Left, rg.startNet);
+    }
+
+    int cursor = startX;
+    std::int32_t net = rg.startNet;
+    for (const ElemGeom& e : rg.elems) {
+        const int entryX = cursor + P;
+        buf.wire({cursor, stripY, entryX, stripY}, net);
+        PlacedSymbol s;
+        s.component = e.comp;
+        s.geom = cache[e.comp];
+        s.rot = e.rot;
+        int lx = 0, ly = 0, ex = 0, ey = 0;
+        localPin(s.geom, s.geom.pins[static_cast<std::size_t>(e.gp)], lx, ly);
+        rotatePoint(s.geom, s.rot, lx, ly, ex, ey);
+        s.x = entryX - ex;
+        s.y = stripY - ey;
+        const int exitIdx = e.gp == 0 ? 1 : 0;
+        int ox = 0, oy = 0;
+        localPin(s.geom, s.geom.pins[static_cast<std::size_t>(exitIdx)], lx, ly);
+        rotatePoint(s.geom, s.rot, lx, ly, ox, oy);
+        cursor = s.x + ox;
+        net = d.components[e.comp]
+                  .pins[s.geom.pins[static_cast<std::size_t>(exitIdx)].pin]
+                  .net;
+        buf.symbols.push_back(std::move(s));
+    }
+
+    const int bandX1 = drawStripEnd(rg.end, rg.endNet, cursor, stripY, 1, rowTopY);
+    const bool bareStart = rg.startNet >= 0 && isRoutable(rg.startNet);
+    const int bandX0 = bareStart ? startX : cx + rd.x;
+    buf.reserve(Rect{bandX0, stripY - rg.up, std::max(bandX1, cursor), stripY + rg.dn});
+    buf.grow(Rect{cx + rd.x, cy + rd.y, cx + rd.x + rg.startExt + rg.inner + P,
+                  cy + rd.y + up + rg.dn});
+}
+
+// ---------------------------------------------------------------------------
+// The anchor: body, risers for its own bar rails, arteries, and the classic
+// stub+mark furniture on every pin nothing consumed.
+// ---------------------------------------------------------------------------
+
+void RoomPlacer::drawAnchor(CMetric& cm, int cx, int cy) {
+    const std::uint32_t comp = cm.anchorComp;
+    const SymbolGeom& g = cache[comp];
+    int extL = 0, extR = 0, extT = 0, extB = 0;
+    bodyExtents(comp, extL, extR, extT, extB);
+
+    PlacedSymbol placed;
+    placed.component = comp;
+    placed.geom = g;
+    placed.x = cx + cm.bodyX;
+    placed.y = cy + cm.bodyY;
+    const int zoneTopY = cy + cm.zoneTop;
+    // One solid over the body, the riser column strip above and the mark
+    // strip below; left/right strips are reserved per pin.
+    buf.reserve(Rect{placed.x - 2, zoneTopY, placed.x + g.w + 2, placed.y + g.h + extB});
+
+    std::vector<char> done(d.components[comp].pins.size(), 0);
+    for (const ArtGeom& ag : cm.arts) {
+        drawArtery(placed, ag, zoneTopY);
+        done[ag.art->anchorPin] = 1;
+    }
+
+    for (std::size_t gp = 0; gp < g.pins.size(); ++gp) {
+        const SymPin& p = g.pins[gp];
+        if (done[p.pin]) continue;
+        int px = 0, py = 0;
+        Side side = Side::Left;
+        pinPos(placed, gp, px, py, side);
+        if (side == Side::Top && !p.nc && tapsHere(p.net)) {
+            // Riser to the zone's top edge, through the pin's own mark
+            // strip; the tap point is outside every solid, so the routed
+            // fallback can leave it when the straight corridor is blocked.
+            buf.wire({px, py, px, zoneTopY}, p.net);
+            buf.reserveWire(Rect{px - 2, zoneTopY, px + 2, py});
+            taps.push_back(Tap{px, zoneTopY, p.net, Side::Top});
+            continue;
+        }
+        pinStub(placed, gp);
+    }
+    buf.symbols.push_back(std::move(placed));
+}
+
+// ---------------------------------------------------------------------------
+// The room: every cluster cell drawn at its packed position.
+// ---------------------------------------------------------------------------
+
+void RoomPlacer::drawClusters() {
+    barOf.assign(pg.nets.size(), -1);
+    for (std::size_t ci = 0; ci < plan.clusters.size(); ++ci) {
+        curCluster = ci;
+        const Cluster& cl = plan.clusters[ci];
+        CMetric& cm = mets[ci];
+        if (cm.w <= 0 || cm.h <= 0) continue;
+        const int cx = cm.x, cy = cm.y;
+
+        for (const DecapDraw& dd : cm.decaps) drawDecapRow(cl.decaps[dd.idx], dd, cx, cy);
+        for (const SatDraw& s : cm.ups) placeVerticalCell(s.vi, cx + s.x, cy + s.y);
+        if (cm.hasBody) drawAnchor(cm, cx, cy);
+        if (cm.isChild) {
+            int off = 0, w = 0, h = 0;
+            measureChild(cm.childVert, off, w, h);
+            placeChild(cm.childVert, cx, off, cy + cm.childY);
+        }
+        for (const SatDraw& s : cm.downs) placeVerticalCell(s.vi, cx + s.x, cy + s.y);
+        for (const LooseDraw& l : cm.loose) {
+            if (l.vert) placeVerticalCell(l.vi, cx + l.x, cy + l.y);
+            else placeBody(l.vi, cx + l.x, 0, cy + l.y);
+        }
+        for (const RunDraw& rd : cm.runs) drawRun(rd, cx, cy);
+
+        buf.grow(Rect{cx, cy, cx + cm.w, cy + cm.h});
     }
 }
 
 // ---------------------------------------------------------------------------
-// Phase 3: stretch each bar to the room's content width and join its taps.
-// Each tap tries the straight corridor drop first (the pretty case), then the
-// routed fallback around whatever blocked it, and only when both refuse does
-// it keep the classic per-pin rail flag -- so a rail with a bar shows flags
-// only where no conductor can reach the bar at all.
+// Bars: widen each cluster's rail segment to its own tap columns (group
+// width, never the room's), then join every tap -- straight corridor drop
+// first, routed fallback second, and only when both refuse the classic
+// per-pin rail flag.
 // ---------------------------------------------------------------------------
 
 void RoomPlacer::finishBars() {
     if (buf.bars.empty()) return;
-    const int contentW = std::max(buf.maxX, 4 * P);
+    // Group width: the bar reaches exactly as far as its cluster's taps.
+    for (const Tap& t : taps) {
+        RailBarItem& bar =
+            buf.bars[static_cast<std::size_t>(barOf[static_cast<std::size_t>(t.net)])];
+        bar.x1 = std::min(bar.x1, t.px - P);
+        bar.x2 = std::max(bar.x2, t.px + P);
+    }
     for (RailBarItem& bar : buf.bars) {
-        bar.x2 = std::max(bar.x2, contentW);
         buf.reserveWire(Rect{bar.x1, bar.y - 2, bar.x2, bar.y + 2});
     }
 
@@ -916,7 +1527,8 @@ void RoomPlacer::finishBars() {
     for (const Tap& t : taps) {
         const std::int32_t bi = barOf[static_cast<std::size_t>(t.net)];
         const RailBarItem& bar = buf.bars[static_cast<std::size_t>(bi)];
-        if (corridorClear(t.net, t.px, bar.y, t.py)) {
+        const bool inSpan = t.px >= bar.x1 && t.px <= bar.x2;
+        if (inSpan && corridorClear(t.net, t.px, bar.y, t.py)) {
             buf.wire({t.px, bar.y, t.px, t.py}, t.net);
             buf.reserveWire(Rect{t.px - 2, bar.y, t.px + 2, t.py});
             // The bar runs through, the tap ends: three conductors, one dot.
@@ -930,9 +1542,9 @@ void RoomPlacer::finishBars() {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 4: routing, in net index order. Success needs no marks -- the wire
-// says it, and junction dots are the router's job. Failure adds the label
-// each pin would have had, so the pin-conductor invariant holds either way.
+// Routing, in net index order. Success needs no marks -- the wire says it,
+// and junction dots are the router's job. Failure adds the label each pin
+// would have had, so the pin-conductor invariant holds either way.
 // ---------------------------------------------------------------------------
 
 void RoomPlacer::routeAll() {
@@ -957,11 +1569,15 @@ void RoomPlacer::routeAll() {
 }
 
 void RoomPlacer::run() {
-    classifyVerticals();
+    plan = buildRoomPlan(pg, room, flow, plans, m);
     computeRoutable();
-    const int yStart = placeBars();
-    computeMetrics();
-    placeColumns(yStart);
+    // The plan outranks the router: a net it drew (or named) is spoken for.
+    for (std::size_t ni = 0; ni < routable.size(); ++ni) {
+        if (plan.netState[ni] != NetState::Free) routable[ni] = 0;
+    }
+    clusterMetrics();
+    packClusters();
+    drawClusters();
     finishBars();
     routeAll();
 }
@@ -997,7 +1613,7 @@ SheetLayout layoutPageFlow(const RenderModel& model, const RenderPage& page) {
     bufs.reserve(page.rooms.size());
     for (std::size_t ri = 0; ri < page.rooms.size(); ++ri) {
         const RenderRoom& room = page.rooms[ri];
-        RoomPlacer rp(model, page, cache, room, flows[ri]);
+        RoomPlacer rp(model, page, cache, room, flows[ri], plans);
         rp.run();
         const int strip = room.framed && !room.title.empty() ? kTitleStrip : 0;
         extents.push_back(
@@ -1012,8 +1628,7 @@ SheetLayout layoutPageFlow(const RenderModel& model, const RenderPage& page) {
     // ceil(sqrt(3 * area)) admits shapes out to roughly 2:1 once column
     // stretch is paid for -- and the tiler's aspect-driven column count does
     // the real shaping, so sheets land near the landscape sqrt(2):1 of the
-    // reference schematics instead of the portrait strips the old classic
-    // 1600-clamped budget produced under column tiling.
+    // reference schematics instead of portrait strips.
     std::int64_t area = 0;
     int widest = 0;
     for (const RoomExtent& e : extents) {
