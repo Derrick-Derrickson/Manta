@@ -32,9 +32,12 @@
 //     the tap opportunistically at draw time when its riser column is
 //     actually clear (everything above it is already reserved), and the
 //     classic flag stands wherever the riser cannot be drawn.
-//   - Cluster alignment by rank is deliberately absent in this package:
-//     cells take natural metrics; a later package keys alignment on cluster
-//     structure.
+//   - Alignment is keyed on cluster STRUCTURE (Cluster::shapeKey), not on
+//     rank: clusters with equal non-empty keys take the element-wise max of
+//     every internal measure (metric union, unifyMetrics) so their cells
+//     come out byte-identical inside, and they pack adjacently at the first
+//     member's slot -- repeated identical channels draw identically, side
+//     by side. Unequal cells still take natural metrics.
 //   - Bare shunt ends are drawn as marks, not router handoffs: a tap column
 //     sits at an element-width x that is rarely on the P grid, and a label
 //     connects correctly where a refused route would only fall back to one.
@@ -260,6 +263,21 @@ private:
         int x = 0, y = 0;  // pack position, room coords
     };
 
+    // Everything measured about one cluster BEFORE composition: the raw
+    // inputs the y/x sequencing is a pure function of. Split out so that
+    // equal-shapeKey clusters can take the element-wise max of every input
+    // first (metric union) and then compose to byte-identical cells.
+    struct MIn {
+        int extL = 0, extR = 0, extT = 0, extB = 0;
+        std::vector<ArtGeom> arts;  // left bucket then right bucket
+        std::size_t nLeft = 0;
+        std::vector<int> capH;                        // per decap group
+        std::vector<std::pair<int, int>> upWH, downWH;  // per satellite cell
+        std::vector<std::pair<int, int>> looseWH;       // per loose vertex
+        std::vector<std::pair<int, int>> runWH;         // per free run
+        std::vector<RunGeom> runs;                      // parallel to freeRuns
+    };
+
     std::vector<char> inRoom;                 // component -> member of this room
     std::vector<char> routable;               // net -> the router may claim it
     std::vector<std::vector<StubPt>> netPts;  // net -> bare stub ends collected
@@ -311,6 +329,9 @@ private:
     void measureVertical(std::uint32_t vi, int& w, int& h) const;
     void measureLooseBody(std::uint32_t vi, int& w, int& h) const;
     void measureChild(std::uint32_t vi, int& off, int& w, int& h) const;
+    void measureCluster(std::size_t ci, MIn& in) const;
+    void unifyMetrics(std::vector<MIn>& ins) const;
+    void composeCluster(std::size_t ci, MIn& in);
     void clusterMetrics();
     void packClusters();
 
@@ -667,219 +688,384 @@ RoomPlacer::RunGeom RoomPlacer::planRun(const std::vector<ChainElem>& run,
 // Cluster metrics: every cell is measured whole -- decap rows, satellite
 // rows, the anchor zone with its artery strips, loose cells, free runs --
 // before anything is drawn, so packing needs no collision search.
+//
+// Three phases. MEASURE collects the raw inputs (extents, artery geometry,
+// cap and satellite cell sizes). UNIFY takes, over each group of clusters
+// with the same non-empty shapeKey, the element-wise max of every input
+// that bends internal geometry -- so two identical channels whose only
+// difference is a net name's width measure the same. COMPOSE then lays each
+// cell out; composition is a pure function of structure plus inputs, so
+// unified inputs make the group's cells byte-identical inside: every member
+// part's offset from its anchor matches across the group.
 // ---------------------------------------------------------------------------
 
-void RoomPlacer::clusterMetrics() {
-    mets.assign(plan.clusters.size(), {});
-    for (std::size_t ci = 0; ci < plan.clusters.size(); ++ci) {
-        const Cluster& cl = plan.clusters[ci];
-        CMetric& cm = mets[ci];
-        const FlowVertex* av =
-            cl.anchorVert >= 0 ? &flow.verts[static_cast<std::size_t>(cl.anchorVert)] : nullptr;
+void RoomPlacer::measureCluster(std::size_t ci, MIn& in) const {
+    const Cluster& cl = plan.clusters[ci];
+    const FlowVertex* av =
+        cl.anchorVert >= 0 ? &flow.verts[static_cast<std::size_t>(cl.anchorVert)] : nullptr;
 
-        int extL = 0, extR = 0, extT = 0, extB = 0;
-        const SymbolGeom* g = nullptr;
-        int zoneUp = 0, zoneDn = 0, leftW = 0, rightW = 0;
-        if (av != nullptr && av->kind == FlowVertex::Kind::Anchor) {
-            cm.hasBody = true;
-            cm.anchorComp = av->comps[0];
-            g = &cache[cm.anchorComp];
-            bodyExtents(cm.anchorComp, extL, extR, extT, extB);
+    if (av != nullptr && av->kind == FlowVertex::Kind::Anchor) {
+        const std::uint32_t anchorComp = av->comps[0];
+        const SymbolGeom& g = cache[anchorComp];
+        bodyExtents(anchorComp, in.extL, in.extR, in.extT, in.extB);
 
-            // Bucket the arteries by the GEOMETRY side of their pin -- the
-            // side plan and the cluster walk agree, but the drawn side is
-            // what the strip mechanics need -- keeping list order per side.
-            std::vector<const Artery*> lefts, rights;
-            for (const std::vector<Artery>* side : {&cl.left, &cl.right}) {
-                for (const Artery& a : *side) {
-                    int gp = geomPinFor(*g, a.anchorPin);
-                    assert(gp >= 0 && "an artery seeded on a pin the symbol hides");
-                    if (gp < 0) continue;
-                    if (g->pins[static_cast<std::size_t>(gp)].side == Side::Left) {
-                        lefts.push_back(&a);
-                    } else {
-                        rights.push_back(&a);
-                    }
+        // Bucket the arteries by the GEOMETRY side of their pin -- the
+        // side plan and the cluster walk agree, but the drawn side is
+        // what the strip mechanics need -- keeping list order per side.
+        std::vector<const Artery*> lefts, rights;
+        for (const std::vector<Artery>* side : {&cl.left, &cl.right}) {
+            for (const Artery& a : *side) {
+                int gp = geomPinFor(g, a.anchorPin);
+                assert(gp >= 0 && "an artery seeded on a pin the symbol hides");
+                if (gp < 0) continue;
+                if (g.pins[static_cast<std::size_t>(gp)].side == Side::Left) {
+                    lefts.push_back(&a);
+                } else {
+                    rights.push_back(&a);
                 }
             }
-            // Per side: slot k of nSide chains jogs (nSide-1-k)*2P beyond the
-            // side's mark extent (the classic fan-out), and strip rows go by
-            // measure: stripY = max(pin row, previous bottom + up-half + P).
-            auto planSide = [&](const std::vector<const Artery*>& list, bool rightSide) {
-                const int n = static_cast<int>(list.size());
-                const int ext = rightSide ? extR : extL;
-                int prevBot = 0;
-                bool first = true;
-                for (int k = 0; k < n; ++k) {
-                    ArtGeom ag = planArtery(*list[static_cast<std::size_t>(k)], *g, ci, k == 0);
-                    ag.midOff = ext + 6 + (n - 1 - k) * 2 * P;
-                    int y = ag.pinYRel;
-                    if (!first) y = std::max(y, roundUpP(prevBot + ag.up + P));
-                    ag.stripRel = y;
-                    prevBot = y + ag.dn;
-                    first = false;
-                    zoneUp = std::max(zoneUp, ag.up - ag.stripRel);
-                    zoneDn = std::max(zoneDn, ag.stripRel + ag.dn - g->h);
-                    int reach = ag.midOff + ag.inner;
-                    if (rightSide) rightW = std::max(rightW, reach);
-                    else leftW = std::max(leftW, reach);
-                    cm.arts.push_back(std::move(ag));
-                }
-            };
-            planSide(lefts, false);
-            planSide(rights, true);
-
-            zoneUp = roundUpP(std::max(zoneUp, extT));
-            zoneDn = roundUpP(std::max(zoneDn, extB));
-            leftW = roundUpP(std::max(leftW, extL));
-            rightW = roundUpP(std::max(rightW, extR));
-            cm.bodyX = leftW;
         }
-
-        int yCur = 0;
-        int wMax = 0;
-
-        // Decap rows first, at the top of the cell: the ladder columns sit
-        // to the right of the anchor's top-pin block, so the pins' riser
-        // corridors drop straight onto their own bar.
-        for (std::size_t gi = 0; gi < cl.decaps.size(); ++gi) {
-            const DecapGroup& gr = cl.decaps[gi];
-            const int n = static_cast<int>(gr.comps.size());
-            // A ladder sits to the right of the anchor's top-pin block; a
-            // pin-only segment seeds its bar mid-body instead, so finishBars
-            // widens it straight over the tap columns it will serve.
-            const int ladderX =
-                cm.hasBody ? (n > 0 ? roundUpP(cm.bodyX + g->w) + 2 * P
-                                    : roundUpP(cm.bodyX + g->w / 2))
-                           : 2 * P;
-            int capH = 0;
-            for (std::uint32_t comp : gr.comps) {
-                const SymbolGeom& cg = cache[comp];
-                std::uint32_t railPin =
-                    d.components[comp].pins[0].net == gr.rail ? 0u : 1u;
-                capH = std::max(capH, rotatedH(cg, verticalRot(cg, railPin)));
-            }
-            const int bottom = yCur + 12 + (n > 0 ? P + capH + P + 10 : 10);
-            cm.decaps.push_back(DecapDraw{gi, yCur, ladderX});
-            wMax = std::max(wMax,
-                            n > 0 ? ladderX + (n - 1) * 3 * P + 2 * P + 30 : ladderX + 2 * P);
-            yCur = roundUpP(bottom + 4) + P;
+        for (std::size_t k = 0; k < lefts.size(); ++k) {
+            in.arts.push_back(planArtery(*lefts[k], g, ci, k == 0));
         }
-
-        // Satellite rows: pull-ups above the body, pull-downs below, each a
-        // standing cell at the classic vertical metrics.
-        auto satRow = [&](const std::vector<std::uint32_t>& vis, std::vector<SatDraw>& out) {
-            if (vis.empty()) return;
-            int x = cm.hasBody ? cm.bodyX : 0;
-            int rowH = 0;
-            for (std::uint32_t vi : vis) {
-                int w = 0, h = 0;
-                measureVertical(vi, w, h);
-                out.push_back(SatDraw{vi, x, yCur});
-                x += roundUpP(w) + P;
-                rowH = std::max(rowH, h);
-            }
-            wMax = std::max(wMax, x);
-            yCur += roundUpP(rowH) + P;
-        };
-        satRow(cl.satUps, cm.ups);
-
-        if (cm.hasBody) {
-            cm.zoneTop = yCur;
-            cm.bodyY = yCur + zoneUp;
-            cm.bodyOff = cm.bodyY;
-            yCur = roundUpP(cm.bodyY + g->h + zoneDn);
-            wMax = std::max(wMax, cm.bodyX + g->w + rightW);
-        } else if (av != nullptr && av->kind == FlowVertex::Kind::Child) {
-            cm.isChild = true;
-            cm.childVert = static_cast<std::uint32_t>(cl.anchorVert);
-            cm.childY = yCur;
-            int off = 0, w = 0, h = 0;
-            measureChild(cm.childVert, off, w, h);
-            wMax = std::max(wMax, w);
-            yCur += h;
+        in.nLeft = in.arts.size();
+        for (std::size_t k = 0; k < rights.size(); ++k) {
+            in.arts.push_back(planArtery(*rights[k], g, ci, k == 0));
         }
+    }
 
-        satRow(cl.satDowns, cm.downs);
-
-        // Loose cells and free runs, wrapped rows under everything else. The
-        // budget is per-cluster: enough for the widest item, aiming at a
-        // roughly landscape block.
-        {
-            struct Item {
-                bool isRun = false;
-                std::uint32_t vi = 0;
-                std::size_t run = 0;
-                int w = 0, h = 0;
-                bool vert = false;
-            };
-            std::vector<Item> items;
-            for (std::uint32_t vi : cl.looseVerts) {
-                Item it;
-                it.vi = vi;
-                it.vert = flow.verts[vi].kind == FlowVertex::Kind::Vertical;
-                if (it.vert) measureVertical(vi, it.w, it.h);
-                else measureLooseBody(vi, it.w, it.h);
-                items.push_back(it);
-            }
-            for (std::size_t riIdx = 0; riIdx < cl.freeRuns.size(); ++riIdx) {
-                Item it;
-                it.isRun = true;
-                it.run = riIdx;
-                RunGeom rg = planRun(cl.freeRuns[riIdx], ci);
-                it.w = rg.startExt + rg.inner + P;
-                it.h = roundUpP(roundUpP(rg.up) + rg.dn);
-                items.push_back(it);
-            }
-            if (!items.empty()) {
-                std::int64_t area = 0;
-                int widest = wMax;
-                for (const Item& it : items) {
-                    area += static_cast<std::int64_t>(it.w) * it.h;
-                    widest = std::max(widest, it.w);
-                }
-                const int budget =
-                    std::max(widest, static_cast<int>(isqrtCeil(area * 3 / 2)));
-                int x = 0, rowH = 0;
-                for (const Item& it : items) {
-                    if (x > 0 && x + it.w > budget) {
-                        x = 0;
-                        yCur += roundUpP(rowH) + P;
-                        rowH = 0;
-                    }
-                    if (it.isRun) {
-                        RunDraw rd;
-                        rd.g = planRun(cl.freeRuns[it.run], ci);
-                        rd.x = x;
-                        rd.y = yCur;
-                        cm.runs.push_back(std::move(rd));
-                    } else {
-                        cm.loose.push_back(LooseDraw{it.vi, x, yCur, it.vert});
-                    }
-                    x += roundUpP(it.w) + 2 * P;
-                    rowH = std::max(rowH, it.h);
-                    wMax = std::max(wMax, x);
-                }
-                yCur += roundUpP(rowH) + P;
-            }
+    for (const DecapGroup& gr : cl.decaps) {
+        int capH = 0;
+        for (std::uint32_t comp : gr.comps) {
+            const SymbolGeom& cg = cache[comp];
+            std::uint32_t railPin = d.components[comp].pins[0].net == gr.rail ? 0u : 1u;
+            capH = std::max(capH, rotatedH(cg, verticalRot(cg, railPin)));
         }
+        in.capH.push_back(capH);
+    }
 
-        cm.w = roundUpP(wMax);
-        cm.h = roundUpP(yCur);
+    auto satWH = [&](const std::vector<std::uint32_t>& vis, std::vector<std::pair<int, int>>& out) {
+        for (std::uint32_t vi : vis) {
+            int w = 0, h = 0;
+            measureVertical(vi, w, h);
+            out.push_back({w, h});
+        }
+    };
+    satWH(cl.satUps, in.upWH);
+    satWH(cl.satDowns, in.downWH);
+
+    for (std::uint32_t vi : cl.looseVerts) {
+        int w = 0, h = 0;
+        if (flow.verts[vi].kind == FlowVertex::Kind::Vertical) measureVertical(vi, w, h);
+        else measureLooseBody(vi, w, h);
+        in.looseWH.push_back({w, h});
+    }
+    for (const std::vector<ChainElem>& run : cl.freeRuns) {
+        RunGeom rg = planRun(run, ci);
+        in.runWH.push_back({rg.startExt + rg.inner + P,
+                            roundUpP(roundUpP(rg.up) + rg.dn)});
+        in.runs.push_back(std::move(rg));
     }
 }
 
+// The metric union. Only measures are touched -- strip half-heights, inner
+// reaches, junction tap pitches, extents, cell widths and heights -- never
+// structure: equal shapeKeys already guarantee the vectors run parallel
+// (asserted here, and any mismatch leaves the group untouched rather than
+// mixing metrics across different shapes).
+void RoomPlacer::unifyMetrics(std::vector<MIn>& ins) const {
+    std::vector<char> done(ins.size(), 0);
+    for (std::size_t i = 0; i < ins.size(); ++i) {
+        if (done[i]) continue;
+        done[i] = 1;
+        const std::string& key = plan.clusters[i].shapeKey;
+        if (key.empty()) continue;
+        std::vector<std::size_t> group{i};
+        for (std::size_t j = i + 1; j < ins.size(); ++j) {
+            if (done[j] || plan.clusters[j].shapeKey != key) continue;
+            done[j] = 1;
+            group.push_back(j);
+        }
+        if (group.size() < 2) continue;
+
+        bool parallel = true;
+        const MIn& lead = ins[i];
+        for (std::size_t j : group) {
+            const MIn& in = ins[j];
+            parallel = parallel && in.arts.size() == lead.arts.size() &&
+                       in.nLeft == lead.nLeft && in.capH.size() == lead.capH.size() &&
+                       in.upWH.size() == lead.upWH.size() &&
+                       in.downWH.size() == lead.downWH.size() &&
+                       in.looseWH.size() == lead.looseWH.size() &&
+                       in.runWH.size() == lead.runWH.size();
+        }
+        assert(parallel && "equal shapeKeys with different structure");
+        if (!parallel) continue;
+
+        MIn u;  // the group's maxima, collected then written back whole
+        u = ins[i];
+        auto maxi = [](int& a, int b) { a = std::max(a, b); };
+        for (std::size_t gi = 1; gi < group.size(); ++gi) {
+            const MIn& in = ins[group[gi]];
+            maxi(u.extL, in.extL);
+            maxi(u.extR, in.extR);
+            maxi(u.extT, in.extT);
+            maxi(u.extB, in.extB);
+            for (std::size_t a = 0; a < u.arts.size(); ++a) {
+                maxi(u.arts[a].up, in.arts[a].up);
+                maxi(u.arts[a].dn, in.arts[a].dn);
+                maxi(u.arts[a].inner, in.arts[a].inner);
+                maxi(u.arts[a].junc.pitch, in.arts[a].junc.pitch);
+                maxi(u.arts[a].junc.firstTap, in.arts[a].junc.firstTap);
+            }
+            for (std::size_t k = 0; k < u.capH.size(); ++k) maxi(u.capH[k], in.capH[k]);
+            auto maxWH = [&](std::vector<std::pair<int, int>>& a,
+                             const std::vector<std::pair<int, int>>& b) {
+                for (std::size_t k = 0; k < a.size(); ++k) {
+                    maxi(a[k].first, b[k].first);
+                    maxi(a[k].second, b[k].second);
+                }
+            };
+            maxWH(u.upWH, in.upWH);
+            maxWH(u.downWH, in.downWH);
+            maxWH(u.looseWH, in.looseWH);
+            maxWH(u.runWH, in.runWH);
+        }
+        for (std::size_t j : group) {
+            MIn& in = ins[j];
+            in.extL = u.extL;
+            in.extR = u.extR;
+            in.extT = u.extT;
+            in.extB = u.extB;
+            for (std::size_t a = 0; a < in.arts.size(); ++a) {
+                JuncGeom& jg = in.arts[a].junc;
+                in.arts[a].up = u.arts[a].up;
+                in.arts[a].dn = u.arts[a].dn;
+                in.arts[a].inner = u.arts[a].inner;
+                jg.pitch = u.arts[a].junc.pitch;
+                jg.firstTap = u.arts[a].junc.firstTap;
+                // lastTap is DERIVED, so re-derive it: independent maxima of
+                // pitch and firstTap could otherwise leave a trunk shorter
+                // than its own last tap column.
+                const int n = static_cast<int>(jg.shunts.size());
+                jg.lastTap = n > 0 ? jg.firstTap + (n - 1) * jg.pitch : 0;
+            }
+            in.capH = u.capH;
+            in.upWH = u.upWH;
+            in.downWH = u.downWH;
+            in.looseWH = u.looseWH;
+            in.runWH = u.runWH;
+        }
+    }
+}
+
+void RoomPlacer::composeCluster(std::size_t ci, MIn& in) {
+    const Cluster& cl = plan.clusters[ci];
+    CMetric& cm = mets[ci];
+    const FlowVertex* av =
+        cl.anchorVert >= 0 ? &flow.verts[static_cast<std::size_t>(cl.anchorVert)] : nullptr;
+
+    const SymbolGeom* g = nullptr;
+    int zoneUp = 0, zoneDn = 0, leftW = 0, rightW = 0;
+    if (av != nullptr && av->kind == FlowVertex::Kind::Anchor) {
+        cm.hasBody = true;
+        cm.anchorComp = av->comps[0];
+        g = &cache[cm.anchorComp];
+
+        // Per side: slot k of nSide chains jogs (nSide-1-k)*2P beyond the
+        // side's mark extent (the classic fan-out), and strip rows go by
+        // measure: stripY = max(pin row, previous bottom + up-half + P).
+        auto planSide = [&](std::size_t b, std::size_t e, bool rightSide) {
+            const int n = static_cast<int>(e - b);
+            const int ext = rightSide ? in.extR : in.extL;
+            int prevBot = 0;
+            bool first = true;
+            for (int k = 0; k < n; ++k) {
+                ArtGeom ag = std::move(in.arts[b + static_cast<std::size_t>(k)]);
+                ag.midOff = ext + 6 + (n - 1 - k) * 2 * P;
+                int y = ag.pinYRel;
+                if (!first) y = std::max(y, roundUpP(prevBot + ag.up + P));
+                ag.stripRel = y;
+                prevBot = y + ag.dn;
+                first = false;
+                zoneUp = std::max(zoneUp, ag.up - ag.stripRel);
+                zoneDn = std::max(zoneDn, ag.stripRel + ag.dn - g->h);
+                int reach = ag.midOff + ag.inner;
+                if (rightSide) rightW = std::max(rightW, reach);
+                else leftW = std::max(leftW, reach);
+                cm.arts.push_back(std::move(ag));
+            }
+        };
+        planSide(0, in.nLeft, false);
+        planSide(in.nLeft, in.arts.size(), true);
+
+        zoneUp = roundUpP(std::max(zoneUp, in.extT));
+        zoneDn = roundUpP(std::max(zoneDn, in.extB));
+        leftW = roundUpP(std::max(leftW, in.extL));
+        rightW = roundUpP(std::max(rightW, in.extR));
+        cm.bodyX = leftW;
+    }
+
+    int yCur = 0;
+    int wMax = 0;
+
+    // Decap rows first, at the top of the cell: the ladder columns sit
+    // to the right of the anchor's top-pin block, so the pins' riser
+    // corridors drop straight onto their own bar.
+    for (std::size_t gi = 0; gi < cl.decaps.size(); ++gi) {
+        const DecapGroup& gr = cl.decaps[gi];
+        const int n = static_cast<int>(gr.comps.size());
+        // A ladder sits to the right of the anchor's top-pin block; a
+        // pin-only segment seeds its bar mid-body instead, so finishBars
+        // widens it straight over the tap columns it will serve.
+        const int ladderX =
+            cm.hasBody ? (n > 0 ? roundUpP(cm.bodyX + g->w) + 2 * P
+                                : roundUpP(cm.bodyX + g->w / 2))
+                       : 2 * P;
+        const int capH = in.capH[gi];
+        const int bottom = yCur + 12 + (n > 0 ? P + capH + P + 10 : 10);
+        cm.decaps.push_back(DecapDraw{gi, yCur, ladderX});
+        wMax = std::max(wMax,
+                        n > 0 ? ladderX + (n - 1) * 3 * P + 2 * P + 30 : ladderX + 2 * P);
+        yCur = roundUpP(bottom + 4) + P;
+    }
+
+    // Satellite rows: pull-ups above the body, pull-downs below, each a
+    // standing cell at the classic vertical metrics.
+    auto satRow = [&](const std::vector<std::uint32_t>& vis,
+                      const std::vector<std::pair<int, int>>& whs, std::vector<SatDraw>& out) {
+        if (vis.empty()) return;
+        int x = cm.hasBody ? cm.bodyX : 0;
+        int rowH = 0;
+        for (std::size_t k = 0; k < vis.size(); ++k) {
+            out.push_back(SatDraw{vis[k], x, yCur});
+            x += roundUpP(whs[k].first) + P;
+            rowH = std::max(rowH, whs[k].second);
+        }
+        wMax = std::max(wMax, x);
+        yCur += roundUpP(rowH) + P;
+    };
+    satRow(cl.satUps, in.upWH, cm.ups);
+
+    if (cm.hasBody) {
+        cm.zoneTop = yCur;
+        cm.bodyY = yCur + zoneUp;
+        cm.bodyOff = cm.bodyY;
+        yCur = roundUpP(cm.bodyY + g->h + zoneDn);
+        wMax = std::max(wMax, cm.bodyX + g->w + rightW);
+    } else if (av != nullptr && av->kind == FlowVertex::Kind::Child) {
+        cm.isChild = true;
+        cm.childVert = static_cast<std::uint32_t>(cl.anchorVert);
+        cm.childY = yCur;
+        int off = 0, w = 0, h = 0;
+        measureChild(cm.childVert, off, w, h);
+        wMax = std::max(wMax, w);
+        yCur += h;
+    }
+
+    satRow(cl.satDowns, in.downWH, cm.downs);
+
+    // Loose cells and free runs, wrapped rows under everything else. The
+    // budget is per-cluster: enough for the widest item, aiming at a
+    // roughly landscape block.
+    {
+        struct Item {
+            bool isRun = false;
+            std::uint32_t vi = 0;
+            std::size_t run = 0;
+            int w = 0, h = 0;
+            bool vert = false;
+        };
+        std::vector<Item> items;
+        for (std::size_t k = 0; k < cl.looseVerts.size(); ++k) {
+            Item it;
+            it.vi = cl.looseVerts[k];
+            it.vert = flow.verts[it.vi].kind == FlowVertex::Kind::Vertical;
+            it.w = in.looseWH[k].first;
+            it.h = in.looseWH[k].second;
+            items.push_back(it);
+        }
+        for (std::size_t riIdx = 0; riIdx < cl.freeRuns.size(); ++riIdx) {
+            Item it;
+            it.isRun = true;
+            it.run = riIdx;
+            it.w = in.runWH[riIdx].first;
+            it.h = in.runWH[riIdx].second;
+            items.push_back(it);
+        }
+        if (!items.empty()) {
+            std::int64_t area = 0;
+            int widest = wMax;
+            for (const Item& it : items) {
+                area += static_cast<std::int64_t>(it.w) * it.h;
+                widest = std::max(widest, it.w);
+            }
+            const int budget =
+                std::max(widest, static_cast<int>(isqrtCeil(area * 3 / 2)));
+            int x = 0, rowH = 0;
+            for (const Item& it : items) {
+                if (x > 0 && x + it.w > budget) {
+                    x = 0;
+                    yCur += roundUpP(rowH) + P;
+                    rowH = 0;
+                }
+                if (it.isRun) {
+                    RunDraw rd;
+                    rd.g = std::move(in.runs[it.run]);
+                    rd.x = x;
+                    rd.y = yCur;
+                    cm.runs.push_back(std::move(rd));
+                } else {
+                    cm.loose.push_back(LooseDraw{it.vi, x, yCur, it.vert});
+                }
+                x += roundUpP(it.w) + 2 * P;
+                rowH = std::max(rowH, it.h);
+                wMax = std::max(wMax, x);
+            }
+            yCur += roundUpP(rowH) + P;
+        }
+    }
+
+    cm.w = roundUpP(wMax);
+    cm.h = roundUpP(yCur);
+}
+
+void RoomPlacer::clusterMetrics() {
+    mets.assign(plan.clusters.size(), {});
+    std::vector<MIn> ins(plan.clusters.size());
+    for (std::size_t ci = 0; ci < plan.clusters.size(); ++ci) measureCluster(ci, ins[ci]);
+    unifyMetrics(ins);
+    for (std::size_t ci = 0; ci < plan.clusters.size(); ++ci) composeCluster(ci, ins[ci]);
+}
+
 // Shelf rows over the cluster cells: packing order is the plan's own (rank,
-// order, free cluster last); gutters 4P between anchor-bearing cells, 2P
-// otherwise; within a row the anchor body TOPS align (a cell may extend
-// upward further than its neighbour because of pull-up or decap rows).
+// order, free cluster last), except that equal-shapeKey clusters of one rank
+// pack ADJACENTLY -- the group enters at its first member's (rank, order)
+// slot with members following in their own order, so repeated identical
+// channels stand side by side the way a reference sheet draws them. Gutters
+// 4P between anchor-bearing cells, 2P otherwise; within a row the anchor
+// body TOPS align (a cell may extend upward further than its neighbour
+// because of pull-up or decap rows).
 void RoomPlacer::packClusters() {
     std::vector<std::size_t> live;
+    std::vector<char> taken(mets.size(), 0);
+    for (std::size_t i = 0; i < mets.size(); ++i) {
+        if (taken[i] || mets[i].w <= 0 || mets[i].h <= 0) continue;
+        taken[i] = 1;
+        live.push_back(i);
+        const std::string& key = plan.clusters[i].shapeKey;
+        if (key.empty()) continue;
+        for (std::size_t j = i + 1; j < mets.size(); ++j) {
+            if (taken[j] || mets[j].w <= 0 || mets[j].h <= 0) continue;
+            if (plan.clusters[j].rank != plan.clusters[i].rank) continue;
+            if (plan.clusters[j].shapeKey != key) continue;
+            taken[j] = 1;
+            live.push_back(j);
+        }
+    }
     std::int64_t area = 0;
     int widest = 0;
-    for (std::size_t i = 0; i < mets.size(); ++i) {
-        if (mets[i].w <= 0 || mets[i].h <= 0) continue;
-        live.push_back(i);
+    for (std::size_t i : live) {
         area += static_cast<std::int64_t>(mets[i].w) * mets[i].h;
         widest = std::max(widest, mets[i].w);
     }

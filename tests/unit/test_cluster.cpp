@@ -868,6 +868,131 @@ TEST_CASE("a SidePlan orders the seeds: slots top to bottom, Left before Right")
 }
 
 // ---------------------------------------------------------------------------
+// shapeKey: the structure signature identical channels align on.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// One driver channel: a five-pin anchor whose first pin meets a junction net
+// carrying a series resistor out to a stub net and a pull-down to ground.
+// Channels differ in designators and net NAMES only; partNames carry the
+// structure, so two channels built from the same parts must compare equal.
+struct Channel {
+    std::uint32_t u = 0, rs = 0, rpd = 0;
+};
+
+Channel makeChannel(TB& t, int n, std::int32_t gnd, const std::string& pdPart) {
+    Channel c;
+    const std::string s = std::to_string(n);
+    c.u = t.comp("U" + s, "", {"P1", "P2", "P3", "P4", "P5"});
+    c.rs = t.comp("RS" + s, "resistor", {"1", "2"});
+    c.rpd = t.comp("RP" + s, "resistor", {"1", "2"});
+    t.d.components[c.u].partName = "FIX-AMP";
+    t.d.components[c.rs].partName = "FIX-R1K";
+    t.d.components[c.rpd].partName = pdPart;
+    std::int32_t base = t.net("BASE" + s);
+    std::int32_t in = t.net("IN" + s);
+    t.wire(c.u, 0, base);
+    t.wire(c.rs, 0, base);
+    t.wire(c.rs, 1, in);
+    t.wire(c.rpd, 0, base);
+    t.wire(c.rpd, 1, gnd);
+    return c;
+}
+
+}  // namespace
+
+TEST_CASE("shapeKey: two structurally identical channels carry one key") {
+    TB t;
+    std::int32_t gnd = t.net("GND", true);
+    Channel a = makeChannel(t, 1, gnd, "FIX-R10K");
+    Channel b = makeChannel(t, 2, gnd, "FIX-R10K");
+
+    RenderModel m = buildRenderModel(t.d);
+    Built bt = build(m);
+    checkInvariants(bt, t.d, m.pages[0].rooms[0]);
+
+    const Cluster& ca = clusterOf(bt, a.u);
+    const Cluster& cb = clusterOf(bt, b.u);
+    CHECK(ca.anchorVert >= 0);
+    CHECK(cb.anchorVert >= 0);
+    // Both walked the same shape: one junction artery, two shunts each.
+    CHECK_EQ(ca.left.size() + ca.right.size(), static_cast<std::size_t>(1));
+    CHECK_EQ(cb.left.size() + cb.right.size(), static_cast<std::size_t>(1));
+    CHECK_FALSE(ca.shapeKey.empty());
+    CHECK_EQ(ca.shapeKey, cb.shapeKey);
+    // Net names differing everywhere (BASE1/IN1 vs BASE2/IN2) never enter.
+    CHECK(ca.shapeKey.find("BASE") == std::string::npos);
+    // The free cluster aligns on nothing.
+    CHECK(freeCluster(bt).shapeKey.empty());
+}
+
+TEST_CASE("shapeKey: a one-part difference breaks the key") {
+    TB t;
+    std::int32_t gnd = t.net("GND", true);
+    Channel a = makeChannel(t, 1, gnd, "FIX-R10K");
+    Channel b = makeChannel(t, 2, gnd, "FIX-R22K");  // a different pull-down part
+
+    RenderModel m = buildRenderModel(t.d);
+    Built bt = build(m);
+    checkInvariants(bt, t.d, m.pages[0].rooms[0]);
+
+    const Cluster& ca = clusterOf(bt, a.u);
+    const Cluster& cb = clusterOf(bt, b.u);
+    CHECK(ca.anchorVert >= 0);
+    CHECK(cb.anchorVert >= 0);
+    CHECK_FALSE(ca.shapeKey.empty());
+    CHECK_FALSE(cb.shapeKey.empty());
+    CHECK(ca.shapeKey != cb.shapeKey);
+}
+
+TEST_CASE("shapeKey: the satellite census counts, sorted, so room order "
+          "cannot split a shape") {
+    // Two anchors each keeping two pull-up satellites (a pull-up is never
+    // walked, so it always stands), declared in opposite room order: the
+    // keys still match. A third anchor with only one satellite does not.
+    TB t;
+    std::int32_t rail = t.net("3V3");
+    auto mkAnchor = [&](int n) {
+        std::uint32_t u = t.comp("U" + std::to_string(n), "", {"P1", "P2", "P3", "P4", "P5"});
+        t.d.components[u].partName = "FIX-AMP";
+        return u;
+    };
+    auto mkPull = [&](int n, const char* part, std::uint32_t u, std::uint32_t pin) {
+        std::uint32_t r = t.comp("R" + std::to_string(n), "resistor", {"1", "2"});
+        t.d.components[r].partName = part;
+        std::int32_t sig = t.net("S" + std::to_string(n));
+        t.wire(u, pin, sig);
+        t.wire(r, 0, sig);
+        t.wire(r, 1, rail);
+        return r;
+    };
+    std::uint32_t u1 = mkAnchor(1);
+    mkPull(1, "FIX-RA", u1, 0);
+    mkPull(2, "FIX-RB", u1, 2);
+    std::uint32_t u2 = mkAnchor(2);
+    mkPull(3, "FIX-RB", u2, 0);  // reversed declaration order
+    mkPull(4, "FIX-RA", u2, 2);
+    std::uint32_t u3 = mkAnchor(3);
+    mkPull(5, "FIX-RA", u3, 0);
+
+    RenderModel m = buildRenderModel(t.d);
+    Built bt = build(m);
+    checkInvariants(bt, t.d, m.pages[0].rooms[0]);
+
+    const Cluster& c1 = clusterOf(bt, u1);
+    const Cluster& c2 = clusterOf(bt, u2);
+    const Cluster& c3 = clusterOf(bt, u3);
+    CHECK(c1.anchorVert >= 0);
+    CHECK(c2.anchorVert >= 0);
+    CHECK(c3.anchorVert >= 0);
+    CHECK_EQ(c1.satUps.size(), static_cast<std::size_t>(2));
+    CHECK_EQ(c2.satUps.size(), static_cast<std::size_t>(2));
+    CHECK_EQ(c1.shapeKey, c2.shapeKey);
+    CHECK(c1.shapeKey != c3.shapeKey);
+}
+
+// ---------------------------------------------------------------------------
 // Determinism: the same circuit, declared backwards.
 // ---------------------------------------------------------------------------
 

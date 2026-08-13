@@ -80,7 +80,13 @@ struct Cluster {
     std::vector<DecapGroup> decaps;
     std::vector<std::uint32_t> looseVerts;        // flow vertex ids, drawn as own cells
     std::vector<std::vector<ChainElem>> freeRuns; // free cluster only
-    std::string shapeKey;                         // filled by a later package; leave empty
+    // The canonical structure signature: anchor part, arteries element for
+    // element, and the sorted satellite/ladder/loose census -- everything
+    // that decides a cluster's drawn shape, and no net NAME anywhere, so two
+    // repeated channels differing only in their net names compare equal.
+    // Empty for the free cluster and for child sheet symbols; the placer
+    // unifies metrics and packs adjacently over equal non-empty keys.
+    std::string shapeKey;
 };
 
 // What the plan decided about a page net. Free: the router labels or routes
