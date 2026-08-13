@@ -508,6 +508,102 @@ TEST_CASE("kMaxShunts bounds a junction; overflow parts stay for later idioms") 
     CHECK(vertListHas(b, cl.satDowns, rs[7]));
 }
 
+TEST_CASE("a net touching a second anchor never junctions: it stays Free to route") {
+    TB t;
+    std::uint32_t u1 = t.comp("U1", "", {"P1", "P2", "P3", "P4", "P5"});
+    std::uint32_t u2 = t.comp("U2", "", {"P1", "P2", "P3", "P4", "P5"});
+    std::uint32_t r1 = t.comp("R1", "resistor", {"1", "2"});
+    std::int32_t nn = t.net("NODE"), gnd = t.net("GND", true);
+    t.wire(u1, 0, nn);
+    t.wire(u2, 0, nn);
+    t.wire(r1, 0, nn);
+    t.wire(r1, 1, gnd);
+
+    RenderModel m = buildRenderModel(t.d);
+    Built b = build(m);
+    checkInvariants(b, t.d, m.pages[0].rooms[0]);
+
+    // The drawing cannot reach across clusters, and claiming R1 would force
+    // NODE to Named -- a label on a net the router can draw whole. So no
+    // junction forms anywhere, the net stays Free, and the pull-down claims
+    // its satellite place instead.
+    CHECK_FALSE(inAnyArtery(b.plan, r1));
+    CHECK(b.plan.netState[static_cast<std::size_t>(nn)] == NetState::Free);
+    for (const Cluster& cl : b.plan.clusters) {
+        for (const std::vector<Artery>* side : {&cl.left, &cl.right}) {
+            CHECK_EQ(side->size(), static_cast<std::size_t>(0));
+        }
+    }
+    bool sat = false;
+    for (const Cluster& cl : b.plan.clusters) sat = sat || vertListHas(b, cl.satDowns, r1);
+    CHECK(sat);
+}
+
+TEST_CASE("a second pin of the seeding anchor is not covered: the junction is Named") {
+    TB t;
+    std::uint32_t u1 = t.comp("U1", "", {"P1", "P2", "P3", "P4", "P5"});
+    std::uint32_t r1 = t.comp("R1", "resistor", {"1", "2"});
+    std::int32_t nn = t.net("NODE"), gnd = t.net("GND", true);
+    t.wire(u1, 0, nn);
+    t.wire(u1, 1, nn);
+    t.wire(r1, 0, nn);
+    t.wire(r1, 1, gnd);
+
+    RenderModel m = buildRenderModel(t.d);
+    Built b = build(m);
+    checkInvariants(b, t.d, m.pages[0].rooms[0]);
+
+    // The artery lands on ONE pin; the anchor's other pin keeps a stub with
+    // the net's mark, so the net is Named and the trunk end carries it too.
+    const Cluster& cl = clusterOf(b, u1);
+    CHECK(cl.anchorVert >= 0);
+    CHECK_EQ(cl.left.size(), static_cast<std::size_t>(1));
+    const Artery& a = cl.left[0];
+    CHECK_EQ(a.steps.size(), static_cast<std::size_t>(1));
+    CHECK(a.steps[0].kind == ArteryStep::Kind::Junction);
+    CHECK(b.plan.netState[static_cast<std::size_t>(nn)] == NetState::Named);
+    CHECK_EQ(a.endNet, nn);
+    CHECK(a.namedEnd);
+}
+
+TEST_CASE("an uncovered junction keeps its rail string standing so the trunk is named") {
+    TB t;
+    std::uint32_t u1 = t.comp("U1", "", {"P1", "P2", "P3", "P4", "P5"});
+    std::uint32_t r1 = t.comp("R1", "resistor", {"1", "2"});
+    std::uint32_t l1 = t.comp("L1", "inductor", {"1", "2"});
+    std::uint32_t tp = t.comp("TP1", "testpoint", {"TP"});
+    std::int32_t nn = t.net("NODE"), gnd = t.net("GND", true), rail = t.net("5V");
+    t.wire(u1, 0, nn);
+    t.wire(r1, 0, nn);
+    t.wire(r1, 1, gnd);
+    t.wire(l1, 0, nn);
+    t.wire(l1, 1, rail);
+    t.wire(tp, 0, nn);
+
+    RenderModel m = buildRenderModel(t.d);
+    Built b = build(m);
+    checkInvariants(b, t.d, m.pages[0].rooms[0]);
+
+    // The test point's pin is uncovered, so the net is Named -- and the
+    // inductor must NOT straighten onto the artery: with a rail continuation
+    // there would be no trunk end to carry the name the uncovered stub's
+    // label pairs with. Both strings hang; the artery ends on its trunk.
+    const Cluster& cl = clusterOf(b, u1);
+    CHECK(cl.anchorVert >= 0);
+    CHECK_EQ(cl.left.size(), static_cast<std::size_t>(1));
+    const Artery& a = cl.left[0];
+    CHECK_EQ(a.steps.size(), static_cast<std::size_t>(1));
+    const ArteryStep& j = a.steps[0];
+    CHECK(j.kind == ArteryStep::Kind::Junction);
+    CHECK_EQ(j.shunts.size(), static_cast<std::size_t>(2));
+    bool upSeen = false;
+    for (const Shunt& sh : j.shunts) upSeen = upSeen || sh.up;
+    CHECK(upSeen);  // the inductor stands, endNet 5V
+    CHECK(b.plan.netState[static_cast<std::size_t>(nn)] == NetState::Named);
+    CHECK_EQ(a.endNet, nn);
+    CHECK(a.namedEnd);
+}
+
 // ---------------------------------------------------------------------------
 // Role exclusivity in the private-chain walk.
 // ---------------------------------------------------------------------------

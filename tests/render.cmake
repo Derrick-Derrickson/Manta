@@ -130,14 +130,50 @@ if(room_count LESS 4)
 endif()
 
 # --- rail bars ----------------------------------------------------------------
-# A rail with two or more consumer pins in a room gets one bar there: 3V3
-# (U1.VCC, R1, C1, C2) and VBAT (U1.AVDD, C3, C4), both in MCU CORE. RAWPWR
-# has a single pin anywhere (TP3) and never earns one.
+# A rail whose decap group lives in a cluster gets one bar there: 3V3 (group
+# C1,C2) and VBAT (group C3,C4), both in U1's cluster in MCU CORE. RAWPWR has
+# a single pin anywhere (TP3) and never earns one.
 string(REGEX MATCHALL "class=\"railbar\"" bars "${html}")
 list(LENGTH bars bar_count)
 if(NOT bar_count EQUAL 2)
     message(FATAL_ERROR "expected rail bars for 3V3 and VBAT, got ${bar_count}")
 endif()
+
+# --- rail bars are LOCAL: group-width segments, never room-wide -------------
+# The cluster placer draws one short segment per decap group, widened only to
+# the cluster's own tap columns. Each bar must sit inside a room and span
+# less than half that room's width -- the room-wide bars the redesign
+# abolished would fail this immediately.
+string(REGEX MATCHALL "<line class=\"railbar\" x1=\"[0-9-]+\" y1=\"[0-9-]+\" x2=\"[0-9-]+\"" bar_geoms "${html}")
+string(REGEX MATCHALL "<rect class=\"room\" x=\"[0-9-]+\" y=\"[0-9-]+\" width=\"[0-9]+\" height=\"[0-9]+\"" room_geoms "${html}")
+foreach(bar ${bar_geoms})
+    string(REGEX REPLACE ".*x1=\"([0-9-]+)\" y1=\"([0-9-]+)\" x2=\"([0-9-]+)\".*" "\\1;\\2;\\3" bxy "${bar}")
+    list(GET bxy 0 bx1)
+    list(GET bxy 1 by)
+    list(GET bxy 2 bx2)
+    math(EXPR bar_w "${bx2} - ${bx1}")
+    set(contained FALSE)
+    foreach(rm ${room_geoms})
+        string(REGEX REPLACE ".*x=\"([0-9-]+)\" y=\"([0-9-]+)\" width=\"([0-9]+)\" height=\"([0-9]+)\".*" "\\1;\\2;\\3;\\4" rxy "${rm}")
+        list(GET rxy 0 rx)
+        list(GET rxy 1 ry)
+        list(GET rxy 2 rw)
+        list(GET rxy 3 rh)
+        math(EXPR rx2 "${rx} + ${rw}")
+        math(EXPR ry2 "${ry} + ${rh}")
+        if(bx1 GREATER_EQUAL rx AND bx2 LESS_EQUAL rx2 AND by GREATER_EQUAL ry AND by LESS_EQUAL ry2)
+            set(contained TRUE)
+            math(EXPR half_w "${rw} / 2")
+            if(NOT bar_w LESS half_w)
+                message(FATAL_ERROR "rail bar spans ${bar_w} of a ${rw}-wide room: bars "
+                                    "must stay group-width, under half the room")
+            endif()
+        endif()
+    endforeach()
+    if(NOT contained)
+        message(FATAL_ERROR "a rail bar lies in no room at all")
+    endif()
+endforeach()
 
 # --- a room-local net is a routed wire, not repeated labels -------------------
 # nRST joins U1.RST, J2.A and pull-up R1, all inside MCU CORE: the router
@@ -150,19 +186,20 @@ if(html MATCHES "class=\"netlabel\"[^>]*data-net=\"nRST\"")
     message(FATAL_ERROR "a routed net must not carry a label")
 endif()
 
-# --- one rail bar per room, not one flag per pin -------------------------------
+# --- one rail segment per group, per-part flags only outside it --------------
 # VBAT has three consumer pins in MCU CORE (C3, C4, U1.AVDD) and one in
-# IO HEADER (J1.C). The MCU CORE appearance is a bar -- named once at its
-# left end -- with its consumers tapping it, so the rail-flag marks are
-# bounded by the rooms the rail touches (2), never one per pin (4).
+# IO HEADER (J1.C). The MCU CORE appearance is the group's bar -- named once
+# at its left end -- with every cluster consumer tapping it, so the only
+# rail-flag mark VBAT keeps is J1.C's per-part flag in IO HEADER: exactly 1,
+# never one per pin (4).
 if(NOT html MATCHES "class=\"railbar\"[^>]*data-net=\"VBAT\"")
     message(FATAL_ERROR "VBAT has 3 consumer pins in MCU CORE and must get a rail bar")
 endif()
 string(REGEX MATCHALL "class=\"rail\" data-net=\"VBAT\"" vbat_marks "${html}")
 list(LENGTH vbat_marks vbat_mark_count)
-if(vbat_mark_count GREATER 2)
-    message(FATAL_ERROR "VBAT touches 2 rooms and must show at most 2 rail-flag marks, "
-                        "got ${vbat_mark_count}")
+if(NOT vbat_mark_count EQUAL 1)
+    message(FATAL_ERROR "VBAT's cluster consumers tap the bar and only J1.C keeps a "
+                        "flag, so exactly 1 rail-flag mark; got ${vbat_mark_count}")
 endif()
 
 # --- room-crossing nets: a plain label, not a port flag ----------------------
