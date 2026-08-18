@@ -161,6 +161,15 @@ TEST_CASE("E-21 harness name clashes with a designator") { expectFires("E-21"); 
 TEST_CASE("E-23 '.' selects a non-casual pin") { expectFires("E-23"); }
 TEST_CASE("E-24 no ground declared") { expectFires("E-24"); }
 TEST_CASE("E-49 an unpaired '=='") { expectFires("E-49"); }
+
+TEST_CASE("E-02 does not fire when a '<>' pin can drive the input") {
+    std::string report;
+    std::vector<std::string> codes = pipeline({fixture("E-02-bidir-clean")}, report);
+    if (std::find(codes.begin(), codes.end(), "E-02") != codes.end()) {
+        ::mantatest::fail(__FILE__, __LINE__,
+                          "E-02 fired on a bidir-driven input:\n" + report);
+    }
+}
 TEST_CASE("E-25 a NC pin is connected") { expectFires("E-25"); }
 TEST_CASE("E-26 single reference without &STUB") { expectFires("E-26"); }
 TEST_CASE("E-27 unpowered net") { expectFires("E-27"); }

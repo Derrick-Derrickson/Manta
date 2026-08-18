@@ -25,6 +25,11 @@
   `U1.GPIO1 = LED-DRIVE;` — and the old rule that `=` needed a device on one
   side is gone. E-22 joins the deliberately-absent codes and is never emitted.
 
+- **A `<>` pin satisfies E-02.** A bidirectional pin can drive, so a GPIO
+  wired straight into an input pin is normal, not a floating input. E-01 is
+  unchanged — it still counts only `>` pins, so two bus pins on one net are
+  not contention.
+
 - **Migration.** Sources written for 1.5 respell every lone joining `==` as
   `=` — `SW == SW-NODE = ...` becomes `SW = SW-NODE = ...`, `X == .{C1~cap:
   .=GND};` becomes `X = .{C1~cap: .=GND};` — while the paired forms

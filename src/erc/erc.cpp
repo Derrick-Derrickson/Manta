@@ -99,6 +99,7 @@ void ErcChecker::checkDrivers() {
         std::size_t consumers = 0;
         std::size_t passives = 0;
         std::size_t supplies = 0;
+        std::size_t bidirs = 0;
         Span firstDriver;
 
         for (const PinRef& ref : net.pins) {
@@ -109,6 +110,10 @@ void ErcChecker::checkDrivers() {
             }
             if (isConsumer(pin)) ++consumers;
             if (isPowerSource(pin)) ++supplies;
+            // A '<>' pin can drive. It is not a *driver* for E-01 -- spec
+            // 11.6: "E-01 fires only on multiple '>' pins" -- but a GPIO wired
+            // straight into an input is normal, not a floating input.
+            if (pin.direction == PortDir::Bidir) ++bidirs;
             // Spec 11.6: a pin with no arrow and no '&TYPE' is PASSIVE, which
             // "claims nothing".
             if (pin.type == PinType::Passive) ++passives;
@@ -123,16 +128,16 @@ void ErcChecker::checkDrivers() {
 
         // E-02: "A net has an input and no driver."
         //
-        // A net is driven when something can set its level. A '>' pin does, and
-        // so does a '&TYPE=POWER>' supply -- an enable tied to a rail is tied,
-        // not floating. A passive pin means something is attached that the
-        // checker cannot reason about, which is what a pull-up, a divider or a
-        // filter looks like from here; firing on those would make the rule
-        // useless on any real board.
+        // A net is driven when something can set its level. A '>' pin does; so
+        // does a '<>' pin, and so does a '&TYPE=POWER>' supply -- an enable
+        // tied to a rail is tied, not floating. A passive pin means something
+        // is attached that the checker cannot reason about, which is what a
+        // pull-up, a divider or a filter looks like from here; firing on those
+        // would make the rule useless on any real board.
         //
         // What is left is the case the rule exists for: a net that is nothing
         // but inputs, which is an input somebody forgot to connect.
-        if (consumers > 0 && drivers == 0 && supplies == 0 && passives == 0) {
+        if (consumers > 0 && drivers == 0 && supplies == 0 && passives == 0 && bidirs == 0) {
             // A net that is a block input is driven from outside, and one
             // downstream of an unfitted series part is deliberately open.
             bool suppressed = dnpIsolated_[i] || net.direction == PortDir::In ||

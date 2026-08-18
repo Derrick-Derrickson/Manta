@@ -76,9 +76,10 @@ Two outputs fighting. If they are meant to share a bus, declare them
 `&TYPE=OPENDRAIN`; if one can release the bus, it should be `<>`.
 
 **E-02 — a net has an input and no driver** *(also: an identifier ends in `-`)*
-A net that is nothing but input pins. A `>` pin, a `&TYPE=POWER>` supply or any
-passive pin all count as driving it, so a pull-up or a rail-tied enable will not
-trip this — what does is an input nobody connected.
+A net that is nothing but input pins. A `>` pin, a `<>` pin, a `&TYPE=POWER>`
+supply or any passive pin all count as driving it, so a GPIO into an input, a
+pull-up or a rail-tied enable will not trip this — what does is an input nobody
+connected.
 
 The same code covers an identifier ending in a hyphen, which is a lexical rule
 and unrelated. The message distinguishes them.

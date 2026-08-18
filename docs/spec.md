@@ -2457,7 +2457,7 @@ from mistakes.
 | Code | Rule |
 |---|---|
 | E-01 | Two or more `>` pins drive one net, with no open-drain or bus declaration. |
-| E-02 | A net has an input and no driver. Also: an identifier ends in `-`. |
+| E-02 | A net has an input and nothing that can drive it — no `>` or `<>` pin, no supply, no passive. Also: an identifier ends in `-`. |
 | E-04 | Array/scalar width mismatch without `=*` or `*=`. |
 | E-05 | Replication width not divisible by unit arity. |
 | E-06 | `[N[ ]M]` widths disagree with unit arity. |
