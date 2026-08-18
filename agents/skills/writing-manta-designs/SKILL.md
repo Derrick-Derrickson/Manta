@@ -47,9 +47,9 @@ net — that is also how a net gets a second name.
 of `==` brackets exactly one element onto the current node without advancing
 it. Bracket a shunt and the chain runs past it; bracket a net name and the
 node is named; bracket a two-terminal device and it is **shorted** — legal,
-and gives you W-02. The close may fall at the end of the statement
-(`Y == .{R2~res}. ==;`). What lets a chain continue past a shunt is exactly
-the bracket, because a shunt has no exit terminal:
+and gives you W-02. The close, like any connector, must be followed by an
+element — a bracket cannot end a statement. What lets a chain continue past
+a shunt is exactly the bracket, because a shunt has no exit terminal:
 
 ```
 VIN = .{R1~res}. == .{C1~cap: .=GND} == EN;

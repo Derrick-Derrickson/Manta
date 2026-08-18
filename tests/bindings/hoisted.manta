@@ -19,6 +19,6 @@ block eq-top {
 
     {U2~EQ-BUS: SPARE = ?;};
     U2.LANE  = [[.{RS%[1:4]~EQ-R}.]] = LANE-OUT[0:3];
-    U2.SIDE  == SIDE-BUS ==;
+    U2.SIDE  = SIDE-BUS;
     U2.REF   = .{R5~EQ-R}. = U1.SW;
 };

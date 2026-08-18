@@ -766,12 +766,14 @@ A == .{R1~10kR-0603}. == B;     // A and B are one net; R1's pads are bridged
 ```
 
 The pair shall be adjacent — an open answered by anything other than its close is error
-**E-49** — and the close may fall where the segment ends.
+**E-49** — and the close, like every connector, is followed by an element: a bracket
+cannot end a statement.
 
 ```
-Y == .{R2~10kR-0603}. ==;       // R2 shorted onto Y; the close ends the statement
 A == B;                         // ERROR E-49: the bracket never closes
 A == B = C;                     // ERROR E-49: the open is answered by '='
+U1.GPIO1 == LED-DRIVE ==;       // ERROR E-49: nothing follows the close
+U1.GPIO1 = LED-DRIVE;           // correct: the plain join of §6.2
 ```
 
 A binding may open with `==` (§7.4): the pin is the element before the open, and the
@@ -2669,14 +2671,13 @@ statement       = [ "extern" ] ( chain | field_decl | port_decl )
 section_marker  = "---" title ;
 
 chain           = segment { "^" segment } ;
-segment         = element { connector element } [ "==" ] ;
+segment         = element { connector element } ;
 connector       = "=" | "==" | "=*" | "*=" ;
 element         = net_expr | device | group | replication ;
 
 (* Constraint (§6.3): the "==" of a segment occur only as adjacent pairs
-   bracketing one element; the optional trailing "==" is such a pair's close
-   falling at the segment's end. A binding's opening "==" (§7.4) counts as
-   the open of its segment's first pair. Anything unpaired is E-49. *)
+   bracketing one element. A binding's opening "==" (§7.4) counts as the
+   open of its segment's first pair. Anything unpaired is E-49. *)
 
 group           = "(" segment ")" [ multiplicity ] ;
 multiplicity    = ( "+" | "|" | "*" ) integer ;

@@ -336,13 +336,6 @@ TEST_CASE("spec 15.8: compiling twice gives byte-identical objects") {
     CHECK_EQ(compileToObject(text), compileToObject(text));
 }
 
-TEST_CASE("rev 1.6: a trailing '==' close survives the object") {
-    // "A == .{C1} ==;" closes its bracket at the segment's end; the linker
-    // reads the short back out of the object, so the flag has to travel.
-    std::string obj = compileToObject("block b { A == .{C1~c: . = GND;} ==; };");
-    CHECK(obj.find("trailingSame") != std::string::npos);
-}
-
 TEST_CASE("spec 15.4: the object declares its kind and language revision") {
     std::string obj = compileToObject("block b { A = B; };");
     JsonParseError err;

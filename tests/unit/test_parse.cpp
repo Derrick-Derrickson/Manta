@@ -201,10 +201,10 @@ TEST_CASE("spec 6.3: '==' comes in adjacent pairs") {
     auto paired = parse("block b { VIN = .{R1~r}. == .{C1~c: . = GND;} == EN; };");
     expectClean(paired, "bracketed shunt");
 
-    // A close may fall where the segment ends.
+    // A close is followed by an element like any connector; a bracket
+    // cannot end a statement, however well it pairs.
     auto trailing = parse("block b { A == .{C1~c: . = GND;} ==; };");
-    expectClean(trailing, "trailing close");
-    CHECK(trailing->unit.items[0]->body[0].stmt->chain->segments[0]->trailingSame);
+    CHECK(trailing->report.find("E-49") != std::string::npos);
 
     // The old lone-'==' spelling opens a bracket that never closes: E-49.
     auto lone = parse("block b { A == B; };");

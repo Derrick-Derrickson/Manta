@@ -355,10 +355,6 @@ struct Element {
 struct Segment {
     std::span<Element*> elements;
     std::span<Connector> connectors;
-    // Spec 6.3: '==' is a node bracket and comes in pairs. A close may fall at
-    // the very end of the segment -- "U1.GPIO1 == LED-DRIVE ==;" -- where it
-    // has no element after it and lives here instead of in 'connectors'.
-    bool trailingSame = false;
     Span span;
 };
 

@@ -1471,10 +1471,8 @@ Elaborator::ElemValue Elaborator::elaborateSegment(const Segment* seg, Scope& sc
                 // Spec 6.3: '==' is a node bracket, so the element between an
                 // opening and a closing '==' has its own two terminals joined
                 // -- which is what shorts a two-terminal device and raises
-                // W-02. The close is either the next connector or, when the
-                // bracketed element ends the segment, the trailing '=='.
-                if ((i + 2 < total && connectorAt(i + 1) == Connector::Same) ||
-                    (i + 2 == total && seg->trailingSame)) {
+                // W-02.
+                if (i + 2 < total && connectorAt(i + 1) == Connector::Same) {
                     uniteBundles(values[i + 1].entry, values[i + 1].exit, at);
                     // A two-terminal device with '==' on both sides has its
                     // pads bridged. Spec 6.3 says this "is legal and generates

@@ -1181,7 +1181,7 @@ Segment* Parser::parseSegment(bool openedSame, Span openSpan) {
     std::vector<Element*> elements;
     std::vector<Connector> connectors;
     std::vector<Span> connectorSpans;
-    Span trailSpan;
+    bool diagnosed = false;
 
     elements.push_back(parseElement());
     for (;;) {
@@ -1193,12 +1193,12 @@ Segment* Parser::parseSegment(bool openedSame, Span openSpan) {
         else break;
         Span cs = here();
         advance();
-        // Spec 6.3: a bracket's close may fall at the very end of the segment
-        // -- "U1.GPIO1 == LED-DRIVE ==;" -- so a '==' followed by anything
-        // that ends a segment is the close, not a joiner.
+        // Spec 6.3: a bracket closes onto an element, never onto the end of
+        // the segment, so "Y == .{R2}. ==;" is E-49. One report covers the
+        // segment's whole bracket accounting.
         if (c == Connector::Same && atSegmentEnd()) {
-            s->trailingSame = true;
-            trailSpan = cs;
+            diags_.report(DiagId::E49, cs);
+            diagnosed = true;
             break;
         }
         connectors.push_back(c);
@@ -1208,14 +1208,13 @@ Segment* Parser::parseSegment(bool openedSame, Span openSpan) {
 
     // Spec 6.3 (revision 1.6): '==' is a node bracket, never a lone joiner.
     // Every '==' in a segment belongs to an adjacent open/close pair around
-    // exactly one element; the opening connector of a binding counts, and so
-    // does a trailing close. Anything unpaired is E-49.
-    {
+    // exactly one element; the opening connector of a binding counts.
+    // Anything unpaired is E-49.
+    if (!diagnosed) {
         std::vector<std::pair<bool, Span>> seq;
         if (openedSame) seq.emplace_back(true, openSpan);
         for (std::size_t i = 0; i < connectors.size(); ++i)
             seq.emplace_back(connectors[i] == Connector::Same, connectorSpans[i]);
-        if (s->trailingSame) seq.emplace_back(true, trailSpan);
         for (std::size_t i = 0; i < seq.size();) {
             if (!seq[i].first) { ++i; continue; }
             if (i + 1 < seq.size() && seq[i + 1].first) { i += 2; continue; }

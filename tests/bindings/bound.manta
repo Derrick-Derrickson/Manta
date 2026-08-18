@@ -32,10 +32,10 @@ block eq-top {
         SPARE = ?;
         // An array-pin binding: four pins, four copies, four nets.
         LANE  = [[.{RS%[1:4]~EQ-R}.]] = LANE-OUT[0:3];
-        // Four pins against a net that states no range at all: only the pins
-        // say how wide this is, so the array SIDE-BUS[0:3] exists only if the
-        // seeded pin reached width inference (spec 8.1).
-        SIDE  == SIDE-BUS ==;
+        // Four pins against a net that states no range at all: only the
+        // pins say how wide this is, so SIDE-BUS[0:3] exists because the
+        // seeded pin's width reaches the bare net (spec 8.1).
+        SIDE  = SIDE-BUS;
         // A series element between two pins.
         REF   = .{R5~EQ-R}. = U1.SW;
     };
