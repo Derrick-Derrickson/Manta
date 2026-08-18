@@ -109,7 +109,8 @@ private:
     Stmt* parseStatement();
     Stmt* parsePortListStatement();
     Chain* parseChain();
-    Segment* parseSegment();
+    Segment* parseSegment(bool openedSame = false, Span openSpan = Span{});
+    bool atSegmentEnd() const;
     Element* parseElement();
     Device* parseDevice();
     Group* parseGroup();

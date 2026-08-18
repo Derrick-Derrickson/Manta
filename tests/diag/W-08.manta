@@ -2,5 +2,5 @@ part q { @~footprint = F; [1:2] = A[1:2]<> &SWAP=g &TYPE=OPENDRAIN; [3:4] = B[1:
 block b {
     GND &TYPE=GROUND;
     X = A[1]{U1~q}B[1] = Y;
-    Y == GND;
+    Y = GND;
 };

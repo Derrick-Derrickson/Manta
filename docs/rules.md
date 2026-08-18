@@ -181,7 +181,7 @@ a path: `{driver}`, `{driver.VOH}`, `{sum(pins.DRAW)}`.
 `error[drive-high]` and answers to `-Wno-drive-high`, `--warn=drive-high` and
 `--error=drive-high`, exactly as a built-in code does.
 
-A name that collides with a built-in code or mnemonic is refused: `-Wno-E-22`
+A name that collides with a built-in code or mnemonic is refused: `-Wno-E-49`
 has to mean one thing.
 
 Because options are parsed before rules are read, a `-W` name that matches no

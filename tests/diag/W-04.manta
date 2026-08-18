@@ -3,6 +3,6 @@ part reg { @~footprint = F; 1 = VO> &TYPE=POWER; };
 block b {
     GND &TYPE=GROUND;
     RAIL = VO{U9~reg};
-    RAIL == V{U1~p}B;
-    U1.B == GND;
+    RAIL = V{U1~p}B;
+    U1.B = GND;
 };

@@ -10,24 +10,24 @@ static part SECT-R {
 
 block section-demo {
     --- POWER SUPPLY
-    VBUS == VIN;
+    VBUS = VIN;
     VIN = .{R1~SECT-R}. = 3V3;
 
     --- INPUTS / OUTPUTS
     3V3 = .{R2~SECT-R}. = SENSE;
     block section-inner {
         --- ANALOG FRONT END
-        AIN == AFE-IN;
+        AIN = AFE-IN;
 
         --- DIGITAL
-        D0 == D1;
+        D0 = D1;
     };
 
     --- HOUSEKEEPING // not a comment: a title runs to the end of the line
-    SENSE == MCU-SENSE;
+    SENSE = MCU-SENSE;
 };
 
 // A block with no markers stays exactly as it always was.
 block section-free {
-    P == Q;
+    P = Q;
 };

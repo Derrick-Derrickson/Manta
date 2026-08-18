@@ -105,9 +105,9 @@ TEST_CASE("a '#' field on a pin map line applies to every pin the line produces"
 block b {
     GND &TYPE=GROUND;
     RAIL = VOUT{REG1~REG};
-    RAIL == 3V3;
+    RAIL = 3V3;
     A = IO[1]{U1~MCU}IO[2] = B;
-    A == GND; B == GND;
+    A = GND; B = GND;
 };
 )");
     const Component* u1 = e->component("U1");
@@ -130,9 +130,9 @@ TEST_CASE("a call site overrides a pin field by declaring a stronger one") {
 block b {
     GND &TYPE=GROUND;
     RAIL = VOUT{REG1~REG};
-    RAIL == 3V3;
+    RAIL = 3V3;
     A = IO[1]{U1~MCU: IO[3] #!VOH=3V0; }IO[2] = B;
-    A == GND; B == GND;
+    A = GND; B = GND;
 };
 )");
     if (e->diags->errorCount() != 0) {
@@ -152,9 +152,9 @@ TEST_CASE("an equal-strength override is a conflict, not an override") {
 block b {
     GND &TYPE=GROUND;
     RAIL = VOUT{REG1~REG};
-    RAIL == 3V3;
+    RAIL = 3V3;
     A = IO[1]{U1~MCU: IO[3] #VOH=3V0; }IO[2] = B;
-    A == GND; B == GND;
+    A = GND; B = GND;
 };
 )");
     CHECK(e->report.find("E-12") != std::string::npos);
@@ -197,9 +197,9 @@ TEST_CASE("spec 7.3: E-08 compares pins, not arrays") {
 block b {
     GND &TYPE=GROUND;
     RAIL = VOUT{REG1~REG};
-    RAIL == 3V3;
+    RAIL = 3V3;
     A = IO[1]{U1~MCU: IO[3]=OTHER; }IO[2] = B;
-    A == GND; B == GND; OTHER == GND;
+    A = GND; B = GND; OTHER = GND;
 };
 )");
     CHECK(ok->report.find("E-08") == std::string::npos);
@@ -221,9 +221,9 @@ TEST_CASE("a pin field that only annotates is not a second connection") {
 block b {
     GND &TYPE=GROUND;
     RAIL = VOUT{REG1~REG};
-    RAIL == 3V3;
+    RAIL = 3V3;
     A = IO[1]{U1~MCU: IO[1] #!VOH=3V0; }IO[2] = B;
-    A == GND; B == GND;
+    A = GND; B = GND;
 };
 )");
     CHECK(e->report.find("E-08") == std::string::npos);
@@ -236,9 +236,9 @@ TEST_CASE("a decorated design needs no rules file to compile") {
 block b {
     GND &TYPE=GROUND;
     RAIL = VOUT{REG1~REG};
-    RAIL == 3V3;
+    RAIL = 3V3;
     A = IO[1]{U1~MCU}IO[2] = B;
-    A == GND; B == GND;
+    A = GND; B = GND;
 };
 )");
     CHECK_EQ(e->diags->errorCount(), std::size_t{0});
@@ -252,9 +252,9 @@ TEST_CASE("a numeric pin attribute keeps its parsed value, not just its text") {
 block b {
     GND &TYPE=GROUND;
     RAIL = VOUT{REG1~REG};
-    RAIL == 3V3;
+    RAIL = 3V3;
     A = IO[1]{U1~MCU}IO[2] = B;
-    A == GND; B == GND;
+    A = GND; B = GND;
 };
 )");
     const ComponentPin* vout = pin(e->component("REG1"), "VOUT");

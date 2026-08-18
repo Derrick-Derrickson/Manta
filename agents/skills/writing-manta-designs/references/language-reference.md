@@ -12,7 +12,7 @@ A leading `-` is resolved by position: in a net position it is an identifier, in
 a value position a negative number.
 
 ```
-BIAS == -5V;            the net named -5V
+BIAS = -5V;             the net named -5V
 #min-supply = -5V;      minus five volts
 ```
 
@@ -46,7 +46,7 @@ tokenised. Every tool reproduces it byte for byte.
 
 SI prefixes are `p n u m k M G T`. `u` is micro; `µ` is not accepted. An SI
 prefix may replace the decimal point, and both spellings mean the same thing:
-`4k7R == 4.7kR`, `3V3 == 3.3V`. The formatter emits the substituted form.
+`4k7R` ≡ `4.7kR`, `3V3` ≡ `3.3V`. The formatter emits the substituted form.
 
 Metric only. An imperial literal is E-17. Package codes like `0603` are
 identifiers naming a footprint family, not measurements.

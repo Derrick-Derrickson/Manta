@@ -2,5 +2,7 @@ part p { @~footprint = F; 1 = A &CASUAL; 2 = B &CASUAL; };
 block b {
     GND &TYPE=GROUND;
     X == .{R1~p}. == Y;
-    Y == GND;
+    Y = GND;
+    // The close may end the segment; the bracket shorts R2 all the same.
+    Y == .{R2~p}. ==;
 };

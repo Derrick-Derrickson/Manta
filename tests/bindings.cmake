@@ -30,7 +30,7 @@ file(MAKE_DIRECTORY "${WORK}")
 #
 # Between them they cover a shunt capacitor off a pin, a two-resistor divider, a
 # series element between a pin and a net, a series element between two pins, a
-# '==' run spanning the pin and two devices, a device nested two levels deep
+# '==' pair bracketing a device onto the pin's node, a device nested two levels deep
 # inside a binding, and array-pin bindings against both a replication and a net
 # that states no range of its own.
 run_manta(compile -o "${WORK}/bound/" "${DIR}/parts.manta" "${DIR}/bound.manta")
@@ -55,7 +55,7 @@ if(NOT bound_hash STREQUAL bound_again)
 endif()
 
 # An identical netlist would also be identically empty, so the connections are
-# named outright. A '==' run has to span the pin: U1.SW carries the pin, the
+# named outright. A '==' pair has to open at the pin: U1.SW carries the pin, the
 # diode's cathode, the bootstrap capacitor and the far end of R5.
 file(READ "${WORK}/bound.mantaNets" bound_net)
 foreach(want "\"RS4\"" "\"C3\"" "\"SIDE-BUS[3]\"" "\"LANE-OUT[3]\"")
@@ -93,9 +93,9 @@ function(assert_net_pins netsvar name)
     message(FATAL_ERROR "no net named '${name}'")
 endfunction()
 
-# The '==' run spans the pin (spec 6.3): "SW == K{D1} == .{C2}" is one net.
+# The '==' pair opens at the pin (spec 6.3): "SW == K{D1} == .{C2}" is one net.
 assert_net_pins(bound_net "U1.SW" U1.2 D1.2 C2.2 R5.2)
-# ...and a '==' run that reaches a device by only one terminal does not short it.
+# ...and a bracket that reaches a device by only one terminal does not short it.
 assert_net_pins(bound_net "GND" U1.6 C1.1 D1.1 R2.1 C3.1)
 # The divider's midpoint is the pin itself.
 assert_net_pins(bound_net "U1.FB" U1.3 R1.2 R2.2)
@@ -112,9 +112,9 @@ file(WRITE "${WORK}/w01.manta" "\
 block w01-top {
     GND &TYPE=GROUND;
     {U1~EQ-CHIP:
-        VIN  = VRAIL == .{C1~EQ-C: . = GND;};
-        SW   == K{D1~EQ-D: A = GND;};
-        FB   == .{R1~EQ-R: . = GND;};
+        VIN  == VRAIL == .{C1~EQ-C: . = GND;};
+        SW   = K{D1~EQ-D: A = GND;};
+        FB   = .{R1~EQ-R: . = GND;};
         EN   = VRAIL;
         GND  = GND;
     };
@@ -190,8 +190,8 @@ file(WRITE "${ANNSRC}" "\
 block ann-top {
     GND &TYPE=GROUND;
     {U1~EQ-CHIP:
-        VIN  = VRAIL == .{C?~EQ-C: . = .{R?~EQ-R: . = GND;};};
-        SW   == K{D?~EQ-D: A = GND;};
+        VIN  == VRAIL == .{C?~EQ-C: . = .{R?~EQ-R: . = GND;};};
+        SW   = K{D?~EQ-D: A = GND;};
         GND  = GND;
     };
 };

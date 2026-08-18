@@ -88,13 +88,13 @@ block fixture {
     --- MCU CORE
     {U1~FIX-MCU: VCC = 3V3; RST = nRST; IO0 = LED-A; IO1 = SPI-CLK; AVDD = VBAT;};
     {J2~FIX-HDR: A = nRST;};
-    3V3 = .{R1~FIX-R}. == nRST;
+    3V3 = .{R1~FIX-R}. = nRST;
     LED-A = .{R2~FIX-R}. = LED-K;
     LED-K = A{D1~FIX-LED}K = GND;
-    3V3 == .{C1~FIX-C: . = GND;};
-    3V3 == .{C2~FIX-C: . = GND;};
-    VBAT == .{C3~FIX-C: . = GND;};
-    VBAT == .{C4~FIX-C: . = GND;};
+    3V3 = .{C1~FIX-C: . = GND;};
+    3V3 = .{C2~FIX-C: . = GND;};
+    VBAT = .{C3~FIX-C: . = GND;};
+    VBAT = .{C4~FIX-C: . = GND;};
 
     --- IO HEADER
     {J1~FIX-HDR: A = SPI-CLK; B = GND; C = VBAT; D = EXTRA;};

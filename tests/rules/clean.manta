@@ -23,7 +23,7 @@ part RX-5V-OK {
 block b {
     GND &TYPE=GROUND;
     RAIL = VOUT{U1~REG-AMPLE}GND;
-    RAIL == 3V3;
+    RAIL = 3V3;
     SIG = Q{U2~DRV-5V}Q;
-    SIG == D{U3~RX-5V-OK}D;
+    SIG = D{U3~RX-5V-OK}D;
 };

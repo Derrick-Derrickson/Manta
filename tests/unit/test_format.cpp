@@ -98,15 +98,15 @@ TEST_CASE("continuation lines take one unit past the depth") {
     const std::string input =
         "block b {\n"
         "    SW == SW-NODE\n"
-        "= .{L1~res}.\n"
-        "                == 3V3\n"
+        "== .{L1~res}.\n"
+        "                = 3V3\n"
         "   &CURRENT=3A;\n"
         "};\n";
     const std::string want =
         "block b {\n"
         "    SW == SW-NODE\n"
-        "        = .{L1~res}.\n"
-        "        == 3V3\n"
+        "        == .{L1~res}.\n"
+        "        = 3V3\n"
         "        &CURRENT=3A;\n"
         "};\n";
     CHECK_EQ(format(input), want);

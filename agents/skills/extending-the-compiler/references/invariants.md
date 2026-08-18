@@ -44,7 +44,7 @@ compares hashes. Add any new output there.
 The specification says a leading `-` "is resolved by grammatical position":
 
 ```
-BIAS == -5V;            the net named -5V
+BIAS = -5V;             the net named -5V
 #min-supply = -5V;      minus five volts
 ```
 

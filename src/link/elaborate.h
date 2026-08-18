@@ -113,7 +113,6 @@ private:
     struct ElemValue {
         Bundle entry;
         Bundle exit;
-        bool isBareNet = false;
         bool hasEntry = false;
         bool hasExit = false;
         std::int32_t component = -1;  // for W-02 and W-03

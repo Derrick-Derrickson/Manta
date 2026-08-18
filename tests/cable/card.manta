@@ -36,12 +36,12 @@ part MCU {
 block sensor-card {
     GND &TYPE=GROUND;
     RAIL = VO{U1~REG};
-    RAIL == VI{U2~MCU};
-    RAIL == VPOS{J1~BACKPLANE-OUT};
+    RAIL = VI{U2~MCU};
+    RAIL = VPOS{J1~BACKPLANE-OUT};
     UPLINK = VPOS{J2~BACKPLANE-IN};
     UPLINK &STUB;
-    TX{U2} == TXD{J1};
-    RX{U2} == RXD{J2};
-    G{U1} == GND;
-    G{U2} == GND;
+    TX{U2} = TXD{J1};
+    RX{U2} = RXD{J2};
+    G{U1} = GND;
+    G{U2} = GND;
 };

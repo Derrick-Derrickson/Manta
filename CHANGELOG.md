@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+### Language, revision 1.6
+
+- **`==` is a node bracket and never appears alone.** An adjacent pair of
+  `==` brackets exactly one element onto the current node (§6.3): the node is
+  the same on both sides, and every terminal of the bracketed element lies on
+  it. Bracket a shunt and the chain runs past it; bracket a net name and the
+  node is named; bracket a two-terminal device and it is shorted (W-02, whose
+  message now says "bracket"). The close may fall where the segment ends
+  (`Y == .{R2~res}. ==;`), and a binding's opening `==` counts as the open of
+  its segment's first pair (`VIN == VPOS == .{C1~cap: .=GND};`). Anything
+  unpaired — including every pre-1.6 lone `==` — is the new error **E-49**,
+  reported at parse.
+
+- **`=` is the plain join, and E-22 is retired.** `=` joins the exit of the
+  left element to the entry of the right; through a device the node advances,
+  and between two bare net names there is nothing to advance through, so
+  `A = B;` puts both names on one node (§6.2). That is now the aliasing form —
+  `U1.GPIO1 = LED-DRIVE;` — and the old rule that `=` needed a device on one
+  side is gone. E-22 joins the deliberately-absent codes and is never emitted.
+
+- **Migration.** Sources written for 1.5 respell every lone joining `==` as
+  `=` — `SW == SW-NODE = ...` becomes `SW = SW-NODE = ...`, `X == .{C1~cap:
+  .=GND};` becomes `X = .{C1~cap: .=GND};` — while the paired forms
+  (`VIN = .{R1~res}. == .{C1~cap: .=GND} == EN;`) mean exactly what they
+  always did. Objects carry an optional segment `trailingSame` key for the
+  end-of-segment close; the language revision in objects and netlists is 1.6.
+
 ## 1.5.0 — 2026-08-14
 
 ### Language, revision 1.5

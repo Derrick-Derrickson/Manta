@@ -951,6 +951,7 @@ Binding* Parser::parseBinding() {
 
     if (connected) {
         bool advancing = at(TokenKind::Eq);
+        Span connSpan = here();
         advance();
         if (advancing && at(TokenKind::Question)) {
             // "GNDB=?" leaves the pin deliberately floating (spec 11.6). Only
@@ -959,7 +960,10 @@ Binding* Parser::parseBinding() {
             advance();
             b->unbind = true;
         } else {
-            Segment* seg = parseSegment();
+            // The opening connector of a binding is part of the segment's
+            // bracket accounting (spec 6.3): "FB == .{R3: .=5V; } == ..."
+            // opens at the pin and closes after R3.
+            Segment* seg = parseSegment(b->connector == Connector::Same, connSpan);
             // A lone net keeps the shape it had before revision 1.4, 'rhs'
             // null included, so every design written against 1.3 travels the
             // path it always travelled.
@@ -1170,12 +1174,14 @@ Element* Parser::parseElement() {
     return e;
 }
 
-Segment* Parser::parseSegment() {
+Segment* Parser::parseSegment(bool openedSame, Span openSpan) {
     auto* s = arena_.make<Segment>();
     s->span = here();
 
     std::vector<Element*> elements;
     std::vector<Connector> connectors;
+    std::vector<Span> connectorSpans;
+    Span trailSpan;
 
     elements.push_back(parseElement());
     for (;;) {
@@ -1185,15 +1191,52 @@ Segment* Parser::parseSegment() {
         else if (at(TokenKind::StarEq)) c = Connector::Broadcast;
         else if (at(TokenKind::Eq)) c = Connector::Advance;
         else break;
+        Span cs = here();
         advance();
+        // Spec 6.3: a bracket's close may fall at the very end of the segment
+        // -- "U1.GPIO1 == LED-DRIVE ==;" -- so a '==' followed by anything
+        // that ends a segment is the close, not a joiner.
+        if (c == Connector::Same && atSegmentEnd()) {
+            s->trailingSame = true;
+            trailSpan = cs;
+            break;
+        }
         connectors.push_back(c);
+        connectorSpans.push_back(cs);
         elements.push_back(parseElement());
+    }
+
+    // Spec 6.3 (revision 1.6): '==' is a node bracket, never a lone joiner.
+    // Every '==' in a segment belongs to an adjacent open/close pair around
+    // exactly one element; the opening connector of a binding counts, and so
+    // does a trailing close. Anything unpaired is E-49.
+    {
+        std::vector<std::pair<bool, Span>> seq;
+        if (openedSame) seq.emplace_back(true, openSpan);
+        for (std::size_t i = 0; i < connectors.size(); ++i)
+            seq.emplace_back(connectors[i] == Connector::Same, connectorSpans[i]);
+        if (s->trailingSame) seq.emplace_back(true, trailSpan);
+        for (std::size_t i = 0; i < seq.size();) {
+            if (!seq[i].first) { ++i; continue; }
+            if (i + 1 < seq.size() && seq[i + 1].first) { i += 2; continue; }
+            diags_.report(DiagId::E49, seq[i].second);
+            ++i;
+        }
     }
 
     s->elements = commit(elements);
     s->connectors = commit(connectors);
     s->span = s->span.merge(toks_.at(pos_ - 1).span(file_.id()));
     return s;
+}
+
+bool Parser::atSegmentEnd() const {
+    // The tokens that may legitimately follow a chain segment: a terminator, a
+    // '^' partition, a directive or field against the statement, or the close
+    // of the construct the segment sits in (a binding body, a group).
+    return at(TokenKind::Semi) || at(TokenKind::Caret) || at(TokenKind::Amp) ||
+           at(TokenKind::Hash) || at(TokenKind::At) || at(TokenKind::RBrace) ||
+           at(TokenKind::RParen) || at(TokenKind::Eof);
 }
 
 Chain* Parser::parseChain() {

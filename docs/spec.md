@@ -1,8 +1,18 @@
 # The Manta Schematic Definition Language
 
-**Specification, revision 1.5**
+**Specification, revision 1.6**
 
 > **Corrected against a reference implementation.**
+>
+> **1.6 makes `==` a bracket.** `==` never appears alone: a pair of `==`,
+> always adjacent, brackets exactly one element onto the current node — a
+> shunt the chain runs past, a name for the node, a device deliberately
+> shorted. An unpaired `==` is error E-49 (§6.3). The plain join is a single
+> `=` everywhere, two bare net names included: `A = B;` puts both names on
+> one node, which retires E-22 and with it the old rule that `=` needed a
+> device on one side (§6.2). Sources written for 1.5 that used a lone `==`
+> to join or alias nets respell it `=`; the bracketed forms — `X == .{C1~c:
+> .=GND} == Y` — mean in 1.6 exactly what they meant before.
 >
 > **1.5 says what a net and a connector are for the page.** Two directives, one
 > revision. `&RAIL` (§11.3) marks a net as a power rail for rendering, whatever
@@ -154,7 +164,7 @@ A leading `-` is resolved by grammatical position. In a net position a token beg
 with `-` is an identifier; in a value position it is a negative numeric literal.
 
 ```
-BIAS == -5V;            // the net named -5V
+BIAS = -5V;             // the net named -5V
 #min-supply = -5V;      // the value minus five volts
 ```
 
@@ -172,7 +182,7 @@ Whitespace separates tokens and is otherwise insignificant. A statement may span
 number of lines. Indentation has no meaning and there is no line-continuation operator.
 
 ```
-SW == SW-NODE
+SW = SW-NODE
    = .{L1~MT100UFA}.
    = 3V3;
 ```
@@ -180,7 +190,7 @@ SW == SW-NODE
 is identical to:
 
 ```
-SW == SW-NODE = .{L1~MT100UFA}. = 3V3;
+SW = SW-NODE = .{L1~MT100UFA}. = 3V3;
 ```
 
 ### 2.5 Comments
@@ -198,7 +208,7 @@ comment is not significant.
 A comment may appear wherever whitespace may appear.
 
 ```
-SW == SW-NODE   // the switching node
+SW = SW-NODE    // the switching node
    = .{L1~MT100UFA /* 10uH */}.
    = 3V3;
 ```
@@ -316,10 +326,10 @@ spelling, which compiled artifacts carry (§15.4). The formatter leaves either a
 written (§17).
 
 ```
-4k7R    ==  4.7kR
-3V3     ==  3.3V
-2u2H    ==  2.2uH
-2G4Hz   ==  2.4GHz
+4k7R    ≡  4.7kR
+3V3     ≡  3.3V
+2u2H    ≡  2.2uH
+2G4Hz   ≡  2.4GHz
 ```
 
 A suffix that is itself two characters ending in a digit gains nothing from the
@@ -331,8 +341,8 @@ square millimetre, `(10⁻³ m)² = 10⁻⁶ m²`, and not a milli-square-metre.
 canonical form therefore steps through prefixes by `10⁶`.
 
 ```
-1mm2      ==  0.000001m2
-1000mm2   ==  0.001m2
+1mm2      ≡  0.000001m2
+1000mm2   ≡  0.001m2
 2m2                            // the leading 'm' is the unit, not a prefix
 ```
 
@@ -638,7 +648,7 @@ Nets are global within their block. Two occurrences of one name in one scope are
 There is no net declaration statement: a net exists because it is named.
 
 ```
-SW == SW-NODE = .{L1~MT100UFA}. = VOUT;
+SW = SW-NODE = .{L1~MT100UFA}. = VOUT;
 VOUT = .{C1~10uF-0805: .=GND};      // the same VOUT
 ```
 
@@ -651,14 +661,14 @@ A pin belongs to exactly one net, so `U1.GPIO1` denotes that net whether read as
 or as the net at the pin. This holds everywhere, not only for unnamed nodes.
 
 ```
-{C5~100nF-0603: .=GND}. == U1.GPIO1;
+{C5~100nF-0603: .=GND}. = U1.GPIO1;
 ```
 
 Where a net is also named explicitly the two are aliases, and the explicit name is used
 for display, netlist output and BOM.
 
 ```
-U1.GPIO1 == LED-DRIVE;      // the same net, called LED-DRIVE thereafter
+U1.GPIO1 = LED-DRIVE;       // the same net, called LED-DRIVE thereafter
 ```
 
 A harness name shall not collide with a designator, or member access is ambiguous. That is
@@ -697,64 +707,79 @@ joins the exit terminal of the element on its left to the entry terminal of the 
 its right.
 
 ```
-SW == SW-NODE = .{L1~MT100UFA}. = VOUT;
+SW = SW-NODE = .{L1~MT100UFA}. = VOUT;
 ```
 
-### 6.2 `=` — advance
+### 6.2 `=` — join
 
-`=` connects two adjacent elements and advances the node. The node after `=` is distinct
-from the node before it.
+`=` joins the exit terminal of the element on its left to the entry terminal of the
+element on its right. Through a device the node advances: the node on the far side of the
+device is distinct from the node on the near side.
 
 ```
 A = .{R1~10kR-0603}. = B;      // A and B are different nets, joined through R1
 ```
 
-`=` shall have a device, group or replication on at least one side. Two bare net names
-joined by `=` is error **E-22**.
+Between two bare net names there is no device to advance through, so `=` puts both names
+on one node. This is how two nets are tied and how a node acquires a second name (§5.2);
+there is no separate aliasing form.
 
 ```
-SW = SW-NODE = .{L1~MT100UFA}.;      // ERROR E-22
-SW == SW-NODE = .{L1~MT100UFA}.;     // correct
-```
-
-A name is bare only where it is a single identifier. A dotted pin reference is
-not: `U3.OUT` denotes a pin, and a pin is a device terminal, which is precisely
-what `=` requires on one side (§5.2). A harness identifier is not bare either,
-since it stands for its members (§12.1). Both are therefore exempt, which is why
-these are all well formed:
-
-```
+SW = SW-NODE = .{L1~MT100UFA}.;      // SW and SW-NODE are one net, feeding L1
+U1.GPIO1 = LED-DRIVE;                // the same net, called LED-DRIVE thereafter
 TP7 = U3.OUT &STUB;                  // a pin reference (§11.8)
 extern U5.1 = GND;                   // a pin reference (§6.6)
 USB = MCU-USB;                       // harnesses, assigned member-wise (§12.1)
 ```
 
-This is also why a binding may open with `=` against a bare net: a binding is rooted at a
-pin (§7.4), and a pin is a device terminal.
+*(Revision note: 1.5 and earlier required a device on one side of `=` and reserved
+error E-22 for two bare names. 1.6 retires E-22; the joining `==` it forced is now the
+bracket of §6.3 and shall not appear alone.)*
 
-### 6.3 `==` — same net
+### 6.3 `==` — the node bracket
 
-Every element in a run of consecutive `==` lies on one net.
-
-```
-A == B == C;                    // A, B and C are one net
-```
-
-The rule is uniform and has no exception for devices. A two-terminal device with `==` on
-both sides is shorted out. This is legal and generates warning **W-02**.
-
-```
-A == .{R1~10kR-0603}. == B;     // A and B are one net; R1's pads are bridged
-```
-
-`==` is what allows a chain to continue past a shunt, since a shunt has no exit terminal
-and the node is the same either side of it.
+`==` never appears alone. An adjacent pair of `==` brackets exactly one element onto the
+current node: the node is the same on both sides of the bracket, and every terminal of
+the bracketed element lies on it. A bracket never advances the chain, which is what lets
+a chain run past a shunt — a shunt has no exit terminal, so nothing else could carry the
+chain beyond it.
 
 ```
 VIN = .{R1~10kR-0603}. == .{C1~100nF-0603: .=GND} == EN;
 ```
 
-`R1`'s far terminal, `C1`'s exposed terminal and `EN` are one node.
+`R1`'s far terminal, `C1`'s exposed terminal and `EN` are one node: the bracket hangs
+`C1` on the node, and `EN`, standing after the close, rides the same node.
+
+A bracketed net name names the node without moving it:
+
+```
+SW == SW-NODE == .{L1~MT100UFA}. = VOUT;   // the node is called SW-NODE; L1 sits on it
+```
+
+The rule is uniform and has no exception for devices. A two-terminal device inside a
+bracket has both pads on one node and is shorted out. This is legal and generates
+warning **W-02**.
+
+```
+A == .{R1~10kR-0603}. == B;     // A and B are one net; R1's pads are bridged
+```
+
+The pair shall be adjacent — an open answered by anything other than its close is error
+**E-49** — and the close may fall where the segment ends.
+
+```
+Y == .{R2~10kR-0603}. ==;       // R2 shorted onto Y; the close ends the statement
+A == B;                         // ERROR E-49: the bracket never closes
+A == B = C;                     // ERROR E-49: the open is answered by '='
+```
+
+A binding may open with `==` (§7.4): the pin is the element before the open, and the
+first element of the binding's chain is the bracketed one.
+
+```
+VIN == VPOS == .{C1~10uF-0805: .=GND};   // VIN sits on VPOS; C1 rides the node
+```
 
 ### 6.4 `^` — adjacency
 
@@ -767,7 +792,7 @@ SIG-IN = I{U2~AMP012}  ^  {U3~AMP012}O = AMPED-SIG;
 ```
 
 `SIG-IN` connects to `U2`'s `I` pin, and `U3`'s `O` pin connects to `AMPED-SIG`. `U2` and
-`U3` are not connected. Where a connection is intended, use `==`.
+`U3` are not connected. Where a connection is intended, use `=`.
 
 `^` binds looser than `=` and `==`, partitioning a statement into independent segments
 that share one directive scope (§11.2).
@@ -921,8 +946,7 @@ U5.EN = .{R7~100kR-0603}. = VBAT;
 ```
 
 `PIN = NET` is the degenerate case of the same rule, where the segment is a single net
-element. It joins two names with `=` and is not **E-22**, for the reason §6.2 gives: the
-left side is a pin reference, and a pin is a device terminal.
+element. It joins the pin and the net onto one node, as any `=` does (§6.2).
 
 Any of the four connectors of §6 may open a binding — `=`, `==`, `=*`, `*=` — each with its
 usual meaning. `^` (§6.4) does not appear in a binding: a binding is one segment, not a
@@ -931,9 +955,9 @@ bindings or a separate statement.
 
 ```
 {U2~buck-3a:
-    VIN  = VPOS == .{C1~10uF-0805: .=GND; };
+    VIN  == VPOS == .{C1~10uF-0805: .=GND; };
     FB   == .{R3~51kR-0603: .=5V; } == .{R4~10kR-0603: .=GND; };
-    COMP = .{C2~1nF-0603}. == GND;
+    COMP = .{C2~1nF-0603}. = GND;
 };
 ```
 
@@ -1411,7 +1435,7 @@ scope unit, reflowing a statement across lines never changes its constraints.
 | `&RAIL` | *(none)* | Marks a power rail for rendering, whatever the net's name or class. |
 
 ```
-USB-DP == MCU-DP &IMP=90RD;
+USB-DP = MCU-DP &IMP=90RD;
 3V3 &CURRENT=3A &VOLTAGE=5V;
 CLK &MAXDELAY=600ps &SHIELD=GND;
 VSYS-PROT &RAIL &CURRENT=2A;
@@ -2377,15 +2401,15 @@ A diagnostic is written to stderr in the form:
 ```
 
 ```
-power.manta:42:9: error[E-22]: '=' joins two bare net names; use '=='
-power.manta:71:5: warning[W-02]: R12 is shorted by a '==' run
+power.manta:42:9: error[E-49]: an unpaired '=='; '== ... ==' brackets exactly one element, and a plain join is a single '='
+power.manta:71:5: warning[W-02]: R12 is shorted by a '==' bracket
 ```
 
 Under `--json-diagnostics` each is an object on its own line:
 
 ```json
-{"file":"power.manta","line":42,"column":9,"severity":"error","code":"E-22",
- "message":"'=' joins two bare net names; use '=='"}
+{"file":"power.manta","line":42,"column":9,"severity":"error","code":"E-49",
+ "message":"an unpaired '=='; '== ... ==' brackets exactly one element, and a plain join is a single '='"}
 ```
 
 Diagnostics arising after substitution report the position of the substitution in the
@@ -2437,7 +2461,6 @@ from mistakes.
 | E-18 | A match tolerance or skew constraint given as a length. |
 | E-20 | A fitted part with no `@footprint`. |
 | E-21 | A harness name collides with a designator. |
-| E-22 | `=` joins two bare net names. |
 | E-23 | A `.` terminal selects a pin without `&CASUAL`. |
 | E-24 | The design declares no `&TYPE=GROUND` net. |
 | E-25 | A pin marked `&TYPE=NC` is connected. |
@@ -2463,6 +2486,7 @@ from mistakes.
 | E-46 | Mating pins do not line up: a count mismatch, or a `@map` naming a pin that does not exist. |
 | E-47 | Two pins that both drive are joined through a cable. |
 | E-48 | A supply and a ground are joined through a cable. |
+| E-49 | An unpaired `==`: a `==` bracket shall open and close around one element. |
 | E-UNANNOTATED | An instance still carries `?` when the netlist is built. |
 
 `E-UNANNOTATED` is the one diagnostic outside the numbered space, because it is
@@ -2495,7 +2519,7 @@ component exported as `BLK?7_R1` is no more shippable than a bare `?`.
 | Code | Rule |
 |---|---|
 | W-01 | A declared part has pins appearing in no chain and no binding. Catches unused sections of a multi-unit package. |
-| W-02 | A two-terminal device is shorted by a `==` run. |
+| W-02 | A two-terminal device is shorted by a `==` bracket. |
 | W-03 | A capacitor is in series with two non-ground nets. |
 | W-04 | A `&TYPE=POWER<` pin has no capacitor on its net within two nodes. |
 | W-06 | A `~`-weak field is never overridden anywhere in the design. |
@@ -2590,7 +2614,7 @@ indented file is already canonical — the formatter changes nothing at all on i
 | Symbol | Meaning | Section |
 |---|---|---|
 | `=` | connect, advance node | 6.2 |
-| `==` | connect, same net | 6.3 |
+| `==` | node bracket, always in an adjacent pair | 6.3 |
 | `^` | adjacency, no connection | 6.4 |
 | `=*` | gather array to scalar | 6.5 |
 | `*=` | broadcast scalar to array | 6.5 |
@@ -2645,9 +2669,14 @@ statement       = [ "extern" ] ( chain | field_decl | port_decl )
 section_marker  = "---" title ;
 
 chain           = segment { "^" segment } ;
-segment         = element { connector element } ;
+segment         = element { connector element } [ "==" ] ;
 connector       = "=" | "==" | "=*" | "*=" ;
 element         = net_expr | device | group | replication ;
+
+(* Constraint (§6.3): the "==" of a segment occur only as adjacent pairs
+   bracketing one element; the optional trailing "==" is such a pair's close
+   falling at the segment's end. A binding's opening "==" (§7.4) counts as
+   the open of its segment's first pair. Anything unpaired is E-49. *)
 
 group           = "(" segment ")" [ multiplicity ] ;
 multiplicity    = ( "+" | "|" | "*" ) integer ;
@@ -2856,12 +2885,12 @@ block power-and-signal {
     // ---- buck output stage ------------------------------------------
     >nPWR-EN;
 
-    SW == SW-NODE
+    SW = SW-NODE
         = (.{L?~MT100UFA}.)+2
         = (A{D?~DI3643}K)|2
-       == ({C?~100nF-0603: .=GND}.)*4
-       == ({C?~10uF-0805: .=%[GND,AGND,GND]}.)*3
-       == 3V3
+        == ({C?~100nF-0603: .=GND}.)*4
+        == ({C?~10uF-0805: .=%[GND,AGND,GND]}.)*3
+        = 3V3
         = S{Q?~FFET123: G=nPWR-EN; }D
         = PWR-SWITCHED
         &CURRENT=3A &!VOLTAGE=6V &~LAYER=inner1;

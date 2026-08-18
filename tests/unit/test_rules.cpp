@@ -236,9 +236,9 @@ rules t {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("a check name may not collide with a built-in diagnostic") {
-    // "-Wno-E-22" has to mean one thing.
+    // "-Wno-E-49" has to mean one thing.
     auto r = check("block b { GND &TYPE=GROUND; };", R"(
-rules t { check E-22 for net { require has(net.name); error "x"; }; };
+rules t { check E-49 for net { require has(net.name); error "x"; }; };
 )");
     CHECK(r->report.find("collides with the built-in diagnostic") != std::string::npos);
 

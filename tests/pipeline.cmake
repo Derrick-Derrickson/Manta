@@ -145,8 +145,8 @@ block blocktop {
 
     --- LEGS
     BDRIVE[0:1] = [[{BLK%[1:2]~leg}IN]];
-    BDRIVE[0] == BPWR;
-    BDRIVE[1] == BPWR;
+    BDRIVE[0] = BPWR;
+    BDRIVE[1] = BPWR;
 
     --- SENSE
     {U8~BR-1k: A = BSENSE; B = BFEED; SHIELD = ?;};

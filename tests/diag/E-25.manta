@@ -4,5 +4,5 @@ block b {
     GND &TYPE=GROUND;
     X = A{R1~p}N = SHARED;
     SHARED == .{R2~r}. == GND;
-    X == GND;
+    X = GND;
 };

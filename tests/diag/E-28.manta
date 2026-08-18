@@ -3,5 +3,5 @@ block b {
     GND &TYPE=GROUND;
     RAIL = VO{U1~reg}G = GND;
     RAIL2 = VO{U2~reg}G = GND;
-    RAIL == RAIL2;
+    RAIL = RAIL2;
 };

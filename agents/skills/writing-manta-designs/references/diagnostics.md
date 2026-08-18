@@ -11,10 +11,10 @@ Each entry can be enabled, silenced or re-graded by code or by mnemonic:
 
 ## Connection and structure
 
-**E-22 — `'=' joins two bare net names`**
-`=` advances the node, so it needs something *between* the two names. Either use
-`==`, which puts them on one net, or put a device between them.
-A dotted reference (`U3.OUT`) or a harness identifier is not bare and is exempt.
+**E-49 — `an unpaired '=='`**
+`==` is a node bracket and comes in adjacent pairs around exactly one element:
+`X == .{C1~cap: .=GND} == Y`. A lone `==` — the pre-1.6 "same net" spelling —
+never closes. The plain join, two bare net names included, is a single `=`.
 
 **E-04 — width mismatch**
 Two sides of a connection differ in width and neither `=*` nor `*=` was written.

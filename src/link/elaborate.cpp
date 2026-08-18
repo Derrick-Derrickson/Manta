@@ -391,7 +391,6 @@ Elaborator::ElemValue Elaborator::evalNet(const NetExpr* net, Scope& scope,
                                           std::int64_t expectedWidth,
                                           std::vector<std::uint32_t>& touched) {
     ElemValue value;
-    value.isBareNet = true;
     value.span = net->span;
 
     // Spec 8.5: "'%' supplies a distinct value to each copy. %NAME[range] draws
@@ -484,7 +483,6 @@ Elaborator::ElemValue Elaborator::evalNet(const NetExpr* net, Scope& scope,
             }
             value.exit = value.entry;
             value.hasEntry = value.hasExit = true;
-            value.isBareNet = false;  // this names a device terminal
             return value;
         }
     }
@@ -949,9 +947,6 @@ void Elaborator::applyBindings(const Instance* inst, std::uint32_t componentInde
             // presents the same nodes on both terminals.
             seed.exit = seed.entry;
             seed.hasEntry = seed.hasExit = true;
-            // Naming a pin is naming a device terminal, not a bare net, so '='
-            // against it is never E-22 (spec 6.2, 7.4).
-            seed.isBareNet = false;
 
             // Recorded before the segment runs: elaborating it may reallocate
             // components_ and invalidate 'component'.
@@ -1465,34 +1460,21 @@ Elaborator::ElemValue Elaborator::elaborateSegment(const Segment* seg, Scope& sc
 
         switch (c) {
             case Connector::Advance:
-                // Spec 6.2: "'=' shall have a device, group or replication on at
-                // least one side." A dotted reference names a device terminal
-                // (spec 5.2) and so is not bare; a harness identifier stands for
-                // its members and is not bare either (spec 12.1).
-                if (values[i].isBareNet && values[i + 1].isBareNet) {
-                    const Element* le = elementAt(i);
-                    const Element* re = elementAt(i + 1);
-                    auto plainNet = [&](const Element* e) {
-                        // A seeded pin has no element and is not a bare net
-                        // anyway: it is a device terminal (spec 6.2), which is
-                        // why "PIN = NET" is not E-22 (spec 7.4).
-                        if (!e || e->kind != ElementKind::Net) return false;
-                        if (e->net->path.size() != 1 || e->net->hasMemberList) return false;
-                        SymbolId n = resolve(e->net->path[0], scope);
-                        return !scope.harnessTypes.contains(n);
-                    };
-                    if (plainNet(le) && plainNet(re)) diags_.report(DiagId::E22, at);
-                }
+                // Revision 1.6, spec 6.2: '=' is the plain join. Two bare net
+                // names joined by '=' lie on one node -- the old E-22 is
+                // retired -- so every element pairing takes the same path.
                 uniteBundles(lhs, rhs, at);
                 break;
 
             case Connector::Same:
                 uniteBundles(lhs, rhs, at);
-                // Spec 6.3: "Every element in a run of consecutive '==' lies on
-                // one net", so an element with '==' on both sides has its own
-                // two terminals joined -- which is what shorts a two-terminal
-                // device and raises W-02.
-                if (i + 2 < total && connectorAt(i + 1) == Connector::Same) {
+                // Spec 6.3: '==' is a node bracket, so the element between an
+                // opening and a closing '==' has its own two terminals joined
+                // -- which is what shorts a two-terminal device and raises
+                // W-02. The close is either the next connector or, when the
+                // bracketed element ends the segment, the trailing '=='.
+                if ((i + 2 < total && connectorAt(i + 1) == Connector::Same) ||
+                    (i + 2 == total && seg->trailingSame)) {
                     uniteBundles(values[i + 1].entry, values[i + 1].exit, at);
                     // A two-terminal device with '==' on both sides has its
                     // pads bridged. Spec 6.3 says this "is legal and generates

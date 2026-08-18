@@ -30,22 +30,26 @@ that achieves it; copy its structure.
 This is where most mistakes are made, so learn them properly.
 
 ```
-A == B                    both names are one net
+A = B                     both names are one net
 A = .{R1~res}. = B        A and B are different nets, joined through R1
+X == .{C1~cap: .=GND} == Y   the pair brackets C1 onto the node; X and Y are one net
 A ^ B                     placed in one statement, not connected at all
 A[0:3] =* B               gather: four wires shorted onto one
 A *= B[0:7]               broadcast: one net to every element
 ```
 
-`=` **advances the node**, so it needs a device, group or replication on at
-least one side. Two bare names joined by `=` is **E-22**. A dotted reference
-such as `U3.OUT` is not bare — it names a pin, and a pin is a device terminal —
-which is why `TP7 = U3.OUT &STUB;` is fine.
+`=` is **the plain join**: it connects the exit of the left element to the
+entry of the right. Through a device the node advances; between two bare names
+there is nothing to advance through, so `A = B` simply puts both names on one
+net — that is also how a net gets a second name.
 
-`==` puts everything in the run on one net. That is uniform and has no exception
-for devices: a two-terminal device with `==` on both sides is **shorted**, which
-is legal and gives you W-02. It is also what lets a chain continue past a shunt,
-because a shunt has no exit terminal:
+`==` **never appears alone** — an unpaired `==` is **E-49**. An adjacent pair
+of `==` brackets exactly one element onto the current node without advancing
+it. Bracket a shunt and the chain runs past it; bracket a net name and the
+node is named; bracket a two-terminal device and it is **shorted** — legal,
+and gives you W-02. The close may fall at the end of the statement
+(`Y == .{R2~res}. ==;`). What lets a chain continue past a shunt is exactly
+the bracket, because a shunt has no exit terminal:
 
 ```
 VIN = .{R1~res}. == .{C1~cap: .=GND} == EN;
@@ -87,7 +91,7 @@ copy a replication made, and every segment across `^`. It does not reach through
 a `:` binding or into a part.
 
 ```
-SW == SW-NODE = S{Q1~fet: G=nEN}D = SWITCHED &CURRENT=3A;
+SW = SW-NODE = S{Q1~fet: G=nEN}D = SWITCHED &CURRENT=3A;
 ```
 
 `SW`, `SW-NODE` and `SWITCHED` carry the current limit. `nEN` does not. To

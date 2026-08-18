@@ -332,32 +332,11 @@ void LocalChecker::checkElement(const Element* el) {
 }
 
 void LocalChecker::checkSegment(const Segment* seg) {
+    // Revision 1.6, spec 6.2: '=' is the plain join, two bare net names
+    // included -- "A = B;" puts them on one node. E-22 is retired; the '=='
+    // pairing rule that replaced it is enforced where the brackets are read,
+    // in the parser (E-49).
     for (const Element* el : seg->elements) checkElement(el);
-
-    // Spec 6.2: "'=' shall have a device, group or replication on at least one
-    // side. Two bare net names joined by '=' is error E-22."
-    //
-    // A *dotted* reference is not a bare net name. Spec 5.2: "A pin belongs to
-    // exactly one net, so 'U1.GPIO1' denotes that net whether read as the pin
-    // or as the net at the pin" -- writing it names a device terminal, which is
-    // exactly the thing '=' needs on one side. That is why the specification's
-    // own examples "TP7 = U3.OUT &STUB;" (11.8) and "extern U5.1 = GND;" (6.6)
-    // are well formed. Harness member access is spelled the same way and is
-    // exempt on the same grounds; distinguishing the two needs the symbol
-    // table, and E-21 exists precisely because they must not collide.
-    auto isBareNet = [](const Element* e) {
-        return e->kind == ElementKind::Net && e->net->path.size() == 1 &&
-               !e->net->hasMemberList && !e->net->perCopy;
-    };
-
-    for (std::size_t i = 0; i < seg->connectors.size(); ++i) {
-        if (seg->connectors[i] != Connector::Advance) continue;
-        const Element* lhs = seg->elements[i];
-        const Element* rhs = seg->elements[i + 1];
-        if (isBareNet(lhs) && isBareNet(rhs)) {
-            diags_.report(DiagId::E22, lhs->span.merge(rhs->span));
-        }
-    }
 }
 
 void LocalChecker::checkChain(const Chain* chain) {

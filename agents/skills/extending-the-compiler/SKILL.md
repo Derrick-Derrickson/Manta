@@ -109,6 +109,6 @@ Three that look like bugs and are not:
 
 - The lexer classifying `10kR-0603` as an identifier and `4k7R` as a resistance
   without choosing between the readings.
-- `==` joining a device's own two terminals, which is how a device gets shorted.
+- a `== ... ==` pair bracketing a device, joining its own two terminals -- how a device gets shorted.
 - `.mantaO` keeping a numeric value's lexeme alongside its number, because
   `&NET=3V3` means a rail and not a voltage.

@@ -26,9 +26,9 @@ part RX-5V {
 block b {
     GND &TYPE=GROUND;
     RAIL = VOUT{U1~REG-SMALL}GND;
-    RAIL == 3V3;
+    RAIL = 3V3;
 
     // 2V4 will not clear a 3V5 threshold.
     SIG = Q{U2~DRV-3V3}Q;
-    SIG == D{U3~RX-5V}D;
+    SIG = D{U3~RX-5V}D;
 };

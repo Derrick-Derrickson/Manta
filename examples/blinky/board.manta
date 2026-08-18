@@ -55,9 +55,9 @@ block blinky {
 
     // The bulk cap sits on VBUS and the bypass on 3V3, which is what keeps
     // W-04 quiet on both supply pins.
-    VBUS == .{C1~C-10uF-0805: . = GND;};
+    VBUS = .{C1~C-10uF-0805: . = GND;};
     VBUS = VIN{U1~LDO-3V3: EN = VBUS; NC = ?;}VOUT = 3V3 &CURRENT=600mA &!VOLTAGE=6V;
-    3V3 == .{C2~C-10uF-0805: . = GND;};
+    3V3 = .{C2~C-10uF-0805: . = GND;};
 
     --- MCU
 
@@ -73,12 +73,13 @@ block blinky {
     };
 
     // Two decoupling caps on the supply pin, one bulk and one high frequency.
-    3V3 == .{C3~C-100nF-0603: . = GND;};
+    3V3 = .{C3~C-100nF-0603: . = GND;};
 
-    // The reset pull-up. '==' continues the chain past the shunt, since a shunt
-    // has no exit terminal and the node is the same either side of it (spec 6.3).
-    3V3 = .{R3~R-10kR-0603}. == nRESET;
-    nRESET == .{C4~C-100nF-0603: . = GND;};
+    // The reset pull-up, then the reset cap on the same node: '=' is the
+    // plain join (spec 6.2), and a shunt's one exposed terminal simply sits
+    // where the join puts it.
+    3V3 = .{R3~R-10kR-0603}. = nRESET;
+    nRESET = .{C4~C-100nF-0603: . = GND;};
 
     --- I2C
 
@@ -86,8 +87,8 @@ block blinky {
     // needs no source (spec 11.6).
     i2c &HARNESS=i2c-bus;
     <>i2c;
-    3V3 = .{R4~R-10kR-0603}. == i2c.SDA;
-    3V3 = .{R5~R-10kR-0603}. == i2c.SCL;
+    3V3 = .{R4~R-10kR-0603}. = i2c.SDA;
+    3V3 = .{R5~R-10kR-0603}. = i2c.SCL;
 
     --- INDICATORS
 

@@ -18,5 +18,5 @@ block cascade-demo {
     };
 
     // Nothing below the bad binding is at fault, and parsing must reach here.
-    RAIL == GND;
+    RAIL = GND;
 };

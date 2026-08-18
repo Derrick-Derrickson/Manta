@@ -382,14 +382,16 @@ E-02 covers both "a net has an input and no driver" and "an identifier ends in
 `-`". They are unrelated, and the second is lexical while the first is
 whole-design. Both report E-02, with messages that distinguish them.
 
-### D8. A dotted name is not a bare net name
+### D8. A dotted name is not a bare net name *(historical as of 1.6)*
 
-`=` is required to have a device, group or replication on at least one side, and
-two bare net names joined by `=` is E-22. But a pin reference such as `U3.OUT`
-*is* a device terminal — a pin belongs to exactly one net, so the reference names
-that net at that pin — and a harness identifier stands for its members. Both are
-therefore exempt, which is what makes `TP7 = U3.OUT &STUB;`,
-`extern U5.1 = GND;` and `USB = MCU-USB;` all well formed.
+Under revisions 1.5 and earlier, `=` was required to have a device, group or
+replication on at least one side, and two bare net names joined by `=` was
+E-22. A pin reference such as `U3.OUT` *is* a device terminal — a pin belongs
+to exactly one net, so the reference names that net at that pin — and a harness
+identifier stands for its members, so both were exempt, which is what made
+`TP7 = U3.OUT &STUB;`, `extern U5.1 = GND;` and `USB = MCU-USB;` well formed.
+Revision 1.6 retires E-22 — `=` is the plain join, bare names included — so the
+distinction no longer gates anything; the forms above are unchanged.
 
 ---
 
@@ -536,7 +538,7 @@ The equivalence is what makes it cheap. Because a binding's chain is exactly the
 hoisted statement, directive scope needs no rule beyond the one §11.2 already
 states — a statement is the scope unit, so a binding is its own scope and the
 enclosing statement's directives do not reach into it. ERC sees ordinary nets
-and ordinary pins, so E-22, E-26, E-27 and the rest apply unchanged. A device
+and ordinary pins, so E-26, E-27 and the rest apply unchanged. A device
 declared inside a binding is an instance of the enclosing body, so it takes that
 body's active render section (§4.7) and is annotated with everything else, with
 no traversal that knows about bindings. `PIN = NET`, the only form legal before
@@ -546,9 +548,9 @@ same path it always did.
 The restrictions follow from the same equivalence rather than from taste. A
 binding is one segment, so `^` — which partitions a *statement* into segments —
 has nothing to partition and does not appear. All four connectors of §6 open a
-binding because a segment admits all four. And `PIN = NET` does not trip E-22
-for the reason §6.2 already gives: the left side is a pin reference, and a pin
-is a device terminal.
+binding because a segment admits all four; a binding's opening `==` counts as
+the open of its segment's first bracket pair (§6.3, revision 1.6). `PIN = NET`
+is simply the plain join of §6.2.
 
 The §19 production was widened at the same time to admit two forms the language
 had always accepted and the grammar did not: a pin carrying directives or fields

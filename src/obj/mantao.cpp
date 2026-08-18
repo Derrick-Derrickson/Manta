@@ -464,6 +464,9 @@ private:
         w_.beginArray();
         for (Connector c : s->connectors) w_.value(connectorName(c));
         w_.endArray();
+        // The bracket close at the very end of a segment (spec 6.3). Absent
+        // means false, so objects written before revision 1.6 read unchanged.
+        if (s->trailingSame) w_.field("trailingSame", true);
         span(s->span);
         w_.endObject();
     }
@@ -1207,6 +1210,7 @@ private:
             for (const JsonPtr& c : a->array) connectors.push_back(readConnector(c->text));
         }
         s->connectors = commit(connectors);
+        s->trailingSame = o->boolean_("trailingSame");
         s->span = readSpan(*o);
         return s;
     }

@@ -158,9 +158,9 @@ TEST_CASE("E-17 imperial unit") { expectFires("E-17"); }
 TEST_CASE("E-18 tolerance as a length") { expectFires("E-18"); }
 TEST_CASE("E-20 fitted part with no footprint") { expectFires("E-20"); }
 TEST_CASE("E-21 harness name clashes with a designator") { expectFires("E-21"); }
-TEST_CASE("E-22 '=' joins two bare net names") { expectFires("E-22"); }
 TEST_CASE("E-23 '.' selects a non-casual pin") { expectFires("E-23"); }
 TEST_CASE("E-24 no ground declared") { expectFires("E-24"); }
+TEST_CASE("E-49 an unpaired '=='") { expectFires("E-49"); }
 TEST_CASE("E-25 a NC pin is connected") { expectFires("E-25"); }
 TEST_CASE("E-26 single reference without &STUB") { expectFires("E-26"); }
 TEST_CASE("E-27 unpowered net") { expectFires("E-27"); }
@@ -268,9 +268,9 @@ TEST_CASE("-W, -Wno- and --error= resolve by code and by mnemonic") {
     CHECK(werror.resolve(byCode) == Severity::Ignored);
 
     // ...and must not demote an error.
-    DiagId e22{};
-    CHECK(lookupDiag("E-22", e22));
-    CHECK(werror.resolve(e22) == Severity::Error);
+    DiagId e49{};
+    CHECK(lookupDiag("E-49", e49));
+    CHECK(werror.resolve(e49) == Severity::Error);
 }
 
 TEST_MAIN()

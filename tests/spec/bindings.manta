@@ -27,17 +27,18 @@ block bindings-demo {
     GND &TYPE=GROUND;
 
     {U2~BND-BUCK:
-        // A device chain hanging off a pin, and a shunt that carries a
-        // binding list of its own.
-        VIN  = VPOS-PROT == .{C1~10uF-0805: . = GND;};
-        // '==' opens a binding just as it opens a statement (spec 6.3).
+        // The rail name bracketed onto the pin's node, and a shunt that
+        // carries a binding list of its own riding the same node (spec 6.3).
+        VIN  == VPOS-PROT == .{C1~10uF-0805: . = GND;};
+        // A '==' pair brackets the diode onto the pin's node; the cap after
+        // the close rides the same node (spec 6.3).
         SW   == K{D2~DI3643: A = GND;} == .{C3~100nF-0603: . = BUCK-BST;};
         // A binding chain may run over as many lines as it needs.
         FB   == .{R3~10kR-0603: . = 5V;}
             == .{R4~10kR-0603: . = GND;};
         // A series element between the pin and a net.
         EN   = .{R5~100kR-0603}. = VPOS-PROT;
-        COMP = .{C2~100nF-0603}. == GND;
+        COMP = .{C2~100nF-0603}. = GND;
         // The pre-1.4 spelling, unchanged: one bare net after '='.
         GND  = GND;
     };
@@ -46,7 +47,7 @@ block bindings-demo {
     // binding list holds another.
     {U3~BND-BUS:
         LANE[0:3] =* LANE-COMMON;
-        REF       == .{R6~10kR-0603: . = .{C4~100nF-0603: . = GND;};};
+        REF       = .{R6~10kR-0603: . = .{C4~100nF-0603: . = GND;};};
         // Spec 11.6: a pin left deliberately floating.
         SPARE     = ?;
         // Spec 11.5: a directive written against the pin, after the chain.
@@ -56,12 +57,12 @@ block bindings-demo {
     // A series element between two nets, and the bulk cap on the protected
     // side. '.' takes the first unassigned pin of R7 and C5 alike (spec 7.3).
     VPOS-PROT = .{R7~0R-0603}. = VPOS;
-    VPOS-PROT == .{C5~10uF-0805: . = GND;};
+    VPOS-PROT = .{C5~10uF-0805: . = GND;};
 
     // An RC snubber written entirely inside one binding chain, whose capacitor
     // is left unassigned: 'manta annotate' has to reach into a binding list to
     // rewrite it (spec 7.4, 13).
-    VPOS-PROT == .{R8~10kR-0603: . = .{C?~100nF-0603: . = GND;};};
+    VPOS-PROT = .{R8~10kR-0603: . = .{C?~100nF-0603: . = GND;};};
 
     VPOS = {TP1~board-supply}VOUT;
 };

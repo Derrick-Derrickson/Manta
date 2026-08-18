@@ -11,7 +11,7 @@ block power-and-signal {
     GND &TYPE=GROUND;
     >nPWR-EN;
 
-    SW == SW-NODE
+    SW = SW-NODE
         = (.{L?~MT100UFA}.)+2
        == ({C?~100nF-0603: .=GND}.)*4
        == 3V3

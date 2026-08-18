@@ -3,5 +3,5 @@
 // render section marker and must carry a title.
 block b {
     ---
-    A == B;
+    A = B;
 };

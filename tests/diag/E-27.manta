@@ -2,5 +2,5 @@ part p { @~footprint = F; 1 = V< &TYPE=POWER; 2 = B &CASUAL; };
 block b {
     GND &TYPE=GROUND;
     RAIL = V{U1~p}B = GND;
-    RAIL == RAIL2;
+    RAIL = RAIL2;
 };

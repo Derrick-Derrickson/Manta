@@ -19,7 +19,7 @@ block hints-demo {
     // A switched rail under a project-local name: exactly what the spelling
     // heuristics miss and '&RAIL' exists for.
     HSYS-PROT &RAIL &CURRENT=2A;
-    HSYS-PROT == .{C1~100nF-0603: . = HGND;};
+    HSYS-PROT = .{C1~100nF-0603: . = HGND;};
 
     // The connector faces the left sheet edge.
     {J1~HNT-CONN-6: &EDGE=LEFT; VIN = HSYS-PROT; GNDP = HGND; S[0:3] = HSIG[0:3]; };

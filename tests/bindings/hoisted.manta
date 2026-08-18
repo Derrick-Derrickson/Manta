@@ -10,15 +10,15 @@ block eq-top {
     GND &TYPE=GROUND;
 
     {U1~EQ-CHIP};
-    U1.VIN   = VRAIL == .{C1~EQ-C: . = GND;};
+    U1.VIN   == VRAIL == .{C1~EQ-C: . = GND;};
     U1.SW    == K{D1~EQ-D: A = GND;} == .{C2~EQ-C: . = BOOT;};
     U1.FB    == .{R1~EQ-R: . = VRAIL;} == .{R2~EQ-R: . = GND;};
     U1.EN    = .{R3~EQ-R}. = VRAIL;
-    U1.COMP  == .{R4~EQ-R: . = .{C3~EQ-C: . = GND;};};
+    U1.COMP  = .{R4~EQ-R: . = .{C3~EQ-C: . = GND;};};
     U1.GND   = GND;
 
     {U2~EQ-BUS: SPARE = ?;};
     U2.LANE  = [[.{RS%[1:4]~EQ-R}.]] = LANE-OUT[0:3];
-    U2.SIDE  == SIDE-BUS;
+    U2.SIDE  == SIDE-BUS ==;
     U2.REF   = .{R5~EQ-R}. = U1.SW;
 };

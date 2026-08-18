@@ -108,7 +108,7 @@ block fixture {
     {Y1~FIX-X: A = XTI; B = XTO;};
     {C2~FIX-C: A = GND; B = XTI;};
     {C3~FIX-C: A = GND; B = XTO;};
-    3V3 == .{C4~FIX-C: . = GND;};
+    3V3 = .{C4~FIX-C: . = GND;};
 };
 ")
 

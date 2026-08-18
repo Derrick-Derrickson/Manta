@@ -3,6 +3,6 @@ block b {
     GND &TYPE=GROUND;
     X = .{U1~p}. = GND;
     U1 &HARNESS=bus;
-    U1.SDA == SDA2;
-    U1.SDA == SDA3;
+    U1.SDA = SDA2;
+    U1.SDA = SDA3;
 };

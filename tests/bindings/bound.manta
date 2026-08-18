@@ -12,17 +12,18 @@ block eq-top {
     GND &TYPE=GROUND;
 
     {U1~EQ-CHIP:
-        // A shunt capacitor off a pin.
-        VIN   = VRAIL == .{C1~EQ-C: . = GND;};
-        // A '==' run spanning the pin and two devices: the pin, the diode's
-        // cathode and the capacitor's first pad are one net (spec 6.3).
+        // The rail name bracketed onto the pin's node, with the shunt
+        // capacitor riding the same node after the close.
+        VIN   == VRAIL == .{C1~EQ-C: . = GND;};
+        // A '==' pair bracketing the diode onto the pin's node: the pin, the
+        // diode's cathode and the capacitor's first pad are one net (spec 6.3).
         SW    == K{D1~EQ-D: A = GND;} == .{C2~EQ-C: . = BOOT;};
         // A two-resistor divider whose midpoint is the pin.
         FB    == .{R1~EQ-R: . = VRAIL;} == .{R2~EQ-R: . = GND;};
         // A series element between the pin and a net.
         EN    = .{R3~EQ-R}. = VRAIL;
         // A device nested two levels deep inside a binding.
-        COMP  == .{R4~EQ-R: . = .{C3~EQ-C: . = GND;};};
+        COMP  = .{R4~EQ-R: . = .{C3~EQ-C: . = GND;};};
         // The pre-1.4 spelling, one bare net after '='.
         GND   = GND;
     };
@@ -34,7 +35,7 @@ block eq-top {
         // Four pins against a net that states no range at all: only the pins
         // say how wide this is, so the array SIDE-BUS[0:3] exists only if the
         // seeded pin reached width inference (spec 8.1).
-        SIDE  == SIDE-BUS;
+        SIDE  == SIDE-BUS ==;
         // A series element between two pins.
         REF   = .{R5~EQ-R}. = U1.SW;
     };

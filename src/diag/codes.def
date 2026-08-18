@@ -112,8 +112,12 @@ MANTA_DIAG(E20, "E-20", "missing-footprint", Severity::Error,
            "fitted part '{}' has no '@footprint'")
 MANTA_DIAG(E21, "E-21", "harness-designator-clash", Severity::Error,
            "harness name '{}' collides with a designator; member access would be ambiguous")
-MANTA_DIAG(E22, "E-22", "bare-net-advance", Severity::Error,
-           "'=' joins two bare net names; use '=='")
+// Revision 1.6, spec 6.3: '==' is a node bracket and shall appear as an
+// adjacent open/close pair around exactly one element. A plain join -- two
+// nets onto one node included -- is a single '=', which also retires E-22.
+MANTA_DIAG(E49, "E-49", "unpaired-same", Severity::Error,
+           "an unpaired '=='; '== ... ==' brackets exactly one element, and a "
+           "plain join is a single '='")
 MANTA_DIAG(E23, "E-23", "casual-required", Severity::Error,
            "'.' terminal selects pin '{}' of '{}', which does not carry '&CASUAL'")
 MANTA_DIAG(E24, "E-24", "no-ground", Severity::Error,
@@ -157,7 +161,7 @@ MANTA_DIAG(E43, "E-43", "part-exports-field", Severity::Error,
 // ---------------------------------------------------------------------------
 MANTA_DIAG(W01, "W-01", "unused-pins", Severity::Warning,
            "'{}' has {} pins appearing in no chain and no binding")
-MANTA_DIAG(W02, "W-02", "shorted-device", Severity::Warning, "{} is shorted by a '==' run")
+MANTA_DIAG(W02, "W-02", "shorted-device", Severity::Warning, "{} is shorted by a '==' bracket")
 MANTA_DIAG(W03, "W-03", "cap-in-series", Severity::Warning,
            "{} is in series between two non-ground nets ('{}' and '{}')")
 MANTA_DIAG(W04, "W-04", "undecoupled-supply", Severity::Warning,
@@ -180,4 +184,6 @@ MANTA_DIAG(W09, "W-09", "supply-no-consumers", Severity::Warning,
            "net '{}' has a '&TYPE=POWER' source but no consumers")
 
 // Codes E-03, E-16, E-19, E-35 and W-05 do not appear in the specification.
-// They are deliberately absent here and are never emitted.
+// They are deliberately absent here and are never emitted. E-22 joined them in
+// revision 1.6: '=' between two bare net names is now the plain join, and the
+// only '==' mistake left is the unpaired bracket, which is E-49.

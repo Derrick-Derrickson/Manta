@@ -113,15 +113,15 @@ TEST_CASE("spec 20.7: the complete board parses") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("spec 2.4: whitespace is insignificant") {
-    auto multi = parse("block b { SW == SW-NODE\n   = .{L1~MT100UFA}.\n   = 3V3; };");
-    auto single = parse("block b { SW == SW-NODE = .{L1~MT100UFA}. = 3V3; };");
+    auto multi = parse("block b { SW = SW-NODE\n   = .{L1~MT100UFA}.\n   = 3V3; };");
+    auto single = parse("block b { SW = SW-NODE = .{L1~MT100UFA}. = 3V3; };");
     expectClean(multi, "multi-line chain");
     expectClean(single, "single-line chain");
 }
 
 TEST_CASE("spec 2.3: a leading '-' is resolved by grammatical position") {
     // In a net position "-5V" names a net; in a value position it is a number.
-    auto r = parse("block b { BIAS == -5V; #min-supply = -5V; };");
+    auto r = parse("block b { BIAS = -5V; #min-supply = -5V; };");
     expectClean(r, "leading hyphen");
 
     const Item* b = r->unit.items[0];
@@ -138,7 +138,7 @@ TEST_CASE("spec 2.3: a leading '-' is resolved by grammatical position") {
 }
 
 TEST_CASE("spec 16.1: E-02 fires on an identifier ending in '-'") {
-    auto r = parse("block b { VCC- == GND; };");
+    auto r = parse("block b { VCC- = GND; };");
     CHECK(r->report.find("E-02") != std::string::npos);
 }
 
@@ -186,7 +186,7 @@ TEST_CASE("spec 8.6: each multiplicity operator parses") {
         "block b {"
         "  A = (.{L?~ind}.)+2 = B;"
         "  C = (A{D?~dio}K)|2 = D;"
-        "  E == ({C?~cap: .=GND}.)*4;"
+        "  E = ({C?~cap: .=GND}.)*4;"
         "};");
     expectClean(r, "multiplicity");
     const Item* b = r->unit.items[0];
@@ -195,10 +195,44 @@ TEST_CASE("spec 8.6: each multiplicity operator parses") {
     CHECK(b->body[2].stmt->chain->segments[0]->elements[1]->group->mult == MultKind::Node);
 }
 
+TEST_CASE("spec 6.3: '==' comes in adjacent pairs") {
+    // The pair brackets one element onto the node; the element after the
+    // close rides the same node.
+    auto paired = parse("block b { VIN = .{R1~r}. == .{C1~c: . = GND;} == EN; };");
+    expectClean(paired, "bracketed shunt");
+
+    // A close may fall where the segment ends.
+    auto trailing = parse("block b { A == .{C1~c: . = GND;} ==; };");
+    expectClean(trailing, "trailing close");
+    CHECK(trailing->unit.items[0]->body[0].stmt->chain->segments[0]->trailingSame);
+
+    // The old lone-'==' spelling opens a bracket that never closes: E-49.
+    auto lone = parse("block b { A == B; };");
+    CHECK(lone->report.find("E-49") != std::string::npos);
+
+    // Pairs are adjacent: an open answered by '=' instead of a close is E-49.
+    auto split = parse("block b { A == B = C2 == D; };");
+    CHECK(split->report.find("E-49") != std::string::npos);
+
+    // A binding's opening '==' is the open of its segment's first pair...
+    auto binding = parse("block b { {U1~p: VIN == VPOS == .{C1~c: . = GND;}; }; };");
+    expectClean(binding, "binding-opened pair");
+
+    // ...so a binding whose '==' never closes is E-49 too.
+    auto bindingLone = parse("block b { {U1~p: VIN == VPOS; }; };");
+    CHECK(bindingLone->report.find("E-49") != std::string::npos);
+}
+
+TEST_CASE("spec 6.2: '=' is the plain join, bare nets included") {
+    // Revision 1.6 retires E-22: "A = B;" puts two names on one node.
+    auto r = parse("block b { A = B; };");
+    expectClean(r, "bare-net join");
+}
+
 TEST_CASE("spec 6: every connection operator parses") {
     auto r = parse(
         "block b {"
-        "  A == B;"
+        "  A == B == C2;"
         "  C = .{R?~r}. = D;"
         "  E[0:3] = [[.{R?~r}.]] =* F;"
         "  G *= H[0:7];"
@@ -265,7 +299,7 @@ TEST_CASE("spec 14: substitution parses in every value position") {
         "  A = .{R?~$val$-0603}. = B;"
         "  @fitted=$fit-amp$;"
         "  C = D.GPIO[$n$];"
-        "  E == F &CURRENT=$amps$A;"
+        "  E = F &CURRENT=$amps$A;"
         "  #w = $100 * 2$R;"
         "};");
     expectClean(r, "substitution positions");
@@ -395,7 +429,7 @@ TEST_CASE("spec 6.6: 'extern' prefixes a statement") {
 TEST_CASE("spec 2.5: comments may appear wherever whitespace may") {
     auto r = parse(
         "block b { // the switching node\n"
-        "  SW == SW-NODE   // trailing\n"
+        "  SW = SW-NODE   // trailing\n"
         "     = .{L1~MT100UFA /* 10uH */}.\n"
         "     = 3V3;\n"
         "};");
@@ -405,7 +439,7 @@ TEST_CASE("spec 2.5: comments may appear wherever whitespace may") {
 TEST_CASE("spec 2.5: block comments do not nest") {
     // "the first '*/' closes the comment", so the '/*' inside is not special
     // and the text after '*/' is live code again.
-    auto r = parse("block b { /* outer /* inner */ A == B; };");
+    auto r = parse("block b { /* outer /* inner */ A = B; };");
     expectClean(r, "non-nesting block comment");
 }
 
@@ -448,7 +482,7 @@ TEST_CASE("rev 1.4: a binding opens with any connector and carries a chain") {
     auto r = parse(
         "block b {"
         "  {U1~p:"
-        "    VIN       = VPOS == .{C1~c: . = GND;};"
+        "    VIN       == VPOS == .{C1~c: . = GND;};"
         "    SW        == K{D2~d: A = GND;} == .{C3~c: . = BST;};"
         "    LANE[0:3] =* COMMON;"
         "    REF       *= FANOUT[0:3];"
@@ -460,10 +494,11 @@ TEST_CASE("rev 1.4: a binding opens with any connector and carries a chain") {
     const Instance* inst = instanceIn(r, 0);
     CHECK_EQ(inst->bindings.size(), std::size_t{6});
 
-    // "VIN = VPOS == .{C1~c: . = GND;}": '=' roots the chain at VIN, and what
-    // follows is a two-element segment whose shunt has a binding list of its own.
+    // "VIN == VPOS == .{C1~c: . = GND;}": the '==' pair brackets VPOS onto
+    // the pin's node, and the shunt after the close -- carrying a binding
+    // list of its own -- rides that node.
     const Binding* vin = inst->bindings[0];
-    CHECK(vin->connector == Connector::Advance);
+    CHECK(vin->connector == Connector::Same);
     CHECK(vin->net == nullptr);
     CHECK(vin->rhs != nullptr);
     CHECK_EQ(vin->rhs->elements.size(), std::size_t{2});
@@ -471,7 +506,7 @@ TEST_CASE("rev 1.4: a binding opens with any connector and carries a chain") {
     CHECK(vin->rhs->elements[1]->kind == ElementKind::Device);
     CHECK_EQ(vin->rhs->elements[1]->device->instance->bindings.size(), std::size_t{1});
 
-    // '==' opens a binding as it opens a statement (spec 6.3), and both
+    // A '==' pair may open at the pin itself (spec 6.3), and both
     // elements of this one are devices with terminals of their own.
     const Binding* sw = inst->bindings[1];
     CHECK(sw->connector == Connector::Same);
@@ -506,7 +541,7 @@ TEST_CASE("rev 1.4: a trailing '&' or '#' still belongs to the pin") {
         "block b {"
         "  {U1~p:"
         "    VIN = NET &STUB;"
-        "    SW  == .{C1~c: . = GND;} &~PINDELAY=8ps;"
+        "    SW  = .{C1~c: . = GND;} &~PINDELAY=8ps;"
         "    FB  = NET2 #VOH=3V0;"
         "    DQ[0] &PINDELAY=18ps;"
         "  };"
@@ -533,13 +568,13 @@ TEST_CASE("rev 1.4: a trailing '&' or '#' still belongs to the pin") {
 }
 
 TEST_CASE("rev 1.4: '.' as the pin takes a chain, and nests") {
-    auto r = parse("block b { A = .{U1~p: . == .{C1~c: . = .{C2~c: . = GND;};}; }. = B; };");
+    auto r = parse("block b { A = .{U1~p: . = .{C1~c: . = .{C2~c: . = GND;};}; }. = B; };");
     expectClean(r, "dot pin with a chain");
     const Instance* inst =
         r->unit.items[0]->body[0].stmt->chain->segments[0]->elements[1]->device->instance;
     const Binding* b = inst->bindings[0];
     CHECK(b->pinIsDot);
-    CHECK(b->connector == Connector::Same);
+    CHECK(b->connector == Connector::Advance);
     CHECK(b->rhs != nullptr);
 
     // ...and the device inside it holds a device inside that.
@@ -559,7 +594,7 @@ TEST_CASE("rev 1.4: a chain binding leaves E-09 and the trailing ';' alone") {
     CHECK(empty->report.find("E-09") != std::string::npos);
 
     // A ';' before the '}' is permitted and is what the formatter emits.
-    auto trailing = parse("block b { {U1~p: A == .{C1~c: . = GND;}; }; };");
+    auto trailing = parse("block b { {U1~p: A = .{C1~c: . = GND;}; }; };");
     expectClean(trailing, "trailing semicolon after a chain binding");
     CHECK_EQ(instanceIn(trailing, 0)->bindings.size(), std::size_t{1});
 }
@@ -588,7 +623,7 @@ TEST_CASE("rev 1.4: one bad binding is reported once, not once per line after it
     CHECK(last.kind == BodyKind::Stmt);
     CHECK(last.stmt->kind == StmtKind::Chain);
     CHECK_EQ(last.stmt->chain->segments[0]->elements.size(), std::size_t{2});
-    CHECK(last.stmt->chain->segments[0]->connectors[0] == Connector::Same);
+    CHECK(last.stmt->chain->segments[0]->connectors[0] == Connector::Advance);
 }
 
 TEST_CASE("rev 1.4: only '=' takes the unbind '?'") {
@@ -644,10 +679,10 @@ TEST_CASE("spec 2.8: '---' inside a declaration is never a truncation") {
     // so the end-of-content marker is recognised only where a declaration could
     // begin. Inside a block the same shape is a *section* marker (revision
     // 1.3), and a bare one has no title, which the parser rejects.
-    CHECK_EQ(contentEndOf("block b {\n    A == B;\n---\n    C == D;\n};\n"),
+    CHECK_EQ(contentEndOf("block b {\n    A = B;\n---\n    C = D;\n};\n"),
              TokenStream::kNoContentEnd);
 
-    auto r = parse("block b {\n    A == B;\n---\n    C == D;\n};\n");
+    auto r = parse("block b {\n    A = B;\n---\n    C = D;\n};\n");
     CHECK(r->diags->errorCount() > 0);
 }
 
@@ -693,13 +728,13 @@ TEST_CASE("rev 1.3: section markers parse inside a block body, nested included")
 }
 
 TEST_CASE("rev 1.3: a section title is trimmed of trailing whitespace only") {
-    auto r = parse("block b {\n    ---   twin  spaced title   \n    A == B;\n};");
+    auto r = parse("block b {\n    ---   twin  spaced title   \n    A = B;\n};");
     expectClean(r, "trimmed title");
     CHECK_EQ(sectionTitle(r, r->unit.items[0]->body[0]), std::string("twin  spaced title"));
 }
 
 TEST_CASE("rev 1.3: a bare '---' inside a block needs a title") {
-    auto r = parse("block b {\n    ---\n    A == B;\n};");
+    auto r = parse("block b {\n    ---\n    A = B;\n};");
     CHECK(r->report.find("needs a title") != std::string::npos);
     // The parser recovers past the marker; the statement after it survives.
     CHECK_EQ(r->unit.items[0]->body.size(), std::size_t{1});
@@ -712,7 +747,7 @@ TEST_CASE("rev 1.3: a section marker is legal only in a block body") {
         "harness h {\n    --- WIRES\n    SCL;\n};",
         "netclass n {\n    --- RULES\n    &LENGTH = 5mm;\n};",
         "match m {\n    --- LANES\n    #len = 5mm;\n};",
-        "cable c {\n    --- CORES\n    A == B;\n};",
+        "cable c {\n    --- CORES\n    A = B;\n};",
     };
     for (const char* text : offenders) {
         auto r = parse(text);
@@ -727,7 +762,7 @@ TEST_CASE("rev 1.3: '----' and a mid-line '---' are not section markers") {
     CHECK(quad->diags->errorCount() > 0);
     auto glued = parse("block b {\n    ---GLUED\n};");
     CHECK(glued->diags->errorCount() > 0);
-    auto mid = parse("block b { A == B; --- MID\n};");
+    auto mid = parse("block b { A = B; --- MID\n};");
     CHECK(mid->diags->errorCount() > 0);
 }
 

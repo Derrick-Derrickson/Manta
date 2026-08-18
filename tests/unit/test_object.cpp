@@ -336,8 +336,15 @@ TEST_CASE("spec 15.8: compiling twice gives byte-identical objects") {
     CHECK_EQ(compileToObject(text), compileToObject(text));
 }
 
+TEST_CASE("rev 1.6: a trailing '==' close survives the object") {
+    // "A == .{C1} ==;" closes its bracket at the segment's end; the linker
+    // reads the short back out of the object, so the flag has to travel.
+    std::string obj = compileToObject("block b { A == .{C1~c: . = GND;} ==; };");
+    CHECK(obj.find("trailingSame") != std::string::npos);
+}
+
 TEST_CASE("spec 15.4: the object declares its kind and language revision") {
-    std::string obj = compileToObject("block b { A == B; };");
+    std::string obj = compileToObject("block b { A = B; };");
     JsonParseError err;
     JsonPtr root = jsonParse(obj, err);
     CHECK(root != nullptr);
@@ -347,7 +354,7 @@ TEST_CASE("spec 15.4: the object declares its kind and language revision") {
 }
 
 TEST_CASE("an object from a newer revision is rejected") {
-    std::string obj = compileToObject("block b { A == B; };");
+    std::string obj = compileToObject("block b { A = B; };");
     // Rewrite the version field to a revision this toolchain does not implement.
     std::string current = "\"" + std::string(kLanguageVersion) + "\"";
     std::size_t at = obj.find(current);
@@ -441,7 +448,7 @@ TEST_CASE("an object from an older revision is still readable") {
     CHECK_FALSE(revisionAtMost("2.0", "1.1"));
     CHECK_FALSE(revisionAtMost("nonsense", "1.1"));
 
-    std::string obj = compileToObject("block b { A == B; };");
+    std::string obj = compileToObject("block b { A = B; };");
     std::string current = "\"" + std::string(kLanguageVersion) + "\"";
     obj.replace(obj.find(current), current.size(), "\"1.0\"");
 

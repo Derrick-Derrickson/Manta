@@ -8,9 +8,9 @@ A shunt has no exit terminal, so `==` continues the chain past it. That is what
 makes a run of capacitors read naturally:
 
 ```
-3V3 == .{C1~C-10uF-0805: .=GND}
-    == .{C2~C-100nF-0603: .=GND}
-    == .{C3~C-100nF-0603: .=GND};
+3V3 = .{C1~C-10uF-0805: .=GND}
+    = .{C2~C-100nF-0603: .=GND}
+    = .{C3~C-100nF-0603: .=GND};
 ```
 
 Several identical caps on one node are a multiplicity group. `*N` asserts only
@@ -18,7 +18,7 @@ that N copies hang off the current node; each copy's other terminals are settled
 by its own bindings:
 
 ```
-3V3 == ({C?~C-100nF-0603: .=GND}.)*4;
+3V3 = ({C?~C-100nF-0603: .=GND}.)*4;
 ```
 
 And when the far ends differ, supply them per copy:
@@ -30,11 +30,11 @@ And when the far ends differ, supply them per copy:
 ## Pull-ups and pull-downs
 
 ```
-3V3 = .{R1~R-10kR-0603}. == nRESET;
+3V3 = .{R1~R-10kR-0603}. = nRESET;
 ```
 
-`=` on the left because a rail and a resistor are different nets; `==` on the
-right because the resistor's far pin *is* `nRESET`.
+`=` joins on both sides: the rail to one pin of the resistor, and the
+resistor's far pin to `nRESET`.
 
 Do not expect E-02 on the pulled net: a passive pin counts as driving it, which
 is what stops the rule firing on every pull-up ever written.
@@ -109,7 +109,7 @@ rather than silently becoming a new net.
 ```
 i2c &HARNESS=i2c-bus;
 <>i2c;
-3V3 = .{R4~R-10kR-0603}. == i2c.SDA;
+3V3 = .{R4~R-10kR-0603}. = i2c.SDA;
 ```
 
 Assigning a whole harness assigns members pairwise by name:
