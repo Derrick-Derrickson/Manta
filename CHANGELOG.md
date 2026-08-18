@@ -4,16 +4,19 @@
 
 ### Language, revision 1.6
 
-- **`==` is a node bracket and never appears alone.** An adjacent pair of
-  `==` brackets exactly one element onto the current node (§6.3): the node is
-  the same on both sides, and every terminal of the bracketed element lies on
-  it. Bracket a shunt and the chain runs past it; bracket a net name and the
-  node is named; bracket a two-terminal device and it is shorted (W-02, whose
-  message now says "bracket"). The close, like every connector, is followed
-  by an element — a bracket cannot end a statement — and a binding's opening
-  `==` counts as the open of its segment's first pair
-  (`VIN == VPOS == .{C1~cap: .=GND};`). Anything unpaired — including every
-  pre-1.6 lone `==` — is the new error **E-49**, reported at parse.
+- **`==` is a node bracket and never appears alone.** A `==` pair brackets
+  an element onto the current node (§6.3): the node is the same on both
+  sides, and every terminal of the bracketed element lies on it. Bracket a
+  shunt and the chain runs past it; bracket a net name and the node is named;
+  bracket a two-terminal device and it is shorted (W-02, whose message now
+  says "bracket"). Brackets compose — the close of one tap may serve as the
+  open of the next, so `SW == K{D2~dio: A=GND;} == .{C3~cap: .=BST;} ==
+  A{L1~ind}B = 5V;` hangs the diode and the cap on the node and leaves
+  through the inductor. The last `==` of a run, like every connector, is
+  followed by an element — a bracket cannot end a statement — and a binding's
+  opening `==` counts as part of its segment's first run
+  (`VIN == VPOS == .{C1~cap: .=GND};`). Any lone `==` — including every
+  pre-1.6 joining `==` — is the new error **E-49**, reported at parse.
 
 - **`=` is the plain join, and E-22 is retired.** `=` joins the exit of the
   left element to the entry of the right; through a device the node advances,

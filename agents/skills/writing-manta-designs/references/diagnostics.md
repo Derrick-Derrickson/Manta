@@ -12,9 +12,11 @@ Each entry can be enabled, silenced or re-graded by code or by mnemonic:
 ## Connection and structure
 
 **E-49 — `an unpaired '=='`**
-`==` is a node bracket and comes in adjacent pairs around exactly one element:
-`X == .{C1~cap: .=GND} == Y`. A lone `==` — the pre-1.6 "same net" spelling —
-never closes. The plain join, two bare net names included, is a single `=`.
+`==` is a node bracket and opens and closes around what it taps:
+`X == .{C1~cap: .=GND} == Y`. Brackets compose by sharing a fence, so a run of
+consecutive `==` taps each enclosed element in turn; only the run of one — the
+pre-1.6 "same net" spelling, which never closes — is the error. The plain
+join, two bare net names included, is a single `=`.
 
 **E-04 — width mismatch**
 Two sides of a connection differ in width and neither `=*` nor `*=` was written.

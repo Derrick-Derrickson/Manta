@@ -1207,9 +1207,11 @@ Segment* Parser::parseSegment(bool openedSame, Span openSpan) {
     }
 
     // Spec 6.3 (revision 1.6): '==' is a node bracket, never a lone joiner.
-    // Every '==' in a segment belongs to an adjacent open/close pair around
-    // exactly one element; the opening connector of a binding counts.
-    // Anything unpaired is E-49.
+    // Brackets compose by sharing a fence -- the close of one tap may serve
+    // as the open of the next -- so a run of consecutive '==' hangs each
+    // enclosed element on the node in turn. What is banned is the run of
+    // one: a '==' that never closes. The opening connector of a binding
+    // counts as part of its segment's first run.
     if (!diagnosed) {
         std::vector<std::pair<bool, Span>> seq;
         if (openedSame) seq.emplace_back(true, openSpan);
@@ -1217,9 +1219,10 @@ Segment* Parser::parseSegment(bool openedSame, Span openSpan) {
             seq.emplace_back(connectors[i] == Connector::Same, connectorSpans[i]);
         for (std::size_t i = 0; i < seq.size();) {
             if (!seq[i].first) { ++i; continue; }
-            if (i + 1 < seq.size() && seq[i + 1].first) { i += 2; continue; }
-            diags_.report(DiagId::E49, seq[i].second);
-            ++i;
+            std::size_t j = i;
+            while (j < seq.size() && seq[j].first) ++j;
+            if (j - i == 1) diags_.report(DiagId::E49, seq[i].second);
+            i = j;
         }
     }
 

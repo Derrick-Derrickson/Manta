@@ -43,11 +43,14 @@ entry of the right. Through a device the node advances; between two bare names
 there is nothing to advance through, so `A = B` simply puts both names on one
 net — that is also how a net gets a second name.
 
-`==` **never appears alone** — an unpaired `==` is **E-49**. An adjacent pair
-of `==` brackets exactly one element onto the current node without advancing
-it. Bracket a shunt and the chain runs past it; bracket a net name and the
-node is named; bracket a two-terminal device and it is **shorted** — legal,
-and gives you W-02. The close, like any connector, must be followed by an
+`==` **never appears alone** — a lone `==` is **E-49**. A `==` pair brackets
+an element onto the current node without advancing it, and brackets compose:
+the close of one tap may serve as the open of the next, so
+`SW == K{D2~dio: A=GND;} == .{C3~cap: .=BST;} == A{L1~ind}B = 5V;` hangs the
+diode and the cap on the node and leaves through the inductor. Bracket a
+shunt and the chain runs past it; bracket a net name and the node is named;
+bracket a two-terminal device and it is **shorted** — legal, and gives you
+W-02. The last `==` of a run, like any connector, must be followed by an
 element — a bracket cannot end a statement. What lets a chain continue past
 a shunt is exactly the bracket, because a shunt has no exit terminal:
 

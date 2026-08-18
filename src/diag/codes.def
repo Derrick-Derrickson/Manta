@@ -112,12 +112,13 @@ MANTA_DIAG(E20, "E-20", "missing-footprint", Severity::Error,
            "fitted part '{}' has no '@footprint'")
 MANTA_DIAG(E21, "E-21", "harness-designator-clash", Severity::Error,
            "harness name '{}' collides with a designator; member access would be ambiguous")
-// Revision 1.6, spec 6.3: '==' is a node bracket and shall appear as an
-// adjacent open/close pair around exactly one element. A plain join -- two
-// nets onto one node included -- is a single '=', which also retires E-22.
+// Revision 1.6, spec 6.3: '==' is a node bracket and shall open and close.
+// Brackets compose by sharing a fence, so a run of consecutive '==' is fine;
+// the run of one is the mistake. A plain join -- two nets onto one node
+// included -- is a single '=', which also retires E-22.
 MANTA_DIAG(E49, "E-49", "unpaired-same", Severity::Error,
-           "an unpaired '=='; '== ... ==' brackets exactly one element, and a "
-           "plain join is a single '='")
+           "an unpaired '=='; '==' opens and closes around what it taps, and "
+           "a plain join is a single '='")
 MANTA_DIAG(E23, "E-23", "casual-required", Severity::Error,
            "'.' terminal selects pin '{}' of '{}', which does not carry '&CASUAL'")
 MANTA_DIAG(E24, "E-24", "no-ground", Severity::Error,

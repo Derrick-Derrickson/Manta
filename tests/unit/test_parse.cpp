@@ -195,11 +195,17 @@ TEST_CASE("spec 8.6: each multiplicity operator parses") {
     CHECK(b->body[2].stmt->chain->segments[0]->elements[1]->group->mult == MultKind::Node);
 }
 
-TEST_CASE("spec 6.3: '==' comes in adjacent pairs") {
-    // The pair brackets one element onto the node; the element after the
+TEST_CASE("spec 6.3: '==' opens and closes") {
+    // The pair brackets an element onto the node; the element after the
     // close rides the same node.
     auto paired = parse("block b { VIN = .{R1~r}. == .{C1~c: . = GND;} == EN; };");
     expectClean(paired, "bracketed shunt");
+
+    // Brackets compose by sharing a fence: a run of '==' hangs each enclosed
+    // element on the node in turn, and the chain leaves after the last close.
+    auto run = parse(
+        "block b { SW == K{D2~d: A = GND;} == .{C3~c: . = BST;} == A{L1~l}B = FIVE; };");
+    expectClean(run, "composed taps");
 
     // A close is followed by an element like any connector; a bracket
     // cannot end a statement, however well it pairs.
@@ -210,11 +216,11 @@ TEST_CASE("spec 6.3: '==' comes in adjacent pairs") {
     auto lone = parse("block b { A == B; };");
     CHECK(lone->report.find("E-49") != std::string::npos);
 
-    // Pairs are adjacent: an open answered by '=' instead of a close is E-49.
+    // Two runs of one: each '==' here is answered by '=' and never closes.
     auto split = parse("block b { A == B = C2 == D; };");
     CHECK(split->report.find("E-49") != std::string::npos);
 
-    // A binding's opening '==' is the open of its segment's first pair...
+    // A binding's opening '==' opens its segment's first run...
     auto binding = parse("block b { {U1~p: VIN == VPOS == .{C1~c: . = GND;}; }; };");
     expectClean(binding, "binding-opened pair");
 

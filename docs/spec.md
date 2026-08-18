@@ -4,10 +4,11 @@
 
 > **Corrected against a reference implementation.**
 >
-> **1.6 makes `==` a bracket.** `==` never appears alone: a pair of `==`,
-> always adjacent, brackets exactly one element onto the current node — a
-> shunt the chain runs past, a name for the node, a device deliberately
-> shorted. An unpaired `==` is error E-49 (§6.3). The plain join is a single
+> **1.6 makes `==` a bracket.** `==` never appears alone: a `==` pair
+> brackets an element onto the current node — a shunt the chain runs past, a
+> name for the node, a device deliberately shorted — and brackets compose,
+> the close of one tap serving as the open of the next. An unpaired `==` is
+> error E-49 (§6.3). The plain join is a single
 > `=` everywhere, two bare net names included: `A = B;` puts both names on
 > one node, which retires E-22 and with it the old rule that `=` needed a
 > device on one side (§6.2). Sources written for 1.5 that used a lone `==`
@@ -738,11 +739,11 @@ bracket of §6.3 and shall not appear alone.)*
 
 ### 6.3 `==` — the node bracket
 
-`==` never appears alone. An adjacent pair of `==` brackets exactly one element onto the
-current node: the node is the same on both sides of the bracket, and every terminal of
-the bracketed element lies on it. A bracket never advances the chain, which is what lets
-a chain run past a shunt — a shunt has no exit terminal, so nothing else could carry the
-chain beyond it.
+`==` never appears alone. A pair of `==` brackets an element onto the current node: the
+node is the same on both sides of the bracket, and every terminal of the bracketed
+element lies on it. A bracket never advances the chain, which is what lets a chain run
+past a shunt — a shunt has no exit terminal, so nothing else could carry the chain
+beyond it.
 
 ```
 VIN = .{R1~10kR-0603}. == .{C1~100nF-0603: .=GND} == EN;
@@ -765,9 +766,19 @@ warning **W-02**.
 A == .{R1~10kR-0603}. == B;     // A and B are one net; R1's pads are bridged
 ```
 
-The pair shall be adjacent — an open answered by anything other than its close is error
-**E-49** — and the close, like every connector, is followed by an element: a bracket
-cannot end a statement.
+Brackets compose: the close of one may serve as the open of the next, so a run of
+consecutive `==` hangs each enclosed element on the node in turn — every element with
+`==` on both sides lies wholly on the node.
+
+```
+SW == K{D2~DI3643: A=GND;} == .{C3~100nF-0603: .=BUCK-BST;} == A{L1~MT100UFA}B = 5V;
+```
+
+`D2`'s cathode and `C3`'s exposed terminal hang on the `SW` node, `L1`'s `A` pin rides
+it after the final close, and the chain leaves through `L1` to `5V`.
+
+A `==` with no partner — a run of one — is error **E-49**, and the last `==` of a run,
+like every connector, is followed by an element: a bracket cannot end a statement.
 
 ```
 A == B;                         // ERROR E-49: the bracket never closes
@@ -2403,7 +2414,7 @@ A diagnostic is written to stderr in the form:
 ```
 
 ```
-power.manta:42:9: error[E-49]: an unpaired '=='; '== ... ==' brackets exactly one element, and a plain join is a single '='
+power.manta:42:9: error[E-49]: an unpaired '=='; '==' opens and closes around what it taps, and a plain join is a single '='
 power.manta:71:5: warning[W-02]: R12 is shorted by a '==' bracket
 ```
 
@@ -2411,7 +2422,7 @@ Under `--json-diagnostics` each is an object on its own line:
 
 ```json
 {"file":"power.manta","line":42,"column":9,"severity":"error","code":"E-49",
- "message":"an unpaired '=='; '== ... ==' brackets exactly one element, and a plain join is a single '='"}
+ "message":"an unpaired '=='; '==' opens and closes around what it taps, and a plain join is a single '='"}
 ```
 
 Diagnostics arising after substitution report the position of the substitution in the
@@ -2675,9 +2686,10 @@ segment         = element { connector element } ;
 connector       = "=" | "==" | "=*" | "*=" ;
 element         = net_expr | device | group | replication ;
 
-(* Constraint (§6.3): the "==" of a segment occur only as adjacent pairs
-   bracketing one element. A binding's opening "==" (§7.4) counts as the
-   open of its segment's first pair. Anything unpaired is E-49. *)
+(* Constraint (§6.3): every maximal run of consecutive "==" in a segment
+   has length two or more -- an open, a close, and optionally shared fences
+   between composed brackets. A binding's opening "==" (§7.4) counts as part
+   of its segment's first run. A run of one is E-49. *)
 
 group           = "(" segment ")" [ multiplicity ] ;
 multiplicity    = ( "+" | "|" | "*" ) integer ;
