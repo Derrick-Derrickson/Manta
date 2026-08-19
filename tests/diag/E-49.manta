@@ -1,6 +1,7 @@
-// '==' is a node bracket and comes in pairs (spec 6.3). A lone '==' -- the
-// old "same net" spelling -- never closes, which is exactly the mistake this
-// fixture provokes. The plain join is a single '='.
+// The connector states whether the chain moved, and it has to be telling the
+// truth (spec 6.2, 6.3). A net passes through -- it is its own far side -- so
+// the old "same net" '==' after one is exactly the mistake this fixture
+// provokes. The plain join is a single '='.
 block b {
     GND &TYPE=GROUND;
     SW == SW-NODE;

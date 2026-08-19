@@ -112,7 +112,7 @@ file(WRITE "${WORK}/w01.manta" "\
 block w01-top {
     GND &TYPE=GROUND;
     {U1~EQ-CHIP:
-        VIN  == VRAIL == .{C1~EQ-C: . = GND;};
+        VIN  = VRAIL = .{C1~EQ-C: . = GND;};
         SW   = K{D1~EQ-D: A = GND;};
         FB   = .{R1~EQ-R: . = GND;};
         EN   = VRAIL;
@@ -190,7 +190,7 @@ file(WRITE "${ANNSRC}" "\
 block ann-top {
     GND &TYPE=GROUND;
     {U1~EQ-CHIP:
-        VIN  == VRAIL == .{C?~EQ-C: . = .{R?~EQ-R: . = GND;};};
+        VIN  = VRAIL = .{C?~EQ-C: . = .{R?~EQ-R: . = GND;};};
         SW   = K{D?~EQ-D: A = GND;};
         GND  = GND;
     };

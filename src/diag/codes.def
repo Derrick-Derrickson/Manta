@@ -112,13 +112,12 @@ MANTA_DIAG(E20, "E-20", "missing-footprint", Severity::Error,
            "fitted part '{}' has no '@footprint'")
 MANTA_DIAG(E21, "E-21", "harness-designator-clash", Severity::Error,
            "harness name '{}' collides with a designator; member access would be ambiguous")
-// Revision 1.6, spec 6.3: '==' is a node bracket and shall open and close.
-// Brackets compose by sharing a fence, so a run of consecutive '==' is fine;
-// the run of one is the mistake. A plain join -- two nets onto one node
-// included -- is a single '=', which also retires E-22.
-MANTA_DIAG(E49, "E-49", "unpaired-same", Severity::Error,
-           "an unpaired '=='; '==' opens and closes around what it taps, and "
-           "a plain join is a single '='")
+// Revision 1.6, spec 6.2/6.3: the connector states whether the chain moved.
+// '=' advances through the far side of the element before it; '==' continues
+// on the near side and is legal exactly when that element has no far side --
+// its other pins are spoken for inside its '{}'. A connector that disagrees
+// with the element before it is this error, message per site.
+MANTA_DIAG(E49, "E-49", "connector-mismatch", Severity::Error, "{}")
 MANTA_DIAG(E23, "E-23", "casual-required", Severity::Error,
            "'.' terminal selects pin '{}' of '{}', which does not carry '&CASUAL'")
 MANTA_DIAG(E24, "E-24", "no-ground", Severity::Error,
@@ -162,7 +161,8 @@ MANTA_DIAG(E43, "E-43", "part-exports-field", Severity::Error,
 // ---------------------------------------------------------------------------
 MANTA_DIAG(W01, "W-01", "unused-pins", Severity::Warning,
            "'{}' has {} pins appearing in no chain and no binding")
-MANTA_DIAG(W02, "W-02", "shorted-device", Severity::Warning, "{} is shorted by a '==' bracket")
+MANTA_DIAG(W02, "W-02", "shorted-device", Severity::Warning,
+           "{} is shorted: both pads land on one net")
 MANTA_DIAG(W03, "W-03", "cap-in-series", Severity::Warning,
            "{} is in series between two non-ground nets ('{}' and '{}')")
 MANTA_DIAG(W04, "W-04", "undecoupled-supply", Severity::Warning,

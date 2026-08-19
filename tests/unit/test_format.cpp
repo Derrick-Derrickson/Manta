@@ -97,16 +97,16 @@ TEST_CASE("lines are never joined or split") {
 TEST_CASE("continuation lines take one unit past the depth") {
     const std::string input =
         "block b {\n"
-        "    SW == SW-NODE\n"
-        "== .{L1~res}.\n"
-        "                = 3V3\n"
+        "    SW = K{Q1~fet: G = GND;}\n"
+        "== .{C9~cap: . = GND;}\n"
+        "                == 3V3\n"
         "   &CURRENT=3A;\n"
         "};\n";
     const std::string want =
         "block b {\n"
-        "    SW == SW-NODE\n"
-        "        == .{L1~res}.\n"
-        "        = 3V3\n"
+        "    SW = K{Q1~fet: G = GND;}\n"
+        "        == .{C9~cap: . = GND;}\n"
+        "        == 3V3\n"
         "        &CURRENT=3A;\n"
         "};\n";
     CHECK_EQ(format(input), want);

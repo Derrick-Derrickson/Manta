@@ -268,4 +268,78 @@ block b {
     CHECK_EQ(a->number.canonical(), std::string("600mA"));
 }
 
+
+// ---------------------------------------------------------------------------
+// Multi-pin terminals (spec 7.3, revision 1.6)
+// ---------------------------------------------------------------------------
+
+constexpr std::string_view kBridgeParts = R"(
+part RES { @~footprint = R-0603; 1 = A &CASUAL; 2 = B &CASUAL; };
+part DIODE { @~footprint = SOD-123; 1 = A; 2 = K; };
+part CONN4 { @~footprint = HDR-4; 1 = P1; 2 = P2; 3 = P3; 4 = P4; };
+)";
+
+TEST_CASE("spec 7.3: a dot run takes its pins onto one node, explicitly") {
+    auto e = elaborate(std::string(kBridgeParts) + R"(
+block b {
+    GND &TYPE=GROUND;
+    X = Y = ..{R1~RES};
+    X = GND;
+};
+)");
+    const Component* r1 = e->component("R1");
+    CHECK(r1 != nullptr);
+    if (!r1) return;
+    CHECK_EQ(r1->pins.size(), std::size_t{2});
+    CHECK(r1->pins[0].net >= 0);
+    CHECK_EQ(r1->pins[0].net, r1->pins[1].net);
+    // The bridge is the written form of intent, so W-02 records nothing.
+    CHECK(e->design.shorted.empty());
+}
+
+TEST_CASE("spec 7.3: a pin list joins every listed pin to one node") {
+    auto e = elaborate(std::string(kBridgeParts) + R"(
+block b {
+    GND &TYPE=GROUND;
+    X = Y = [A,K]{D1~DIODE};
+    VIN = [P1,P2]{J5~CONN4}[P3,P4] = GND;
+    X = VIN;
+};
+)");
+    const Component* d1 = e->component("D1");
+    CHECK(d1 != nullptr);
+    if (!d1) return;
+    CHECK_EQ(d1->pins[0].net, d1->pins[1].net);
+    CHECK(e->design.shorted.empty());
+
+    // Exit-side list: paralleled connector pins, two per side, sides apart.
+    const Component* j5 = e->component("J5");
+    CHECK(j5 != nullptr);
+    if (!j5) return;
+    const ComponentPin* p1 = pin(j5, "P1");
+    const ComponentPin* p2 = pin(j5, "P2");
+    const ComponentPin* p3 = pin(j5, "P3");
+    const ComponentPin* p4 = pin(j5, "P4");
+    CHECK(p1 && p2 && p3 && p4);
+    if (!(p1 && p2 && p3 && p4)) return;
+    CHECK_EQ(p1->net, p2->net);
+    CHECK_EQ(p3->net, p4->net);
+    CHECK(p1->net != p3->net);
+}
+
+TEST_CASE("W-02 is connectivity: incidental bridges recorded, explicit ones not") {
+    auto e = elaborate(std::string(kBridgeParts) + R"(
+block b {
+    GND &TYPE=GROUND;
+    X = .{R1~RES}. = Y;
+    Y = X;
+    Y = ..{R2~RES};
+    Y = GND;
+};
+)");
+    CHECK_EQ(e->design.shorted.size(), std::size_t{1});
+    if (e->design.shorted.size() != 1) return;
+    CHECK(e->design.components[e->design.shorted[0]].designator == "R1");
+}
+
 TEST_MAIN()

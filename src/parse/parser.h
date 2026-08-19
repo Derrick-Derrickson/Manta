@@ -118,6 +118,7 @@ private:
     Instance* parseInstance();
     Binding* parseBinding();
     Terminal parseTerminal();
+    bool looksLikePinList() const;
     NetExpr* parseNetExpr();
 
     // ---- leaves -----------------------------------------------------------

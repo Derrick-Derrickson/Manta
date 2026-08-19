@@ -318,8 +318,23 @@ private:
     void writeTerminal(std::string_view key, const Terminal& t) {
         w_.key(key);
         w_.beginObject();
-        if (t.dot) w_.field("dot", true);
-        else name("name", t.name);
+        if (t.dot) {
+            w_.field("dot", true);
+            // A run of dots (spec 7.3): "..{R1}". One is the default, so
+            // objects from before revision 1.6 read unchanged.
+            if (t.dotCount > 1) w_.field("dots", static_cast<std::int64_t>(t.dotCount));
+        } else if (t.hasList) {
+            w_.key("pins");
+            w_.beginArray();
+            for (const Name& n : t.list) {
+                w_.beginObject();
+                name("name", n);
+                w_.endObject();
+            }
+            w_.endArray();
+        } else {
+            name("name", t.name);
+        }
         writeRange("range", t.range);
         span(t.span);
         w_.endObject();
@@ -1041,7 +1056,17 @@ private:
         Terminal t;
         if (!o) return t;
         t.dot = o->boolean_("dot");
-        if (!t.dot) t.name = readName(o->find("name"));
+        if (t.dot) {
+            std::int64_t n = o->integer("dots");
+            t.dotCount = n > 1 ? static_cast<std::uint32_t>(n) : 1u;
+        } else if (const JsonValue* pins = o->arr("pins")) {
+            std::vector<Name> names;
+            for (const JsonPtr& e : pins->array) names.push_back(readName(e->find("name")));
+            t.list = commit(names);
+            t.hasList = true;
+        } else {
+            t.name = readName(o->find("name"));
+        }
         t.range = readRange(o->find("range"));
         t.span = readSpan(*o);
         return t;

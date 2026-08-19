@@ -547,10 +547,10 @@ same path it always did.
 
 The restrictions follow from the same equivalence rather than from taste. A
 binding is one segment, so `^` — which partitions a *statement* into segments —
-has nothing to partition and does not appear. All four connectors of §6 open a
-binding because a segment admits all four; a binding's opening `==` counts as
-the open of its segment's first bracket pair (§6.3, revision 1.6). `PIN = NET`
-is simply the plain join of §6.2.
+has nothing to partition and does not appear. A binding opens with `=`, `=*`
+or `*=`: it is rooted at a pin, and a pin passes through, so `==` — which
+continues on the near side of a dead-end element — never opens one (§6.3,
+revision 1.6). `PIN = NET` is simply the plain join of §6.2.
 
 The §19 production was widened at the same time to admit two forms the language
 had always accepted and the grammar did not: a pin carrying directives or fields

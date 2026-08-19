@@ -11,12 +11,12 @@ Each entry can be enabled, silenced or re-graded by code or by mnemonic:
 
 ## Connection and structure
 
-**E-49 — `an unpaired '=='`**
-`==` is a node bracket and opens and closes around what it taps:
-`X == .{C1~cap: .=GND} == Y`. Brackets compose by sharing a fence, so a run of
-consecutive `==` taps each enclosed element in turn; only the run of one — the
-pre-1.6 "same net" spelling, which never closes — is the error. The plain
-join, two bare net names included, is a single `=`.
+**E-49 — a connector disagrees with the element before it**
+The connector states whether the chain moved. `=` advances through the far
+side of the element before it, so `=` after a dead-end element (a shunt, a
+one-pin attachment, a `*N` group) is this error; `==` continues on the near
+side, so `==` after anything that passes through (a net, `.{R}.`, `A{L}B`)
+is this error too. The fix is always the other spelling.
 
 **E-04 — width mismatch**
 Two sides of a connection differ in width and neither `=*` nor `*=` was written.
@@ -202,9 +202,10 @@ manta link --top board -L build/ -o build/board.mantaNets
 Catches an unused section of a multi-unit package. Often correct to leave, but
 worth a look.
 
-**W-02 — a two-terminal device is shorted by a `==` run**
-Legal and sometimes intended — a zero-ohm link, a footprint kept for a later
-build. If not intended, one of those `==` should be `=`.
+**W-02 — both pads of a two-terminal device land on one net**
+Fires only on a bridge that *happens* — two pads reaching one net through
+separate statements. A deliberate short is written as a multi-pin terminal
+(`..{R1}` or `[A,K]{D1}`, spec 7.3) and stays quiet.
 
 **W-03 — a capacitor is in series with two non-ground nets**
 Usually a decoupling cap whose second pin went to the wrong net. A capacitor is

@@ -173,7 +173,9 @@ const PartInfo* Elaborator::partInfoFor(SymbolId name, std::uint32_t objectIndex
 // ---------------------------------------------------------------------------
 
 std::int64_t Elaborator::terminalWidth(const Terminal& t, const PartInfo* part, Scope& scope) {
-    if (t.dot) return 1;
+    // A dot run and a pin list both land everything on one node (spec 7.3),
+    // so either is one wire wide however many pins it consumes.
+    if (t.dot || t.hasList) return 1;
     if (!part) return 1;
 
     SymbolId base = resolve(t.name, scope);
@@ -1019,6 +1021,23 @@ Elaborator::ElemValue Elaborator::evalDevice(const Device* dev, Scope& scope,
         // declaring instance.
         auto bindTerminal = [&](const Terminal& t, Bundle& out) {
             if (t.dot) return;
+            if (t.hasList) {
+                // "[A,K]{U1}": more pins of a declared instance, one node.
+                std::vector<std::uint32_t> nodes;
+                for (const Name& nm : t.list) {
+                    SymbolId b = resolve(nm, scope);
+                    for (std::uint32_t i = 0; i < c.pins.size(); ++i) {
+                        if (c.pins[i].base != b) continue;
+                        nodes.push_back(c.pins[i].node);
+                        c.pins[i].connected = true;
+                    }
+                }
+                if (nodes.empty()) return;
+                for (std::size_t i = 1; i < nodes.size(); ++i) unite(nodes[0], nodes[i]);
+                if (nodes.size() >= 2) bridged_.insert(*found);
+                out.push_back(nodes[0]);
+                return;
+            }
             SymbolId base = resolve(t.name, scope);
             if (t.range.present) {
                 bool ok = true;
@@ -1076,6 +1095,25 @@ Elaborator::ElemValue Elaborator::evalDevice(const Device* dev, Scope& scope,
         auto bindPort = [&](const Terminal& t, Bundle& out) {
             if (t.dot) {
                 diags_.report(DiagId::E23, t.span, ".", interner_.text(targetName));
+                return;
+            }
+            if (t.hasList) {
+                // "[A,B]{B1~blk}": several ports of the block on one node.
+                std::vector<std::uint32_t> nodes;
+                for (const Name& nm : t.list) {
+                    SymbolId pn = resolve(nm, scope);
+                    NetKey key{child->id, pn, 0, false};
+                    if (std::uint32_t* node = netNodes_.find(key)) {
+                        nodes.push_back(*node);
+                    } else {
+                        diags_.report(DiagId::E31, t.span,
+                                      std::format("{}.{}", interner_.text(targetName),
+                                                  interner_.text(pn)));
+                    }
+                }
+                if (nodes.empty()) return;
+                for (std::size_t i = 1; i < nodes.size(); ++i) unite(nodes[0], nodes[i]);
+                out.push_back(nodes[0]);
                 return;
             }
             SymbolId portName = resolve(t.name, scope);
@@ -1172,6 +1210,64 @@ Elaborator::ElemValue Elaborator::evalDevice(const Device* dev, Scope& scope,
     // explicitly named terminals consume theirs, then each '.' takes the next
     // unconsumed pin in part-declaration order.
     auto resolveTerminal = [&](const Terminal& t, Bundle& out) {
+        if (t.hasList) {
+            // Spec 7.3: "[A,K]" -- every listed pin joins the one node this
+            // terminal stands on. Two or more pins of one part written onto
+            // one node is the explicit spelling of a bridge, so W-02 stays
+            // quiet about a short declared this way.
+            std::vector<std::uint32_t> nodes;
+            for (const Name& nm : t.list) {
+                SymbolId base = resolve(nm, scope);
+                bool found = false;
+                for (std::uint32_t i = 0; i < c.pins.size(); ++i) {
+                    if (c.pins[i].base != base) continue;
+                    nodes.push_back(c.pins[i].node);
+                    c.pins[i].connected = true;
+                    found = true;
+                }
+                if (!found) {
+                    diags_.report(DiagId::E31, t.span,
+                                  std::format("{}.{}", c.partName, interner_.text(base)));
+                }
+            }
+            if (nodes.empty()) return;
+            for (std::size_t i = 1; i < nodes.size(); ++i) unite(nodes[0], nodes[i]);
+            if (nodes.size() >= 2) bridged_.insert(index);
+            out.push_back(nodes[0]);
+            return;
+        }
+        if (t.dot && t.dotCount > 1) {
+            // A run of dots: that many next-unassigned casual pins, all onto
+            // one node -- "..{R1}" is the written form of a deliberate short.
+            std::vector<std::uint32_t> nodes;
+            for (std::uint32_t n = 0; n < t.dotCount; ++n) {
+                std::uint32_t best = UINT32_MAX;
+                std::int32_t bestOrder = INT32_MAX;
+                for (std::uint32_t i = 0; i < c.pins.size(); ++i) {
+                    if (c.pins[i].connected || c.pins[i].unbound) continue;
+                    if (c.pins[i].declOrder < bestOrder) {
+                        bestOrder = c.pins[i].declOrder;
+                        best = i;
+                    }
+                }
+                if (best == UINT32_MAX) {
+                    diags_.report(DiagId::Type, t.span,
+                                  std::format("'.' has no unassigned pin left on '{}'",
+                                              c.partName));
+                    break;
+                }
+                if (!c.pins[best].casual) {
+                    diags_.report(DiagId::E23, t.span, c.pins[best].logical, c.partName);
+                }
+                nodes.push_back(c.pins[best].node);
+                c.pins[best].connected = true;
+            }
+            if (nodes.empty()) return;
+            for (std::size_t i = 1; i < nodes.size(); ++i) unite(nodes[0], nodes[i]);
+            if (nodes.size() >= 2) bridged_.insert(index);
+            out.push_back(nodes[0]);
+            return;
+        }
         if (!t.dot) {
             SymbolId base = resolve(t.name, scope);
             std::vector<std::uint32_t> matched;
@@ -1467,24 +1563,12 @@ Elaborator::ElemValue Elaborator::elaborateSegment(const Segment* seg, Scope& sc
                 break;
 
             case Connector::Same:
+                // Spec 6.3: '==' continues on the near side of a dead-end
+                // element. Connectivity-wise it joins exactly as '=' does --
+                // the anchor of an element with no exit *is* its entry -- and
+                // the parser has already enforced that the spelling tells the
+                // truth (E-49).
                 uniteBundles(lhs, rhs, at);
-                // Spec 6.3: '==' is a node bracket, so the element between an
-                // opening and a closing '==' has its own two terminals joined
-                // -- which is what shorts a two-terminal device and raises
-                // W-02.
-                if (i + 2 < total && connectorAt(i + 1) == Connector::Same) {
-                    uniteBundles(values[i + 1].entry, values[i + 1].exit, at);
-                    // A two-terminal device with '==' on both sides has its
-                    // pads bridged. Spec 6.3 says this "is legal and generates
-                    // warning W-02"; only elaboration can see the run, so the
-                    // component is recorded here and reported by ERC.
-                    std::int32_t shortedIndex = values[i + 1].component;
-                    if (shortedIndex >= 0 &&
-                        components_[static_cast<std::size_t>(shortedIndex)].pins.size() == 2 &&
-                        !values[i + 1].entry.empty() && !values[i + 1].exit.empty()) {
-                        shorted_.push_back(static_cast<std::uint32_t>(shortedIndex));
-                    }
-                }
                 break;
 
             case Connector::Gather:
@@ -2016,6 +2100,17 @@ void Elaborator::buildNets(Design& design) {
             applyDirective(net, std::string(interner_.text(d->name.symbol)),
                            renderValue(d->value, interner_), d->strength, d->span, true);
         }
+    }
+
+    // W-02, as connectivity: a two-pin component whose pads landed on one
+    // node is shorted however that happened -- through one chain or across
+    // several statements -- unless a multi-pin terminal said so explicitly
+    // (spec 7.3), which is the written form of intent.
+    for (std::uint32_t i = 0; i < components_.size(); ++i) {
+        const Component& c = components_[i];
+        if (c.pins.size() != 2) continue;
+        if (bridged_.contains(i)) continue;
+        if (uf_.find(c.pins[0].node) == uf_.find(c.pins[1].node)) shorted_.push_back(i);
     }
 
     design.components = std::move(components_);

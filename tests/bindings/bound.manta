@@ -12,14 +12,14 @@ block eq-top {
     GND &TYPE=GROUND;
 
     {U1~EQ-CHIP:
-        // The rail name bracketed onto the pin's node, with the shunt
-        // capacitor riding the same node after the close.
-        VIN   == VRAIL == .{C1~EQ-C: . = GND;};
-        // A '==' pair bracketing the diode onto the pin's node: the pin, the
-        // diode's cathode and the capacitor's first pad are one net (spec 6.3).
-        SW    == K{D1~EQ-D: A = GND;} == .{C2~EQ-C: . = BOOT;};
+        // The rail, then the shunt capacitor on it -- plain joins all
+        // the way, since a shunt has no far side (spec 6.2).
+        VIN   = VRAIL = .{C1~EQ-C: . = GND;};
+        // The diode attaches by K and dead-ends; '==' continues on the pin's
+        // node, where the capacitor's first pad attaches (spec 6.3).
+        SW    = K{D1~EQ-D: A = GND;} == .{C2~EQ-C: . = BOOT;};
         // A two-resistor divider whose midpoint is the pin.
-        FB    == .{R1~EQ-R: . = VRAIL;} == .{R2~EQ-R: . = GND;};
+        FB    = .{R1~EQ-R: . = VRAIL;} == .{R2~EQ-R: . = GND;};
         // A series element between the pin and a net.
         EN    = .{R3~EQ-R}. = VRAIL;
         // A device nested two levels deep inside a binding.

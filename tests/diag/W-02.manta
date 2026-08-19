@@ -1,6 +1,12 @@
 part p { @~footprint = F; 1 = A &CASUAL; 2 = B &CASUAL; };
 block b {
     GND &TYPE=GROUND;
-    X == .{R1~p}. == Y;
+    // R1 is bridged *incidentally*: its two pads reach one net through two
+    // separate statements. That is what W-02 exists for.
+    X = .{R1~p}. = Y;
+    Y = X;
     Y = GND;
+    // R2 is bridged *explicitly* through a multi-pin terminal (spec 7.3) --
+    // the written form of intent -- so W-02 stays quiet about it.
+    Y = ..{R2~p};
 };

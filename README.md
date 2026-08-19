@@ -13,7 +13,7 @@ block power-and-signal {
 
     SW = SW-NODE
         = (.{L?~MT100UFA}.)+2
-       == ({C?~100nF-0603: .=GND}.)*4
+        = ({C?~100nF-0603: .=GND}.)*4
        == 3V3
         = S{Q?~FFET123: G=nPWR-EN; }D
         = PWR-SWITCHED

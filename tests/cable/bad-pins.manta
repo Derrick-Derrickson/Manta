@@ -29,5 +29,5 @@ block bd {
     GND &TYPE=GROUND;
     X = A{J1~HDR2};
     X &STUB;
-    B{J1} = GND;
+    B{J1} == GND;
 };

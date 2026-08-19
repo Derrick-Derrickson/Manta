@@ -9,6 +9,6 @@ block rc-filter {
     OUT>;
 
     IN = .{R?~$"r-value"$kR-0603}.
-        == .{C?~$"c-value"$nF-0603: .=GND}
+        = .{C?~$"c-value"$nF-0603: .=GND}
         == OUT;
 };

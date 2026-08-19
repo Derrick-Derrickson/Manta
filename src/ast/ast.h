@@ -225,7 +225,16 @@ struct NetExpr {
 
 struct Terminal {
     bool dot = false;  // the '.' terminal: first unassigned casual pin (spec 7.3)
+    // A run of dots takes that many next-unassigned casual pins, all onto one
+    // node: "..{R1}" is both pins of R1 on the chain's node -- the written
+    // form of a deliberate short (spec 7.3).
+    std::uint32_t dotCount = 0;
     Name name;
+    // "[A,K]{D1}": a pin list as one terminal. Every listed pin joins the one
+    // node, which is what distinguishes it from a range -- "[A,K]" is two pins
+    // on one net where "O[0:1]" is two wires of a bus.
+    std::span<Name> list;
+    bool hasList = false;
     // A terminal may name one wire or a range of them. The range is what gives
     // a replicated unit its arity: in "[4[ I{U?~splitter}O[0:1] ]8]" the
     // two-wide exit terminal is what makes the unit one-in two-out.

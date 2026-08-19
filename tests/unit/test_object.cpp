@@ -336,6 +336,16 @@ TEST_CASE("spec 15.8: compiling twice gives byte-identical objects") {
     CHECK_EQ(compileToObject(text), compileToObject(text));
 }
 
+TEST_CASE("rev 1.6: multi-pin terminals round-trip through .mantaO") {
+    // A dot run and pin lists on both sides survive write -> read -> write
+    // byte-identically.
+    std::string obj = compileToObject("block b { A = B = ..{R1~r}; C = [X,Y]{D1~d}[Z]; };");
+    bool ok = false;
+    std::string second = reserialise(obj, &ok);
+    CHECK(ok);
+    CHECK_EQ(obj, second);
+}
+
 TEST_CASE("spec 15.4: the object declares its kind and language revision") {
     std::string obj = compileToObject("block b { A = B; };");
     JsonParseError err;

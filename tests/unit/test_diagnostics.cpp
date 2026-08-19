@@ -223,7 +223,15 @@ TEST_CASE("rev 1.5: duplicate '&EDGE' at equal strength is E-12") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("W-01 unused pins") { expectFires("W-01"); }
-TEST_CASE("W-02 device shorted by a '==' run") { expectFires("W-02"); }
+TEST_CASE("W-02 an incidentally bridged device") {
+    std::string report;
+    std::vector<std::string> codes = pipeline({fixture("W-02")}, report);
+    CHECK(std::find(codes.begin(), codes.end(), "W-02") != codes.end());
+    // R1's bridge forms across two statements; R2's is written through a
+    // multi-pin terminal (spec 7.3) and stays quiet.
+    CHECK(report.find("R1") != std::string::npos);
+    CHECK(report.find("R2") == std::string::npos);
+}
 TEST_CASE("W-03 capacitor in series between two non-ground nets") { expectFires("W-03"); }
 TEST_CASE("W-04 undecoupled supply pin") { expectFires("W-04"); }
 TEST_CASE("W-06 weak field never overridden") { expectFires("W-06"); }

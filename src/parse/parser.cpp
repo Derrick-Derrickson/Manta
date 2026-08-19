@@ -128,10 +128,24 @@ bool Parser::looksLikeReplication() const {
            ahead(2).kind == TokenKind::LBracket;
 }
 
+// "[A,K]{D1}": a pin list abutting a device open. Scans the bracket to its
+// match and asks what follows (spec 7.3).
+bool Parser::looksLikePinList() const {
+    if (!at(TokenKind::LBracket)) return false;
+    std::size_t i = pos_ + 1;
+    int depth = 1;
+    while (depth > 0 && toks_.at(i).kind != TokenKind::Eof) {
+        if (toks_.at(i).kind == TokenKind::LBracket) ++depth;
+        if (toks_.at(i).kind == TokenKind::RBracket) --depth;
+        ++i;
+    }
+    return toks_.at(i).kind == TokenKind::LBrace;
+}
+
 // "[3V3, GND]>>;" (spec 10.3). Anything else beginning with '[' inside a block
-// body is a replication.
+// body is a replication or a pin-list device.
 bool Parser::looksLikePortList() const {
-    return at(TokenKind::LBracket) && !looksLikeReplication();
+    return at(TokenKind::LBracket) && !looksLikeReplication() && !looksLikePinList();
 }
 
 bool Parser::looksLikeFieldDecl() const {
@@ -145,7 +159,13 @@ bool Parser::looksLikeFieldDecl() const {
 // (spec 7.1). The terminal is '.' or an identifier with an optional index.
 bool Parser::looksLikeDevice() const {
     if (at(TokenKind::LBrace)) return true;
-    if (at(TokenKind::Dot)) return ahead(1).kind == TokenKind::LBrace;
+    if (at(TokenKind::Dot)) {
+        // A run of dots is one terminal (spec 7.3): "..{R1}".
+        std::size_t i = pos_;
+        while (toks_.at(i).kind == TokenKind::Dot) ++i;
+        return toks_.at(i).kind == TokenKind::LBrace;
+    }
+    if (at(TokenKind::LBracket)) return looksLikePinList();
     if (!at(TokenKind::Word)) return false;
 
     std::size_t i = pos_ + 1;
@@ -816,9 +836,28 @@ NetExpr* Parser::parseNetExpr() {
 Terminal Parser::parseTerminal() {
     Terminal t;
     t.span = here();
-    if (accept(TokenKind::Dot)) {
-        // Spec 7.3: '.' takes the first unassigned pin from those remaining.
+    if (at(TokenKind::Dot)) {
+        // Spec 7.3: '.' takes the first unassigned casual pin from those
+        // remaining. A run of dots takes that many, all onto one node --
+        // "..{R1}" is the written form of a deliberate short.
         t.dot = true;
+        while (accept(TokenKind::Dot)) ++t.dotCount;
+        t.span = t.span.merge(toks_.at(pos_ - 1).span(file_.id()));
+        return t;
+    }
+    if (at(TokenKind::LBracket)) {
+        // Spec 7.3: "[A,K]{D1}" -- a pin list as one terminal. Every listed
+        // pin joins the one node; a *range* ("O[0:1]") is a bus and needs a
+        // name first, so the bare bracket is unambiguous here.
+        advance();
+        std::vector<Name> pins;
+        do {
+            pins.push_back(parseName(true));
+        } while (accept(TokenKind::Comma));
+        expect(TokenKind::RBracket, "closing a pin list");
+        t.list = commit(pins);
+        t.hasList = true;
+        t.span = t.span.merge(toks_.at(pos_ - 1).span(file_.id()));
         return t;
     }
     t.name = parseName(true);
@@ -1058,7 +1097,8 @@ Device* Parser::parseDevice() {
 
     // An exit terminal follows only when it abuts the closing brace; a word on
     // the next line is the start of something else.
-    if ((at(TokenKind::Word) || at(TokenKind::Dot)) && adjacent(pos_ - 1)) {
+    if ((at(TokenKind::Word) || at(TokenKind::Dot) || at(TokenKind::LBracket)) &&
+        adjacent(pos_ - 1)) {
         dev->exit = parseTerminal();
         dev->hasExit = true;
     }
@@ -1174,6 +1214,29 @@ Element* Parser::parseElement() {
     return e;
 }
 
+// Whether an element, as written, offers a far side for the chain to advance
+// through (spec 6.2). A net is its own far side; a device passes through when
+// an exit terminal is written; a '*N' group hangs on the node; any other group
+// or a replication passes through when its unit's last element does.
+static bool elementHasExit(const Element* e) {
+    switch (e->kind) {
+        case ElementKind::Net: return true;
+        case ElementKind::Device: return e->device->hasExit;
+        case ElementKind::Group: {
+            if (e->group->mult == MultKind::Node) return false;
+            const Segment* body = e->group->body;
+            if (!body || body->elements.empty()) return true;
+            return elementHasExit(body->elements.back());
+        }
+        case ElementKind::Replication: {
+            const Segment* body = e->replication->body;
+            if (!body || body->elements.empty()) return true;
+            return elementHasExit(body->elements.back());
+        }
+    }
+    return true;
+}
+
 Segment* Parser::parseSegment(bool openedSame, Span openSpan) {
     auto* s = arena_.make<Segment>();
     s->span = here();
@@ -1193,11 +1256,11 @@ Segment* Parser::parseSegment(bool openedSame, Span openSpan) {
         else break;
         Span cs = here();
         advance();
-        // Spec 6.3: a bracket closes onto an element, never onto the end of
-        // the segment, so "Y == .{R2}. ==;" is E-49. One report covers the
-        // segment's whole bracket accounting.
+        // A '==' with nothing after it continues the node into nowhere.
         if (c == Connector::Same && atSegmentEnd()) {
-            diags_.report(DiagId::E49, cs);
+            diags_.report(DiagId::E49, cs,
+                          "a '==' with nothing after it; the node continues only "
+                          "into an element");
             diagnosed = true;
             break;
         }
@@ -1206,23 +1269,30 @@ Segment* Parser::parseSegment(bool openedSame, Span openSpan) {
         elements.push_back(parseElement());
     }
 
-    // Spec 6.3 (revision 1.6): '==' is a node bracket, never a lone joiner.
-    // Brackets compose by sharing a fence -- the close of one tap may serve
-    // as the open of the next -- so a run of consecutive '==' hangs each
-    // enclosed element on the node in turn. What is banned is the run of
-    // one: a '==' that never closes. The opening connector of a binding
-    // counts as part of its segment's first run.
+    // Spec 6.2/6.3 (revision 1.6): the connector states whether the chain
+    // moved, and it has to be telling the truth. '=' advances through the far
+    // side of the element before it, so that element must have one; '=='
+    // continues on the near side, legal exactly when the element before it
+    // has no far side -- its other pins are spoken for inside its '{}'.
     if (!diagnosed) {
-        std::vector<std::pair<bool, Span>> seq;
-        if (openedSame) seq.emplace_back(true, openSpan);
-        for (std::size_t i = 0; i < connectors.size(); ++i)
-            seq.emplace_back(connectors[i] == Connector::Same, connectorSpans[i]);
-        for (std::size_t i = 0; i < seq.size();) {
-            if (!seq[i].first) { ++i; continue; }
-            std::size_t j = i;
-            while (j < seq.size() && seq[j].first) ++j;
-            if (j - i == 1) diags_.report(DiagId::E49, seq[i].second);
-            i = j;
+        if (openedSame) {
+            // A binding is rooted at a pin, and a pin passes through (spec
+            // 7.4), so a binding never opens with '=='.
+            diags_.report(DiagId::E49, openSpan,
+                          "'==' cannot open a binding; a pin passes through -- "
+                          "open with '='");
+        }
+        for (std::size_t i = 0; i < connectors.size(); ++i) {
+            bool exits = elementHasExit(elements[i]);
+            if (connectors[i] == Connector::Same && exits) {
+                diags_.report(DiagId::E49, connectorSpans[i],
+                              "'==' after an element that passes through; the "
+                              "chain advances with '='");
+            } else if (connectors[i] == Connector::Advance && !exits) {
+                diags_.report(DiagId::E49, connectorSpans[i],
+                              "'=' after an element with no far side; continue "
+                              "on the node with '=='");
+            }
         }
     }
 

@@ -195,38 +195,65 @@ TEST_CASE("spec 8.6: each multiplicity operator parses") {
     CHECK(b->body[2].stmt->chain->segments[0]->elements[1]->group->mult == MultKind::Node);
 }
 
-TEST_CASE("spec 6.3: '==' opens and closes") {
-    // The pair brackets an element onto the node; the element after the
-    // close rides the same node.
-    auto paired = parse("block b { VIN = .{R1~r}. == .{C1~c: . = GND;} == EN; };");
-    expectClean(paired, "bracketed shunt");
+TEST_CASE("spec 6.2/6.3: the connector states whether the chain moved") {
+    // '=' advances through a far side; '==' continues on the near side of a
+    // dead-end element. The buck idiom: diode and boot cap on the SW node,
+    // the chain leaving through the inductor, decoupling on the far node.
+    auto buck = parse(
+        "block b { SW = K{D2~d: A = GND;} == .{C3~c: . = BST;} == A{L1~l}B"
+        " = .{C4~c: . = GND;} == FIVE; };");
+    expectClean(buck, "buck chain");
 
-    // Brackets compose by sharing a fence: a run of '==' hangs each enclosed
-    // element on the node in turn, and the chain leaves after the last close.
-    auto run = parse(
-        "block b { SW == K{D2~d: A = GND;} == .{C3~c: . = BST;} == A{L1~l}B = FIVE; };");
-    expectClean(run, "composed taps");
+    // A shunt ladder: attach, then continue on the node, twice.
+    auto ladder = parse(
+        "block b { V3 = .{C1~c: . = GND;} == .{C2~c: . = GND;} == .{C3~c: . = GND;}; };");
+    expectClean(ladder, "decap ladder");
 
-    // A close is followed by an element like any connector; a bracket
-    // cannot end a statement, however well it pairs.
-    auto trailing = parse("block b { A == .{C1~c: . = GND;} ==; };");
+    // '==' after an element that passes through is E-49...
+    auto afterNet = parse("block b { A == B; };");
+    CHECK(afterNet->report.find("E-49") != std::string::npos);
+    auto afterDevice = parse("block b { A = .{R1~r}. == B; };");
+    CHECK(afterDevice->report.find("E-49") != std::string::npos);
+
+    // ...and so is '=' after one with no far side.
+    auto advanceDead = parse("block b { A = .{C1~c: . = GND;} = B; };");
+    CHECK(advanceDead->report.find("E-49") != std::string::npos);
+
+    // A '==' with nothing after it continues the node into nowhere.
+    auto trailing = parse("block b { A = .{C1~c: . = GND;} ==; };");
     CHECK(trailing->report.find("E-49") != std::string::npos);
 
-    // The old lone-'==' spelling opens a bracket that never closes: E-49.
-    auto lone = parse("block b { A == B; };");
-    CHECK(lone->report.find("E-49") != std::string::npos);
+    // A binding is rooted at a pin, and a pin passes through, so a binding
+    // never opens with '=='.
+    auto bindingSame = parse("block b { {U1~p: VIN == VPOS; }; };");
+    CHECK(bindingSame->report.find("E-49") != std::string::npos);
+}
 
-    // Two runs of one: each '==' here is answered by '=' and never closes.
-    auto split = parse("block b { A == B = C2 == D; };");
-    CHECK(split->report.find("E-49") != std::string::npos);
+TEST_CASE("spec 7.3: multi-pin terminals parse") {
+    // A run of dots takes that many casual pins onto one node -- the written
+    // form of a deliberate short -- and a pin list does the same by name.
+    auto dots = parse("block b { A = B = ..{R1~r}; };");
+    expectClean(dots, "dot-run terminal");
+    const Element* e = dots->unit.items[0]->body[0].stmt->chain->segments[0]->elements[2];
+    CHECK(e->kind == ElementKind::Device);
+    CHECK(e->device->hasEntry);
+    CHECK(e->device->entry.dot);
+    CHECK_EQ(e->device->entry.dotCount, std::uint32_t{2});
+    CHECK_FALSE(e->device->hasExit);
 
-    // A binding's opening '==' opens its segment's first run...
-    auto binding = parse("block b { {U1~p: VIN == VPOS == .{C1~c: . = GND;}; }; };");
-    expectClean(binding, "binding-opened pair");
+    auto list = parse("block b { A = B = [A,K]{D1~d}; };");
+    expectClean(list, "pin-list terminal");
+    const Element* le = list->unit.items[0]->body[0].stmt->chain->segments[0]->elements[2];
+    CHECK(le->kind == ElementKind::Device);
+    CHECK(le->device->entry.hasList);
+    CHECK_EQ(le->device->entry.list.size(), std::size_t{2});
 
-    // ...so a binding whose '==' never closes is E-49 too.
-    auto bindingLone = parse("block b { {U1~p: VIN == VPOS; }; };");
-    CHECK(bindingLone->report.find("E-49") != std::string::npos);
+    // A pin list works on the exit side too: paralleled connector pins.
+    auto both = parse("block b { VIN = [1,2]{J5~conn}[3,4] = GND; };");
+    expectClean(both, "pin lists both sides");
+    const Element* be = both->unit.items[0]->body[0].stmt->chain->segments[0]->elements[1];
+    CHECK(be->device->entry.hasList);
+    CHECK(be->device->exit.hasList);
 }
 
 TEST_CASE("spec 6.2: '=' is the plain join, bare nets included") {
@@ -238,7 +265,7 @@ TEST_CASE("spec 6.2: '=' is the plain join, bare nets included") {
 TEST_CASE("spec 6: every connection operator parses") {
     auto r = parse(
         "block b {"
-        "  A == B == C2;"
+        "  A = .{C0~c: . = GND;} == B;"
         "  C = .{R?~r}. = D;"
         "  E[0:3] = [[.{R?~r}.]] =* F;"
         "  G *= H[0:7];"
@@ -246,7 +273,7 @@ TEST_CASE("spec 6: every connection operator parses") {
         "};");
     expectClean(r, "connectors");
     const Item* b = r->unit.items[0];
-    CHECK(b->body[0].stmt->chain->segments[0]->connectors[0] == Connector::Same);
+    CHECK(b->body[0].stmt->chain->segments[0]->connectors[1] == Connector::Same);
     CHECK(b->body[1].stmt->chain->segments[0]->connectors[0] == Connector::Advance);
     CHECK(b->body[2].stmt->chain->segments[0]->connectors[1] == Connector::Gather);
     CHECK(b->body[3].stmt->chain->segments[0]->connectors[0] == Connector::Broadcast);
@@ -278,7 +305,7 @@ TEST_CASE("spec 7.2: '~' distinguishes declaring from referencing") {
 }
 
 TEST_CASE("spec 13.3: range designators parse, contiguous and not") {
-    auto r = parse("block b { A = (.{BLK%[1:4]~blk}.)*4 = B; C = .{BLK%[1:4,9:10]~blk}. = D; };");
+    auto r = parse("block b { A = (.{BLK%[1:4]~blk}.)*4 == B; C = .{BLK%[1:4,9:10]~blk}. = D; };");
     expectClean(r, "range designators");
     const Item* b = r->unit.items[0];
     const Designator& d1 =
@@ -488,8 +515,8 @@ TEST_CASE("rev 1.4: a binding opens with any connector and carries a chain") {
     auto r = parse(
         "block b {"
         "  {U1~p:"
-        "    VIN       == VPOS == .{C1~c: . = GND;};"
-        "    SW        == K{D2~d: A = GND;} == .{C3~c: . = BST;};"
+        "    VIN       = VPOS = .{C1~c: . = GND;};"
+        "    SW        = K{D2~d: A = GND;} == .{C3~c: . = BST;};"
         "    LANE[0:3] =* COMMON;"
         "    REF       *= FANOUT[0:3];"
         "    EN        = .{R5~r}. = VPOS;"
@@ -500,22 +527,21 @@ TEST_CASE("rev 1.4: a binding opens with any connector and carries a chain") {
     const Instance* inst = instanceIn(r, 0);
     CHECK_EQ(inst->bindings.size(), std::size_t{6});
 
-    // "VIN == VPOS == .{C1~c: . = GND;}": the '==' pair brackets VPOS onto
-    // the pin's node, and the shunt after the close -- carrying a binding
-    // list of its own -- rides that node.
+    // "VIN = VPOS = .{C1~c: . = GND;}": the rail, then the shunt on it --
+    // plain joins, since neither VPOS nor the shunt asks for more.
     const Binding* vin = inst->bindings[0];
-    CHECK(vin->connector == Connector::Same);
+    CHECK(vin->connector == Connector::Advance);
     CHECK(vin->net == nullptr);
     CHECK(vin->rhs != nullptr);
     CHECK_EQ(vin->rhs->elements.size(), std::size_t{2});
-    CHECK(vin->rhs->connectors[0] == Connector::Same);
+    CHECK(vin->rhs->connectors[0] == Connector::Advance);
     CHECK(vin->rhs->elements[1]->kind == ElementKind::Device);
     CHECK_EQ(vin->rhs->elements[1]->device->instance->bindings.size(), std::size_t{1});
 
-    // A '==' pair may open at the pin itself (spec 6.3), and both
-    // elements of this one are devices with terminals of their own.
+    // The diode dead-ends at the pin's node and '==' continues there
+    // (spec 6.3); both elements are devices with terminals of their own.
     const Binding* sw = inst->bindings[1];
-    CHECK(sw->connector == Connector::Same);
+    CHECK(sw->connector == Connector::Advance);
     CHECK(sw->rhs != nullptr);
     CHECK_EQ(sw->rhs->elements.size(), std::size_t{2});
     CHECK(sw->rhs->elements[0]->device->hasEntry);

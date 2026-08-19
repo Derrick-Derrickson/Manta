@@ -10,9 +10,9 @@ block eq-top {
     GND &TYPE=GROUND;
 
     {U1~EQ-CHIP};
-    U1.VIN   == VRAIL == .{C1~EQ-C: . = GND;};
-    U1.SW    == K{D1~EQ-D: A = GND;} == .{C2~EQ-C: . = BOOT;};
-    U1.FB    == .{R1~EQ-R: . = VRAIL;} == .{R2~EQ-R: . = GND;};
+    U1.VIN   = VRAIL = .{C1~EQ-C: . = GND;};
+    U1.SW    = K{D1~EQ-D: A = GND;} == .{C2~EQ-C: . = BOOT;};
+    U1.FB    = .{R1~EQ-R: . = VRAIL;} == .{R2~EQ-R: . = GND;};
     U1.EN    = .{R3~EQ-R}. = VRAIL;
     U1.COMP  = .{R4~EQ-R: . = .{C3~EQ-C: . = GND;};};
     U1.GND   = GND;

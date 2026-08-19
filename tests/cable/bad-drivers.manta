@@ -40,8 +40,8 @@ block sensor-card {
     RAIL = VPOS{J1~BACKPLANE-OUT};
     UPLINK = VPOS{J2~BACKPLANE-IN};
     UPLINK &STUB;
-    TX{U2} = TXD{J1};
-    TX{U2} = RXD{J2};
-    G{U1} = GND;
-    G{U2} = GND;
+    TX{U2} == TXD{J1};
+    TX{U2} == RXD{J2};
+    G{U1} == GND;
+    G{U2} == GND;
 };

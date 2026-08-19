@@ -4,37 +4,43 @@
 
 ### Language, revision 1.6
 
-- **`==` is a node bracket and never appears alone.** A `==` pair brackets
-  an element onto the current node (§6.3): the node is the same on both
-  sides, and every terminal of the bracketed element lies on it. Bracket a
-  shunt and the chain runs past it; bracket a net name and the node is named;
-  bracket a two-terminal device and it is shorted (W-02, whose message now
-  says "bracket"). Brackets compose — the close of one tap may serve as the
-  open of the next, so `SW == K{D2~dio: A=GND;} == .{C3~cap: .=BST;} ==
-  A{L1~ind}B = 5V;` hangs the diode and the cap on the node and leaves
-  through the inductor. The last `==` of a run, like every connector, is
-  followed by an element — a bracket cannot end a statement — and a binding's
-  opening `==` counts as part of its segment's first run
-  (`VIN == VPOS == .{C1~cap: .=GND};`). Any lone `==` — including every
-  pre-1.6 joining `==` — is the new error **E-49**, reported at parse.
+- **The connector states whether the chain moved — and it has to be telling
+  the truth.** `=` is the plain join everywhere, two bare net names included
+  (`A = B;` puts both names on one node, which retires E-22), and it advances
+  through the far side of the element before it. `==` continues on the near
+  side, legal exactly when that element has no far side — a shunt whose other
+  pin is bound inside its `{}`, a device attached by one pin, a `*N` group.
+  Both mismatches are the new parse error **E-49**, so every `=` and `==` in
+  a file is forced, never stylistic. The buck idiom reads attach, stay, stay,
+  advance: `SW = K{D2~dio: A=GND;} == .{C3~cap: .=BST;} == A{L1~ind}B =
+  .{C4~cap: .=GND} == 5V;` — and nothing can short L1, because `==` never
+  joins across an element. A binding opens with `=`, `=*` or `*=`; a pin
+  passes through, so `==` never opens one (§6.2, §6.3, §7.4).
 
-- **`=` is the plain join, and E-22 is retired.** `=` joins the exit of the
-  left element to the entry of the right; through a device the node advances,
-  and between two bare net names there is nothing to advance through, so
-  `A = B;` puts both names on one node (§6.2). That is now the aliasing form —
-  `U1.GPIO1 = LED-DRIVE;` — and the old rule that `=` needed a device on one
-  side is gone. E-22 joins the deliberately-absent codes and is never emitted.
+- **Multi-pin terminals: the written form of a bridge.** A run of dots takes
+  that many next-unassigned casual pins onto one node — `..{R1}` is both pads
+  of R1, a deliberate short — and a pin list does the same by name:
+  `[A,K]{D1}`. Lists work on both sides, so `VIN = [1,2]{J5~conn}[3,4] =
+  GND;` parallels connector pins two per side. Either form is one wire wide
+  however many pins it consumes (§7.3).
+
+- **W-02 is now a connectivity check.** Both pads of a two-terminal device
+  landing on one net is warned wherever it arises — through one chain or
+  across separate statements, which the old syntactic check could never see —
+  *except* when a multi-pin terminal spelled the bridge out, which is intent,
+  not accident.
 
 - **A `<>` pin satisfies E-02.** A bidirectional pin can drive, so a GPIO
   wired straight into an input pin is normal, not a floating input. E-01 is
   unchanged — it still counts only `>` pins, so two bus pins on one net are
   not contention.
 
-- **Migration.** Sources written for 1.5 respell every lone joining `==` as
-  `=` — `SW == SW-NODE = ...` becomes `SW = SW-NODE = ...`, `X == .{C1~cap:
-  .=GND};` becomes `X = .{C1~cap: .=GND};` — while the paired forms
-  (`VIN = .{R1~res}. == .{C1~cap: .=GND} == EN;`) mean exactly what they
-  always did. The language revision in objects and netlists is 1.6.
+- **Migration.** Joining `==` becomes `=` (`SW == SW-NODE` → `SW = SW-NODE`);
+  `==` survives only after dead-end attachments (`X = .{C1~cap: .=GND} ==
+  EN;`), and a `=` there becomes `==` (decap ladders read `3V3 = .{C1: .=GND}
+  == .{C2: .=GND};`). The old shorting idiom `A == .{R1}. == B` is respelled
+  `..{R1}` on the joined net. The language revision in objects and netlists
+  is 1.6.
 
 ## 1.5.0 — 2026-08-14
 

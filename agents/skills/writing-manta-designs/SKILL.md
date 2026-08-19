@@ -30,32 +30,44 @@ that achieves it; copy its structure.
 This is where most mistakes are made, so learn them properly.
 
 ```
-A = B                     both names are one net
-A = .{R1~res}. = B        A and B are different nets, joined through R1
-X == .{C1~cap: .=GND} == Y   the pair brackets C1 onto the node; X and Y are one net
-A ^ B                     placed in one statement, not connected at all
-A[0:3] =* B               gather: four wires shorted onto one
-A *= B[0:7]               broadcast: one net to every element
+A = B                        both names are one net
+A = .{R1~res}. = B           A and B are different nets, joined through R1
+X = .{C1~cap: .=GND} == Y    C1 dead-ends, so '==' continues on the node; X and Y are one net
+A ^ B                        placed in one statement, not connected at all
+A[0:3] =* B                  gather: four wires shorted onto one
+A *= B[0:7]                  broadcast: one net to every element
 ```
 
-`=` is **the plain join**: it connects the exit of the left element to the
-entry of the right. Through a device the node advances; between two bare names
-there is nothing to advance through, so `A = B` simply puts both names on one
-net — that is also how a net gets a second name.
+**The connector states whether the chain moved, and it has to be telling the
+truth.** `=` is the plain join: it advances through the far side of the
+element before it, so that element must have one — a net, a passthrough
+device (`.{R}.`, `A{L}B`), a `+N`/`|N` group. Between two bare names there is
+nothing to advance through, so `A = B` puts both names on one net — that is
+also how a net gets a second name.
 
-`==` **never appears alone** — a lone `==` is **E-49**. A `==` pair brackets
-an element onto the current node without advancing it, and brackets compose:
-the close of one tap may serve as the open of the next, so
-`SW == K{D2~dio: A=GND;} == .{C3~cap: .=BST;} == A{L1~ind}B = 5V;` hangs the
-diode and the cap on the node and leaves through the inductor. Bracket a
-shunt and the chain runs past it; bracket a net name and the node is named;
-bracket a two-terminal device and it is **shorted** — legal, and gives you
-W-02. The last `==` of a run, like any connector, must be followed by an
-element — a bracket cannot end a statement. What lets a chain continue past
-a shunt is exactly the bracket, because a shunt has no exit terminal:
+`==` continues **on the near side**, and is legal exactly when the element
+before it has no far side — a shunt whose other pin is bound inside its `{}`,
+a device attached by one pin, a `*N` group. Both mismatches are **E-49**, so
+every `=` and `==` you write is forced, never stylistic. The buck idiom reads
+attach, stay, stay, advance:
 
 ```
-VIN = .{R1~res}. == .{C1~cap: .=GND} == EN;
+SW = K{D2~dio: A=GND;} == .{C3~cap: .=BST;} == A{L1~ind}B = .{C4~cap: .=GND} == 5V;
+```
+
+The diode and the boot cap hang on the SW node, the chain leaves through the
+inductor, the decoupling cap attaches on the far node, and the final `==`
+names it. Nothing here can short L1, because `==` never joins across an
+element.
+
+A deliberate short is written as a **multi-pin terminal**, never as a chain
+trick: `..{R1~res}` takes both casual pins onto one node, `[A,K]{D1~dio}`
+does the same by name, and `[1,2]{J5~conn}[3,4]` parallels connector pins two
+per side. W-02 stays quiet about a bridge spelled this way and fires on one
+that merely happens across separate statements.
+
+```
+VIN = .{R1~res}. = .{C1~cap: .=GND} == EN;
 ```
 
 `R1`'s far pin, `C1`'s exposed pin and `EN` are one node. `VIN` is not.
@@ -111,7 +123,7 @@ block rc-filter {
     #~r-value = 10;              // weak: a call site may override
     >IN;
     OUT>;
-    IN = .{R1~R-$"r-value"$kR-0603}. == .{C1~C-100nF: .=GND} == OUT;
+    IN = .{R1~R-$"r-value"$kR-0603}. = .{C1~C-100nF: .=GND} == OUT;
 };
 ```
 

@@ -151,7 +151,7 @@ block blocktop {
     --- SENSE
     {U8~BR-1k: A = BSENSE; B = BFEED; SHIELD = ?;};
     BSENSE = {BLK3~clamp}TAP;
-    TAP{BLK4~clamp} = BFEED;
+    TAP{BLK4~clamp} == BFEED;
 };
 ")
 run_manta(compile -o "${WORK}/blockbuild/" "${BLOCKSRC}")

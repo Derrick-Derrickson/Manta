@@ -9,8 +9,8 @@ makes a run of capacitors read naturally:
 
 ```
 3V3 = .{C1~C-10uF-0805: .=GND}
-    = .{C2~C-100nF-0603: .=GND}
-    = .{C3~C-100nF-0603: .=GND};
+   == .{C2~C-100nF-0603: .=GND}
+   == .{C3~C-100nF-0603: .=GND};
 ```
 
 Several identical caps on one node are a multiplicity group. `*N` asserts only

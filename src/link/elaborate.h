@@ -11,8 +11,9 @@
 // the connectors of spec 6 are operations on bundles:
 //
 //   =   union(left.exit, right.entry), then advance
-//   ==  union every terminal of every element in the run -- which is why a
-//       two-terminal device with '==' on both sides is shorted (spec 6.3)
+//   ==  union(left.entry, right.entry) -- the anchor of a dead-end element is
+//       its entry, so the chain continues on the near side (spec 6.3); the
+//       parser has already checked the spelling matches the element (E-49)
 //   ^   no union at all (spec 6.4)
 //   =*  gather an N-wide bundle onto one node
 //   *=  broadcast one node across an N-wide bundle
@@ -23,6 +24,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "base/arena.h"
@@ -138,8 +140,7 @@ private:
     // 'seedLead' prepends a leading element the segment does not itself spell.
     // Spec 7.4: a binding is a chain rooted at a pin, so "PIN <conn> <segment>"
     // is the segment with the pin standing in front of it and 'seedConn' between
-    // them. Seeding rather than uniting afterwards is what makes a '==' run span
-    // the pin: the run is one run, seen by one pass of spec 6's connectors.
+    // them, seen by one pass of spec 6's connectors.
     ElemValue elaborateSegment(const Segment* seg, Scope& scope, std::int64_t expectedIn,
                                std::int64_t expectedOut, std::vector<std::uint32_t>& touched,
                                const ElemValue* seedLead = nullptr,
@@ -239,6 +240,9 @@ private:
     // here and reported with the unassigned devices (E-UNANNOTATED).
     std::vector<UnannotatedBlock> unannotatedBlocks_;
     std::vector<std::uint32_t> shorted_;
+    // Components whose bridge was written explicitly through a multi-pin
+    // terminal (spec 7.3) -- exempt from the W-02 connectivity check.
+    std::unordered_set<std::uint32_t> bridged_;
     std::uint32_t nextScopeId_ = 1;
     int depth_ = 0;
 

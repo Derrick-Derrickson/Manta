@@ -4,16 +4,19 @@
 
 > **Corrected against a reference implementation.**
 >
-> **1.6 makes `==` a bracket.** `==` never appears alone: a `==` pair
-> brackets an element onto the current node — a shunt the chain runs past, a
-> name for the node, a device deliberately shorted — and brackets compose,
-> the close of one tap serving as the open of the next. An unpaired `==` is
-> error E-49 (§6.3). The plain join is a single
-> `=` everywhere, two bare net names included: `A = B;` puts both names on
-> one node, which retires E-22 and with it the old rule that `=` needed a
-> device on one side (§6.2). Sources written for 1.5 that used a lone `==`
-> to join or alias nets respell it `=`; the bracketed forms — `X == .{C1~c:
-> .=GND} == Y` — mean in 1.6 exactly what they meant before.
+> **1.6 makes the connector state whether the chain moved.** `=` is the
+> plain join everywhere — two bare net names included, which retires E-22 —
+> and it advances through the far side of the element before it. `==`
+> continues on the near side, and is legal exactly when that element has no
+> far side: its other pins are spoken for inside its `{}`, so the node is
+> where the chain stays (§6.2, §6.3). A connector that disagrees with the
+> element before it is error E-49, so every `=` and `==` in a file is forced,
+> never stylistic. Deliberate shorts get a written form instead of a chain
+> trick: a run of dots (`..{R1}`) or a pin list (`[A,K]{D1}`) attaches that
+> many pins of one part to one node (§7.3), and W-02 becomes a connectivity
+> check that stays quiet about bridges spelled that way. Sources written for
+> 1.5 respell a joining `==` as `=` and keep `==` only after shunts and other
+> dead-end attachments.
 >
 > **1.5 says what a net and a connector are for the page.** Two directives, one
 > revision. `&RAIL` (§11.3) marks a net as a power rail for rendering, whatever
@@ -499,7 +502,7 @@ block_def = [ linkage ] "block" identifier
 
 ```
 block rc-filter {
-    >IN = .{R?~10kR-0603}. == .{C?~100nF-0603: .=GND} == OUT>;
+    >IN = .{R?~10kR-0603}. = .{C?~100nF-0603: .=GND} == OUT>;
 };
 ```
 
@@ -733,66 +736,63 @@ extern U5.1 = GND;                   // a pin reference (§6.6)
 USB = MCU-USB;                       // harnesses, assigned member-wise (§12.1)
 ```
 
+`=` shall follow an element that has a far side to advance through. After an element
+whose written pins are all on the near side — a shunt, a one-pin attachment — the chain
+has not moved, and saying otherwise is error **E-49**; the truthful spelling is `==`
+(§6.3).
+
 *(Revision note: 1.5 and earlier required a device on one side of `=` and reserved
-error E-22 for two bare names. 1.6 retires E-22; the joining `==` it forced is now the
-bracket of §6.3 and shall not appear alone.)*
+error E-22 for two bare names. 1.6 retires E-22: `=` is the plain join, and `==` is
+reserved for the one place a chain genuinely cannot advance.)*
 
-### 6.3 `==` — the node bracket
+### 6.3 `==` — continue on the node
 
-`==` never appears alone. A pair of `==` brackets an element onto the current node: the
-node is the same on both sides of the bracket, and every terminal of the bracketed
-element lies on it. A bracket never advances the chain, which is what lets a chain run
-past a shunt — a shunt has no exit terminal, so nothing else could carry the chain
-beyond it.
-
-```
-VIN = .{R1~10kR-0603}. == .{C1~100nF-0603: .=GND} == EN;
-```
-
-`R1`'s far terminal, `C1`'s exposed terminal and `EN` are one node: the bracket hangs
-`C1` on the node, and `EN`, standing after the close, rides the same node.
-
-A bracketed net name names the node without moving it:
+`==` continues the chain on the near side of the element before it. It is legal exactly
+when that element has no far side — a shunt whose other pin is bound inside its `{}`, a
+device attached by one pin, a `*N` group hanging on the node — and it is error **E-49**
+after anything that passes through. The node does not move across `==`: what follows it
+attaches to, or names, the node the chain already stands on.
 
 ```
-SW == SW-NODE == .{L1~MT100UFA}. = VOUT;   // the node is called SW-NODE; L1 sits on it
+VIN = .{R1~10kR-0603}. = .{C1~100nF-0603: .=GND} == EN;
 ```
 
-The rule is uniform and has no exception for devices. A two-terminal device inside a
-bracket has both pads on one node and is shorted out. This is legal and generates
-warning **W-02**.
+`R1` passes through, so plain joins carry the chain to `C1`'s exposed terminal. `C1`
+dead-ends — its far pin went to `GND` inside the braces — so `==` continues on that
+node and names it `EN`. `R1`'s far terminal, `C1`'s exposed terminal and `EN` are one
+node, and every connector in the line states truthfully whether the chain moved.
+
+The buck idiom reads the same way — attach, stay, stay, advance:
 
 ```
-A == .{R1~10kR-0603}. == B;     // A and B are one net; R1's pads are bridged
+SW = K{D2~DI3643: A=GND;} == .{C3~100nF-0603: .=BUCK-BST;} == A{L1~MT100UFA}B
+   = .{C4~10uF-0805: .=GND} == 5V;
 ```
 
-Brackets compose: the close of one may serve as the open of the next, so a run of
-consecutive `==` hangs each enclosed element on the node in turn — every element with
-`==` on both sides lies wholly on the node.
+`D2` attaches to `SW` by its cathode and dead-ends; `C3` rides the same node; `L1`
+attaches by `A` and passes through; the plain join advances through `L1` to `C4`; and
+the final `==` names the far node `5V`. The inductor is unambiguously in series —
+nothing here can short it, because `==` never joins across an element.
+
+A shunt ladder attaches once and continues on the node for each further shunt:
 
 ```
-SW == K{D2~DI3643: A=GND;} == .{C3~100nF-0603: .=BUCK-BST;} == A{L1~MT100UFA}B = 5V;
+3V3 = .{C1~10uF-0805: .=GND} == .{C2~100nF-0603: .=GND} == .{C3~100nF-0603: .=GND};
 ```
 
-`D2`'s cathode and `C3`'s exposed terminal hang on the `SW` node, `L1`'s `A` pin rides
-it after the final close, and the chain leaves through `L1` to `5V`.
-
-A `==` with no partner — a run of one — is error **E-49**, and the last `==` of a run,
-like every connector, is followed by an element: a bracket cannot end a statement.
+The mismatches are E-49 in both directions, so the spelling is forced, never stylistic:
 
 ```
-A == B;                         // ERROR E-49: the bracket never closes
-A == B = C;                     // ERROR E-49: the open is answered by '='
-U1.GPIO1 == LED-DRIVE ==;       // ERROR E-49: nothing follows the close
-U1.GPIO1 = LED-DRIVE;           // correct: the plain join of §6.2
+A == B;                          // ERROR E-49: a net passes through; join with '='
+A = .{R1~10kR-0603}. == B;       // ERROR E-49: R1 passes through; advance with '='
+A = .{C1~100nF-0603: .=GND} = B; // ERROR E-49: C1 dead-ends; continue with '=='
+A = .{C1~100nF-0603: .=GND} ==;  // ERROR E-49: '==' continues only into an element
 ```
 
-A binding may open with `==` (§7.4): the pin is the element before the open, and the
-first element of the binding's chain is the bracketed one.
-
-```
-VIN == VPOS == .{C1~10uF-0805: .=GND};   // VIN sits on VPOS; C1 rides the node
-```
+There is no way to short a device with connectors. A deliberate bridge is written as a
+multi-pin terminal — `..{R1}` or `[A,K]{D1}` (§7.3) — and a bridge that merely *happens*,
+two pads of one part reaching one net through separate statements, is warning **W-02**
+(§16.2).
 
 ### 6.4 `^` — adjacency
 
@@ -868,7 +868,9 @@ From tightest to loosest:
 ```ebnf
 device   = [ terminal ] "{" instance "}" [ terminal ] ;
 instance = [ "!" ] designator [ "~" identifier ] [ ":" binding { ";" binding } [ ";" ] ] ;
-terminal = "." | identifier [ "[" range "]" ] ;
+terminal = "." { "." }
+         | "[" identifier { "," identifier } "]"
+         | identifier [ "[" range "]" ] ;
 ```
 
 ### 7.2 Declaration and reference
@@ -930,6 +932,25 @@ part resistor-0603 {
 .{D1~DI3643}.              // ERROR E-23: a diode's pins are not casual
 ```
 
+#### Multi-pin terminals
+
+A run of dots takes that many next-unassigned casual pins — resolution order as above,
+each dot in turn — all onto the **one** node the terminal stands on. A pin list does the
+same by name: every listed pin joins the node. Either is one wire wide however many pins
+it consumes, which is what distinguishes a list from a range — `[A,K]` is two pins on
+one net, where `O[0:1]` is two wires of a bus.
+
+```
+X = Y = ..{R1~10kR-0603};        // both pads of R1 on the X node: a written short
+X = Y = [A,K]{D1~DI3643};        // the same by name, for pins that are not casual
+VIN = [1,2]{J5~PWR-CONN}[3,4] = GND;   // paralleled connector pins, two per side
+```
+
+Writing two or more pins of one part onto one node is the explicit spelling of a
+bridge, so **W-02** stays quiet about a short declared this way (§16.2). A multi-pin
+terminal consumes every pin it takes on the near side, so an element attached through
+one and writing no exit dead-ends, and the chain continues with `==` (§6.3).
+
 ### 7.4 Bindings
 
 `:` introduces a binding list and `;` separates bindings. A trailing `;` before `}` is
@@ -961,15 +982,15 @@ U5.EN = .{R7~100kR-0603}. = VBAT;
 `PIN = NET` is the degenerate case of the same rule, where the segment is a single net
 element. It joins the pin and the net onto one node, as any `=` does (§6.2).
 
-Any of the four connectors of §6 may open a binding — `=`, `==`, `=*`, `*=` — each with its
+A binding opens with `=`, `=*` or `*=` — each with its
 usual meaning. `^` (§6.4) does not appear in a binding: a binding is one segment, not a
 chain of `^`-separated segments. Where two unconnected things belong to one pin, write two
 bindings or a separate statement.
 
 ```
 {U2~buck-3a:
-    VIN  == VPOS == .{C1~10uF-0805: .=GND; };
-    FB   == .{R3~51kR-0603: .=5V; } == .{R4~10kR-0603: .=GND; };
+    VIN  = VPOS = .{C1~10uF-0805: .=GND; };
+    FB   = .{R3~51kR-0603: .=5V; } == .{R4~10kR-0603: .=GND; };
     COMP = .{C2~1nF-0603}. = GND;
 };
 ```
@@ -1421,7 +1442,7 @@ It does not cover:
 - nodes internal to a part or block
 
 ```
-SW-NODE == ({C?~100nF-0603: .=GND}.)*4 == 3V3
+SW-NODE = ({C?~100nF-0603: .=GND}.)*4 == 3V3
         = S{Q?~FFET123: G=nPWR-EN}D = PWR-SWITCHED &CURRENT=3A;
 ```
 
@@ -1975,7 +1996,7 @@ instantiated.
 
 ```
 block my-block {
-    >IN = .{R1~10kR-0603}. == .{C1~100nF-0603: .=GND} == OUT>;
+    >IN = .{R1~10kR-0603}. = .{C1~100nF-0603: .=GND} == OUT>;
 };
 ```
 
@@ -2414,15 +2435,15 @@ A diagnostic is written to stderr in the form:
 ```
 
 ```
-power.manta:42:9: error[E-49]: an unpaired '=='; '==' opens and closes around what it taps, and a plain join is a single '='
-power.manta:71:5: warning[W-02]: R12 is shorted by a '==' bracket
+power.manta:42:9: error[E-49]: '==' after an element that passes through; the chain advances with '='
+power.manta:71:5: warning[W-02]: R12 is shorted: both pads land on one net
 ```
 
 Under `--json-diagnostics` each is an object on its own line:
 
 ```json
 {"file":"power.manta","line":42,"column":9,"severity":"error","code":"E-49",
- "message":"an unpaired '=='; '==' opens and closes around what it taps, and a plain join is a single '='"}
+ "message":"'==' after an element that passes through; the chain advances with '='"}
 ```
 
 Diagnostics arising after substitution report the position of the substitution in the
@@ -2499,7 +2520,7 @@ from mistakes.
 | E-46 | Mating pins do not line up: a count mismatch, or a `@map` naming a pin that does not exist. |
 | E-47 | Two pins that both drive are joined through a cable. |
 | E-48 | A supply and a ground are joined through a cable. |
-| E-49 | An unpaired `==`: a `==` bracket shall open and close around one element. |
+| E-49 | A connector disagrees with the element before it: `==` after an element that passes through, or `=` after one with no far side. |
 | E-UNANNOTATED | An instance still carries `?` when the netlist is built. |
 
 `E-UNANNOTATED` is the one diagnostic outside the numbered space, because it is
@@ -2532,7 +2553,7 @@ component exported as `BLK?7_R1` is no more shippable than a bare `?`.
 | Code | Rule |
 |---|---|
 | W-01 | A declared part has pins appearing in no chain and no binding. Catches unused sections of a multi-unit package. |
-| W-02 | A two-terminal device is shorted by a `==` bracket. |
+| W-02 | Both pads of a two-terminal device land on one net without a multi-pin terminal saying so. |
 | W-03 | A capacitor is in series with two non-ground nets. |
 | W-04 | A `&TYPE=POWER<` pin has no capacitor on its net within two nodes. |
 | W-06 | A `~`-weak field is never overridden anywhere in the design. |
@@ -2627,7 +2648,7 @@ indented file is already canonical — the formatter changes nothing at all on i
 | Symbol | Meaning | Section |
 |---|---|---|
 | `=` | connect, advance node | 6.2 |
-| `==` | node bracket, always in an adjacent pair | 6.3 |
+| `==` | continue on the node, after a dead-end element | 6.3 |
 | `^` | adjacency, no connection | 6.4 |
 | `=*` | gather array to scalar | 6.5 |
 | `*=` | broadcast scalar to array | 6.5 |
@@ -2686,10 +2707,12 @@ segment         = element { connector element } ;
 connector       = "=" | "==" | "=*" | "*=" ;
 element         = net_expr | device | group | replication ;
 
-(* Constraint (§6.3): every maximal run of consecutive "==" in a segment
-   has length two or more -- an open, a close, and optionally shared fences
-   between composed brackets. A binding's opening "==" (§7.4) counts as part
-   of its segment's first run. A run of one is E-49. *)
+(* Constraint (§6.2, §6.3): after an element that passes through -- a net,
+   a device written with an exit terminal, a "+N"/"|N" group, a replication
+   whose unit passes through -- the connector is "=". After an element with
+   no far side -- a shunt, a one-pin attachment, a "*N" group -- it is "==".
+   A connector that disagrees with the element before it is E-49. A binding
+   opens with "=", "=*" or "*=": a pin passes through (§7.4). *)
 
 group           = "(" segment ")" [ multiplicity ] ;
 multiplicity    = ( "+" | "|" | "*" ) integer ;
@@ -2702,7 +2725,9 @@ instance        = [ "!" ] designator [ "~" identifier ]
 designator      = identifier ( "?" | integer | desig_range ) ;
 desig_range     = "%" "[" desig_part { "," desig_part } "]" ;
 desig_part      = integer [ ":" integer ] ;
-terminal        = "." | identifier [ "[" range "]" ] ;
+terminal        = "." { "." }
+                | "[" identifier { "," identifier } "]"
+                | identifier [ "[" range "]" ] ;
 binding         = pin_ref [ connector segment | "=" "?" ] { directive | field_decl }
                 | field_decl | directive ;
 pin_ref         = identifier [ "[" range "]" ] | "." ;
@@ -2859,7 +2884,7 @@ block rc-filter {
     OUT>;
 
     IN = .{R?~$"r-value"$kR-0603}.
-      == .{C?~$"c-value"$nF-0603: .=GND}
+      = .{C?~$"c-value"$nF-0603: .=GND}
       == OUT;
 };
 ```
@@ -2901,9 +2926,9 @@ block power-and-signal {
     SW = SW-NODE
         = (.{L?~MT100UFA}.)+2
         = (A{D?~DI3643}K)|2
-        == ({C?~100nF-0603: .=GND}.)*4
+        = ({C?~100nF-0603: .=GND}.)*4
         == ({C?~10uF-0805: .=%[GND,AGND,GND]}.)*3
-        = 3V3
+        == 3V3
         = S{Q?~FFET123: G=nPWR-EN; }D
         = PWR-SWITCHED
         &CURRENT=3A &!VOLTAGE=6V &~LAYER=inner1;
@@ -2926,7 +2951,7 @@ block power-and-signal {
 
     // ---- enable RC ---------------------------------------------------
     {U1}GPIO[1] = .{R?~50R-0603}.
-               == .{C?~100nF-0603: .=GND}
+                = .{C?~100nF-0603: .=GND}
                == nPWR-EN;
 
     // ---- single amplifier --------------------------------------------
