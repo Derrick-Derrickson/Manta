@@ -117,7 +117,7 @@ private:
     Replication* parseReplication();
     Instance* parseInstance();
     Binding* parseBinding();
-    Terminal parseTerminal();
+    Terminal parseTerminal(bool entrySide);
     bool looksLikePinList() const;
     NetExpr* parseNetExpr();
 

@@ -46,8 +46,8 @@ TEST_CASE("a sensibly indented file is already canonical") {
         "\n"
         "    // a comment above a device\n"
         "    {U1~res:\n"
-        "        A = GND;\n"
-        "        B = VBUS;\n"
+        "        .A = GND;\n"
+        "        .B = VBUS;\n"
         "    };\n"
         "\n"
         "    X = .{R1~res}.\n"
@@ -64,16 +64,16 @@ TEST_CASE("only leading whitespace is rewritten") {
         "block b {\n"
         "GND &TYPE=GROUND;\n"
         "            {U1~res:\n"
-        "  nRESET  = nRESET;   \n"
-        "  GPIO-A  = LED[0];\n"
+        "  .nRESET = nRESET;   \n"
+        "  .GPIO-A = LED[0];\n"
         "                };\n"
         "};\n";
     const std::string want =
         "block b {\n"
         "    GND &TYPE=GROUND;\n"
         "    {U1~res:\n"
-        "        nRESET  = nRESET;   \n"
-        "        GPIO-A  = LED[0];\n"
+        "        .nRESET = nRESET;   \n"
+        "        .GPIO-A = LED[0];\n"
         "    };\n"
         "};\n";
     CHECK_EQ(format(input), want);
@@ -81,14 +81,14 @@ TEST_CASE("only leading whitespace is rewritten") {
 
 TEST_CASE("lines are never joined or split") {
     // The same binding list one-lined and five-lined: both are canonical.
-    const std::string oneLine = "block b {\n    {U1~res: A = X; B = Y;};\n};\n";
+    const std::string oneLine = "block b {\n    {U1~res: .A = X; .B = Y;};\n};\n";
     CHECK_EQ(format(oneLine), oneLine);
 
     const std::string fiveLines =
         "block b {\n"
         "    {U1~res:\n"
-        "        A = X;\n"
-        "        B = Y;\n"
+        "        .A = X;\n"
+        "        .B = Y;\n"
         "    };\n"
         "};\n";
     CHECK_EQ(format(fiveLines), fiveLines);
@@ -97,14 +97,14 @@ TEST_CASE("lines are never joined or split") {
 TEST_CASE("continuation lines take one unit past the depth") {
     const std::string input =
         "block b {\n"
-        "    SW = K{Q1~fet: G = GND;}\n"
+        "    SW = K.{Q1~fet: .G = GND;}\n"
         "== .{C9~cap: . = GND;}\n"
         "                == 3V3\n"
         "   &CURRENT=3A;\n"
         "};\n";
     const std::string want =
         "block b {\n"
-        "    SW = K{Q1~fet: G = GND;}\n"
+        "    SW = K.{Q1~fet: .G = GND;}\n"
         "        == .{C9~cap: . = GND;}\n"
         "        == 3V3\n"
         "        &CURRENT=3A;\n"
@@ -118,14 +118,14 @@ TEST_CASE("a binding broken after '=' continues; the list body does not") {
     const std::string input =
         "block b {\n"
         "    {U1~res:\n"
-        "    A =\n"
+        "    .A =\n"
         "    X;\n"
         "    };\n"
         "};\n";
     const std::string want =
         "block b {\n"
         "    {U1~res:\n"
-        "        A =\n"
+        "        .A =\n"
         "            X;\n"
         "    };\n"
         "};\n";
@@ -152,13 +152,13 @@ TEST_CASE("'}' and ';' split across lines stay split") {
     // The ';' still belongs to the unfinished statement, so it continues.
     const std::string input =
         "block b {\n"
-        "    {U1~res: A = X;\n"
+        "    {U1~res: .A = X;\n"
         "    }\n"
         "    ;\n"
         "};\n";
     const std::string want =
         "block b {\n"
-        "    {U1~res: A = X;\n"
+        "    {U1~res: .A = X;\n"
         "    }\n"
         "        ;\n"
         "};\n";
@@ -248,8 +248,8 @@ TEST_CASE("the end-of-content marker and everything after it are byte-for-byte")
         "  trailing spaces kept:   \n"
         "\tblock b { unparsed };\r\n"
         "no final newline";
-    const std::string input = "part p {\n1 = A;\n};\n" + tail;
-    const std::string want = "part p {\n    1 = A;\n};\n" + tail;
+    const std::string input = "part p {\n1: A;\n};\n" + tail;
+    const std::string want = "part p {\n    1: A;\n};\n" + tail;
     CHECK_EQ(format(input), want);
 }
 
@@ -264,7 +264,7 @@ TEST_CASE("formatting is idempotent") {
         "        X = .{R1~res}.\n"
         "  = Y;\n"
         "  {U1~res: #note = \"}\";\n"
-        "  B = X;\n"
+        "  .B = X;\n"
         "  };\n"
         "};\n"
         "---\n"

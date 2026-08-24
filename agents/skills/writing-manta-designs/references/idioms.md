@@ -43,7 +43,7 @@ is what stops the rule firing on every pull-up ever written.
 
 ```
 (.{L?~ind}.)+2          two in series along the chain
-(A{D?~dio}K)|2          two in parallel: entries common, exits common
+(A.{D?~dio}.K)|2          two in parallel: entries common, exits common
 ```
 
 `+N` and `|N` pass the chain through the group. `*N` does not â€” it hangs copies
@@ -55,7 +55,7 @@ off one node.
 follows from the unit's arity and the connection width, so it is never written:
 
 ```
->SIG[0:3] = [[ I{U?~AMP012: PWR=3V3; GND=GND}O ]] = OUT[0:3]>;
+>SIG[0:3] = [[ I.{U?~AMP012: PWR=3V3; GND=GND}.O ]] = OUT[0:3]>;
 ```
 
 Four copies. Each amplifier gets its own signal because the bus is indexed; all
@@ -64,14 +64,14 @@ four share `3V3` and `GND` because a scalar broadcasts.
 To give each copy something different, use `%`:
 
 ```
-[[ I{U?~AMP012: EN=%AMP-EN[0:3]; PWR=3V3}O ]]
+[[ I.{U?~AMP012: EN=%AMP-EN[0:3]; PWR=3V3}.O ]]
 ```
 
 Where the unit is not one-in one-out, state the widths and let the compiler
 check them:
 
 ```
-[4[ I{U?~splitter}O[0:1] ]8]     // 1-in 2-out, 4 copies, 8 out
+[4[ I.{U?~splitter}.O[0:1] ]8]     // 1-in 2-out, 4 copies, 8 out
 ```
 
 ## Differential pairs
@@ -154,7 +154,7 @@ netclass power {
 
 ```
 {!R1~R-0R-0603};                   // sugar for @fitted=FALSE
-{!BLK1~audio-stage}OUT;            // cascades to every part within
+{!BLK1~audio-stage}.OUT;            // cascades to every part within
 ```
 
 DNP affects BOM and ERC only. The netlist is unchanged: the footprint is placed,
@@ -174,8 +174,8 @@ One designator, several statements. Bindings are declared once, on the statement
 that declares the instance; later references inherit them:
 
 ```
-SIG-A-IN = INA{U20~LM324: v-pos=3V3; v-neg=GND; }OUTA = SIG-A-OUT;
-SIG-B-IN = INB{U20}OUTB = SIG-B-OUT;
+SIG-A-IN = INA.{U20~LM324: .v-pos=3V3; .v-neg=GND; }.OUTA = SIG-A-OUT;
+SIG-B-IN = INB.{U20}.OUTB = SIG-B-OUT;
 ```
 
 This is the case where the designator must be author-assigned rather than `?`,
@@ -188,7 +188,7 @@ physically associated group whose internal relationship is not expressed here â€
 a mated connector pair, for instance:
 
 ```
-PANEL-OUT = 1{J1~conn-4} ^ {J2~conn-4}1 = PANEL-RETURN;
+PANEL-OUT = 1.{J1~conn-4} ^ {J2~conn-4}.1 = PANEL-RETURN;
 ```
 
 Where a connection *is* intended, use `==`.
@@ -203,7 +203,7 @@ block indicator {
     #~series-r = 1;
     >DRIVE;
     DRIVE = .{R1~R-$"series-r"$kR-0603}. = LED-A;
-    LED-A = A{D1~LED-0603}K = GND;
+    LED-A = A.{D1~LED-0603}.K = GND;
 };
 ```
 

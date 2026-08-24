@@ -15,7 +15,7 @@ block power-and-signal {
         = (.{L?~MT100UFA}.)+2
         = ({C?~100nF-0603: .=GND}.)*4
        == 3V3
-        = S{Q?~FFET123: G=nPWR-EN; }D
+        = S.{Q?~FFET123: .G=nPWR-EN; }.D
         = PWR-SWITCHED
         &CURRENT=3A &!VOLTAGE=6V;
 };

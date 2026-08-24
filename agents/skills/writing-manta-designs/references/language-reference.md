@@ -108,10 +108,10 @@ part JST-8-CRIMP { @type = crimp;  1 = A &CASUAL; 2 = B &CASUAL; };
 part WIRE-22AWG  { @type = wire; #csa = 1mm2; 1 = A &CASUAL; 2 = B &CASUAL; };
 
 cable jumper-8way {
-    {J1~JST-8-PLUG}P[1:8]
+    {J1~JST-8-PLUG}.P[1:8]
         = [[ .{C%[1:8]~JST-8-CRIMP}. = .{W%[1:8]~WIRE-22AWG}.
            = .{C%[9:16]~JST-8-CRIMP}. ]]
-        = P[1:8]{J2~JST-8-PLUG};
+        = P[1:8].{J2~JST-8-PLUG};
 };
 ```
 
@@ -133,11 +133,11 @@ whose elements may be ranges, and a range may descend:
 
 ```
 part cool-mcu {
-    1       = VCC<        &TYPE=POWER &~NET=3V3;
-    2       = GND<        &TYPE=POWER &~NET=GND;
-    [3:11]  = GPIO[1:9]<> &SWAP=gpio-bank;
-    [12:13] = USB.[+,-]<>;
-    16      = NC          &TYPE=NC;
+    1:       VCC<        &TYPE=POWER &~NET=3V3;
+    2:       GND<        &TYPE=POWER &~NET=GND;
+    [3:11]:  GPIO[1:9]<> &SWAP=gpio-bank;
+    [12:13]: USB.[+,-]<>;
+    16:      NC          &TYPE=NC;
 };
 ```
 

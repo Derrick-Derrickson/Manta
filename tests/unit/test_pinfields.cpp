@@ -85,14 +85,14 @@ std::string attr(const ComponentPin* p, std::string_view name) {
 constexpr std::string_view kParts = R"(
 part MCU {
     @~footprint = LQFP-8;
-    [1:4] = IO[1:4]<> #VOH=2V4 #VOL=0V4 #VIH=2V0 #VIL=0V8;
-    5     = SDA<>     &TYPE=OPENDRAIN #VOL=0V6;
-    6     = VCC<      &TYPE=POWER &~NET=3V3;
-    7     = GND<      &TYPE=POWER &~NET=GND;
+    [1:4]: IO[1:4]<> #VOH=2V4 #VOL=0V4 #VIH=2V0 #VIL=0V8;
+    5:     SDA<>     &TYPE=OPENDRAIN #VOL=0V6;
+    6:     VCC<      &TYPE=POWER &~NET=3V3;
+    7:     GND<      &TYPE=POWER &~NET=GND;
 };
 part REG {
     @~footprint = SOT-23-5;
-    1 = VOUT> &TYPE=POWER #SUPPLY=600mA;
+    1: VOUT> &TYPE=POWER #SUPPLY=600mA;
 };
 )";
 
@@ -104,9 +104,9 @@ TEST_CASE("a '#' field on a pin map line applies to every pin the line produces"
     auto e = elaborate(std::string(kParts) + R"(
 block b {
     GND &TYPE=GROUND;
-    RAIL = VOUT{REG1~REG};
+    RAIL = VOUT.{REG1~REG};
     RAIL = 3V3;
-    A = IO[1]{U1~MCU}IO[2] = B;
+    A = IO[1].{U1~MCU}.IO[2] = B;
     A = GND; B = GND;
 };
 )");
@@ -129,9 +129,9 @@ TEST_CASE("a call site overrides a pin field by declaring a stronger one") {
     auto e = elaborate(std::string(kParts) + R"(
 block b {
     GND &TYPE=GROUND;
-    RAIL = VOUT{REG1~REG};
+    RAIL = VOUT.{REG1~REG};
     RAIL = 3V3;
-    A = IO[1]{U1~MCU: IO[3] #!VOH=3V0; }IO[2] = B;
+    A = IO[1].{U1~MCU: .IO[3] #!VOH=3V0; }.IO[2] = B;
     A = GND; B = GND;
 };
 )");
@@ -151,9 +151,9 @@ TEST_CASE("an equal-strength override is a conflict, not an override") {
     auto e = elaborate(std::string(kParts) + R"(
 block b {
     GND &TYPE=GROUND;
-    RAIL = VOUT{REG1~REG};
+    RAIL = VOUT.{REG1~REG};
     RAIL = 3V3;
-    A = IO[1]{U1~MCU: IO[3] #VOH=3V0; }IO[2] = B;
+    A = IO[1].{U1~MCU: .IO[3] #VOH=3V0; }.IO[2] = B;
     A = GND; B = GND;
 };
 )");
@@ -164,12 +164,12 @@ TEST_CASE("a locked pin field cannot be overridden") {
     auto e = elaborate(R"(
 part P {
     @~footprint = F;
-    1 = A<> #!VOH=2V4;
-    2 = B<>;
+    1: A<> #!VOH=2V4;
+    2: B<>;
 };
 block b {
     GND &TYPE=GROUND;
-    X = A{U1~P: A #VOH=3V0; }B = GND;
+    X = A.{U1~P: .A #VOH=3V0; }.B = GND;
 };
 )");
     CHECK(e->report.find("E-11") != std::string::npos);
@@ -179,12 +179,12 @@ TEST_CASE("two declarations of a pin field at equal strength conflict") {
     auto e = elaborate(R"(
 part P {
     @~footprint = F;
-    1 = A<> #VOH=2V4 #VOH=3V0;
-    2 = B<>;
+    1: A<> #VOH=2V4 #VOH=3V0;
+    2: B<>;
 };
 block b {
     GND &TYPE=GROUND;
-    X = A{U1~P}B = GND;
+    X = A.{U1~P}.B = GND;
 };
 )");
     CHECK(e->report.find("E-12") != std::string::npos);
@@ -196,9 +196,9 @@ TEST_CASE("spec 7.3: E-08 compares pins, not arrays") {
     auto ok = elaborate(std::string(kParts) + R"(
 block b {
     GND &TYPE=GROUND;
-    RAIL = VOUT{REG1~REG};
+    RAIL = VOUT.{REG1~REG};
     RAIL = 3V3;
-    A = IO[1]{U1~MCU: IO[3]=OTHER; }IO[2] = B;
+    A = IO[1].{U1~MCU: .IO[3]=OTHER; }.IO[2] = B;
     A = GND; B = GND; OTHER = GND;
 };
 )");
@@ -208,7 +208,7 @@ block b {
     auto bad = elaborate(std::string(kParts) + R"(
 block b {
     GND &TYPE=GROUND;
-    A = IO[1]{U1~MCU: IO[1]=OTHER; }IO[2] = B;
+    A = IO[1].{U1~MCU: IO[1]=OTHER; }.IO[2] = B;
 };
 )");
     CHECK(bad->report.find("E-08") != std::string::npos);
@@ -220,9 +220,9 @@ TEST_CASE("a pin field that only annotates is not a second connection") {
     auto e = elaborate(std::string(kParts) + R"(
 block b {
     GND &TYPE=GROUND;
-    RAIL = VOUT{REG1~REG};
+    RAIL = VOUT.{REG1~REG};
     RAIL = 3V3;
-    A = IO[1]{U1~MCU: IO[1] #!VOH=3V0; }IO[2] = B;
+    A = IO[1].{U1~MCU: IO[1] #!VOH=3V0; }.IO[2] = B;
     A = GND; B = GND;
 };
 )");
@@ -235,9 +235,9 @@ TEST_CASE("a decorated design needs no rules file to compile") {
     auto e = elaborate(std::string(kParts) + R"(
 block b {
     GND &TYPE=GROUND;
-    RAIL = VOUT{REG1~REG};
+    RAIL = VOUT.{REG1~REG};
     RAIL = 3V3;
-    A = IO[1]{U1~MCU}IO[2] = B;
+    A = IO[1].{U1~MCU}.IO[2] = B;
     A = GND; B = GND;
 };
 )");
@@ -251,9 +251,9 @@ TEST_CASE("a numeric pin attribute keeps its parsed value, not just its text") {
     auto e = elaborate(std::string(kParts) + R"(
 block b {
     GND &TYPE=GROUND;
-    RAIL = VOUT{REG1~REG};
+    RAIL = VOUT.{REG1~REG};
     RAIL = 3V3;
-    A = IO[1]{U1~MCU}IO[2] = B;
+    A = IO[1].{U1~MCU}.IO[2] = B;
     A = GND; B = GND;
 };
 )");
@@ -301,8 +301,8 @@ TEST_CASE("spec 7.3: a pin list joins every listed pin to one node") {
     auto e = elaborate(std::string(kBridgeParts) + R"(
 block b {
     GND &TYPE=GROUND;
-    X = Y = [A,K]{D1~DIODE};
-    VIN = [P1,P2]{J5~CONN4}[P3,P4] = GND;
+    X = Y = [A,K].{D1~DIODE};
+    VIN = [P1,P2].{J5~CONN4}.[P3,P4] = GND;
     X = VIN;
 };
 )");

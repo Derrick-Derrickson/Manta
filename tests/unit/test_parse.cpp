@@ -159,10 +159,10 @@ TEST_CASE("spec 4.3: a version constraint ending in '-' is not E-02") {
 }
 
 TEST_CASE("spec 8.3: replication forms") {
-    auto inferred = parse("block b { >A[0:3] = [[ I{U?~amp}O ]] = B[0:3]>; };");
+    auto inferred = parse("block b { >A[0:3] = [[ I.{U?~amp}.O ]] = B[0:3]>; };");
     expectClean(inferred, "inferred replication");
 
-    auto counted = parse("block b { >A[0:3] = [4[ I{U?~splitter}O[0:1] ]8] = B[0:7]>; };");
+    auto counted = parse("block b { >A[0:3] = [4[ I.{U?~splitter}.O[0:1] ]8] = B[0:7]>; };");
     expectClean(counted, "counted replication");
 
     const Element* e = counted->unit.items[0]->body[0].stmt->chain->segments[0]->elements[1];
@@ -185,7 +185,7 @@ TEST_CASE("spec 8.6: each multiplicity operator parses") {
     auto r = parse(
         "block b {"
         "  A = (.{L?~ind}.)+2 = B;"
-        "  C = (A{D?~dio}K)|2 = D;"
+        "  C = (A.{D?~dio}.K)|2 = D;"
         "  E = ({C?~cap: .=GND}.)*4;"
         "};");
     expectClean(r, "multiplicity");
@@ -200,7 +200,7 @@ TEST_CASE("spec 6.2/6.3: the connector states whether the chain moved") {
     // dead-end element. The buck idiom: diode and boot cap on the SW node,
     // the chain leaving through the inductor, decoupling on the far node.
     auto buck = parse(
-        "block b { SW = K{D2~d: A = GND;} == .{C3~c: . = BST;} == A{L1~l}B"
+        "block b { SW = K.{D2~d: .A = GND;} == .{C3~c: . = BST;} == A.{L1~l}.B"
         " = .{C4~c: . = GND;} == FIVE; };");
     expectClean(buck, "buck chain");
 
@@ -241,7 +241,7 @@ TEST_CASE("spec 7.3: multi-pin terminals parse") {
     CHECK_EQ(e->device->entry.dotCount, std::uint32_t{2});
     CHECK_FALSE(e->device->hasExit);
 
-    auto list = parse("block b { A = B = [A,K]{D1~d}; };");
+    auto list = parse("block b { A = B = [A,K].{D1~d}; };");
     expectClean(list, "pin-list terminal");
     const Element* le = list->unit.items[0]->body[0].stmt->chain->segments[0]->elements[2];
     CHECK(le->kind == ElementKind::Device);
@@ -249,7 +249,7 @@ TEST_CASE("spec 7.3: multi-pin terminals parse") {
     CHECK_EQ(le->device->entry.list.size(), std::size_t{2});
 
     // A pin list works on the exit side too: paralleled connector pins.
-    auto both = parse("block b { VIN = [1,2]{J5~conn}[3,4] = GND; };");
+    auto both = parse("block b { VIN = [1,2].{J5~conn}.[3,4] = GND; };");
     expectClean(both, "pin lists both sides");
     const Element* be = both->unit.items[0]->body[0].stmt->chain->segments[0]->elements[1];
     CHECK(be->device->entry.hasList);
@@ -269,7 +269,7 @@ TEST_CASE("spec 6: every connection operator parses") {
         "  C = .{R?~r}. = D;"
         "  E[0:3] = [[.{R?~r}.]] =* F;"
         "  G *= H[0:7];"
-        "  I = 1{J?~c} ^ {J?~c}1 = K;"
+        "  I = 1.{J?~c} ^ {J?~c}.1 = K;"
         "};");
     expectClean(r, "connectors");
     const Item* b = r->unit.items[0];
@@ -292,7 +292,7 @@ TEST_CASE("spec 7.4: E-09 rejects an empty binding list") {
 }
 
 TEST_CASE("spec 7.2: '~' distinguishes declaring from referencing") {
-    auto r = parse("block b { A = I{U?~AMP012}O = B; C = I{U3}O = D; };");
+    auto r = parse("block b { A = I.{U?~AMP012}.O = B; C = I.{U3}.O = D; };");
     expectClean(r, "declare vs reference");
     const Item* b = r->unit.items[0];
     const Device* decl = b->body[0].stmt->chain->segments[0]->elements[1]->device;
@@ -410,7 +410,7 @@ TEST_CASE("spec 10.3: the list form of a global port parses") {
 }
 
 TEST_CASE("spec 11.5: a pin may carry a directive without a net") {
-    auto r = parse("block b { A = .{U5~ddr-chip: DQ[0] &PINDELAY=18ps; }. = B; };");
+    auto r = parse("block b { A = .{U5~ddr-chip: .DQ[0] &PINDELAY=18ps; }. = B; };");
     expectClean(r, "pin-scoped directive");
     const Instance* inst =
         r->unit.items[0]->body[0].stmt->chain->segments[0]->elements[1]->device->instance;
@@ -421,7 +421,7 @@ TEST_CASE("spec 11.5: a pin may carry a directive without a net") {
 }
 
 TEST_CASE("spec 11.6: '&NET=?' and 'pin = ?' unbind") {
-    auto r = parse("block b { A = .{U5~iso: GNDB=?; }. = B; };");
+    auto r = parse("block b { A = .{U5~iso: .GNDB=?; }. = B; };");
     expectClean(r, "unbind");
     const Instance* inst =
         r->unit.items[0]->body[0].stmt->chain->segments[0]->elements[1]->device->instance;
@@ -440,10 +440,10 @@ TEST_CASE("a pin name follows the identifier rules like any other") {
     // A trailing '-' is E-02 wherever it appears, including on a pin. A part
     // that needs a negative supply rail names it something the identifier
     // grammar can produce.
-    auto bad = parse("block b { X = INA{U1~op: V-=GND; }OUTA = Y; };");
+    auto bad = parse("block b { X = INA.{U1~op: .V-=GND; }.OUTA = Y; };");
     CHECK(bad->report.find("E-02") != std::string::npos);
 
-    auto good = parse("block b { X = INA{U1~op: v-neg=GND; }OUTA = Y; };");
+    auto good = parse("block b { X = INA.{U1~op: .v-neg=GND; }.OUTA = Y; };");
     expectClean(good, "hyphenated pin name");
 }
 
@@ -477,7 +477,7 @@ TEST_CASE("spec 2.5: block comments do not nest") {
 }
 
 TEST_CASE("spec 2.2: identifiers are case sensitive") {
-    auto r = parse("block b { X = .{U1~p: SDA=A; sda=B; Sda=C; }. = Y; };");
+    auto r = parse("block b { X = .{U1~p: .SDA=A; .sda=B; .Sda=C; }. = Y; };");
     expectClean(r, "case sensitivity");
     const Instance* inst =
         r->unit.items[0]->body[0].stmt->chain->segments[0]->elements[1]->device->instance;
@@ -502,7 +502,7 @@ const Instance* instanceIn(const std::shared_ptr<ParseResult>& r, std::size_t st
 TEST_CASE("rev 1.4: 'PIN = NET' keeps exactly the shape it had") {
     // The degenerate case of the new rule, and the only one that existed
     // before it. It must still arrive through Binding::net, with no chain.
-    auto r = parse("block b { {U1~p: GND = AGND; }; };");
+    auto r = parse("block b { {U1~p: .GND = AGND; }; };");
     expectClean(r, "bare net binding");
     const Binding* b = instanceIn(r, 0)->bindings[0];
     CHECK(b->connector == Connector::Advance);
@@ -515,12 +515,12 @@ TEST_CASE("rev 1.4: a binding opens with any connector and carries a chain") {
     auto r = parse(
         "block b {"
         "  {U1~p:"
-        "    VIN       = VPOS = .{C1~c: . = GND;};"
-        "    SW        = K{D2~d: A = GND;} == .{C3~c: . = BST;};"
-        "    LANE[0:3] =* COMMON;"
-        "    REF       *= FANOUT[0:3];"
-        "    EN        = .{R5~r}. = VPOS;"
-        "    NC        = ?;"
+        "    .VIN       = VPOS = .{C1~c: . = GND;};"
+        "    .SW        = K.{D2~d: .A = GND;} == .{C3~c: . = BST;};"
+        "    .LANE[0:3] =* COMMON;"
+        "    .REF       *= FANOUT[0:3];"
+        "    .EN        = .{R5~r}. = VPOS;"
+        "    .NC        = ?;"
         "  };"
         "};");
     expectClean(r, "chain bindings");
@@ -572,10 +572,10 @@ TEST_CASE("rev 1.4: a trailing '&' or '#' still belongs to the pin") {
     auto r = parse(
         "block b {"
         "  {U1~p:"
-        "    VIN = NET &STUB;"
-        "    SW  = .{C1~c: . = GND;} &~PINDELAY=8ps;"
-        "    FB  = NET2 #VOH=3V0;"
-        "    DQ[0] &PINDELAY=18ps;"
+        "    .VIN = NET &STUB;"
+        "    .SW  = .{C1~c: . = GND;} &~PINDELAY=8ps;"
+        "    .FB  = NET2 #VOH=3V0;"
+        "    .DQ[0] &PINDELAY=18ps;"
         "  };"
         "};");
     expectClean(r, "pin directives after a binding");
@@ -626,7 +626,7 @@ TEST_CASE("rev 1.4: a chain binding leaves E-09 and the trailing ';' alone") {
     CHECK(empty->report.find("E-09") != std::string::npos);
 
     // A ';' before the '}' is permitted and is what the formatter emits.
-    auto trailing = parse("block b { {U1~p: A = .{C1~c: . = GND;}; }; };");
+    auto trailing = parse("block b { {U1~p: .A = .{C1~c: . = GND;}; }; };");
     expectClean(trailing, "trailing semicolon after a chain binding");
     CHECK_EQ(instanceIn(trailing, 0)->bindings.size(), std::size_t{1});
 }
@@ -687,23 +687,23 @@ std::uint32_t contentEndOf(const std::string& text, std::size_t* errors = nullpt
 }  // namespace
 
 TEST_CASE("spec 2.8: a '---' line ends the manta content") {
-    auto r = parse("part p { 1 = A &CASUAL; };\n---\nnot manta at all: } ; ~ $\n");
+    auto r = parse("part p { 1: A &CASUAL; };\n---\nnot manta at all: } ; ~ $\n");
     expectClean(r, "file with a datasheet");
     CHECK_EQ(r->unit.items.size(), std::size_t{1});
 }
 
 TEST_CASE("spec 2.8: the marker must be a line of its own") {
     // Only whitespace may follow it...
-    CHECK(contentEndOf("part p { 1 = A &CASUAL; };\n---   \ntail\n") != TokenStream::kNoContentEnd);
-    CHECK(contentEndOf("part p { 1 = A &CASUAL; };\n---\t\ntail\n") != TokenStream::kNoContentEnd);
+    CHECK(contentEndOf("part p { 1: A &CASUAL; };\n---   \ntail\n") != TokenStream::kNoContentEnd);
+    CHECK(contentEndOf("part p { 1: A &CASUAL; };\n---\t\ntail\n") != TokenStream::kNoContentEnd);
     // ...and it may be the last line, with or without a newline.
-    CHECK(contentEndOf("part p { 1 = A &CASUAL; };\n---") != TokenStream::kNoContentEnd);
+    CHECK(contentEndOf("part p { 1: A &CASUAL; };\n---") != TokenStream::kNoContentEnd);
 
     // Anything else on the line means it is not a marker.
-    CHECK_EQ(contentEndOf("part p { 1 = A &CASUAL; };\n--- tail\n"), TokenStream::kNoContentEnd);
-    CHECK_EQ(contentEndOf("part p { 1 = A &CASUAL; };\n----\n"), TokenStream::kNoContentEnd);
+    CHECK_EQ(contentEndOf("part p { 1: A &CASUAL; };\n--- tail\n"), TokenStream::kNoContentEnd);
+    CHECK_EQ(contentEndOf("part p { 1: A &CASUAL; };\n----\n"), TokenStream::kNoContentEnd);
     // Nor is it one when it does not begin a line.
-    CHECK_EQ(contentEndOf("part p { 1 = A &CASUAL; };  ---\n"), TokenStream::kNoContentEnd);
+    CHECK_EQ(contentEndOf("part p { 1: A &CASUAL; };  ---\n"), TokenStream::kNoContentEnd);
 }
 
 TEST_CASE("spec 2.8: '---' inside a declaration is never a truncation") {
@@ -775,7 +775,7 @@ TEST_CASE("rev 1.3: a bare '---' inside a block needs a title") {
 
 TEST_CASE("rev 1.3: a section marker is legal only in a block body") {
     const char* offenders[] = {
-        "part p {\n    --- PINS\n    1 = A &CASUAL;\n};",
+        "part p {\n    --- PINS\n    1: A &CASUAL;\n};",
         "harness h {\n    --- WIRES\n    SCL;\n};",
         "netclass n {\n    --- RULES\n    &LENGTH = 5mm;\n};",
         "match m {\n    --- LANES\n    #len = 5mm;\n};",

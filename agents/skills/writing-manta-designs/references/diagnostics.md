@@ -48,7 +48,7 @@ the replication in parentheses does not launder it.
 should be author-assigned rather than left as `?`.
 
 **E-08 — a pin is both a chain terminal and in the binding list**
-`A{D1~diode: A=VIN}K` binds `A` twice. Pick one.
+`A.{D1~diode: .A=VIN}.K` binds `A` twice. Pick one.
 
 **E-09 — empty binding list written with punctuation**
 `{L1~ind:}` or `{L1~ind;}`. Write the device bare: `{L1~ind}`.
@@ -56,7 +56,7 @@ should be author-assigned rather than left as `?`.
 **E-23 — a `.` terminal selects a pin without `&CASUAL`**
 `.` means "the next unassigned pin", which is only meaningful when the pins are
 interchangeable. A diode's pins are not. Either name the terminal explicitly
-(`A{D1~diode}K`) or, if the part really is symmetric, mark its pins `&CASUAL`.
+(`A.{D1~diode}.K`) or, if the part really is symmetric, mark its pins `&CASUAL`.
 
 **E-25 — a pin marked `&TYPE=NC` is connected**
 The datasheet forbids it. If you meant "I chose not to connect this", that is

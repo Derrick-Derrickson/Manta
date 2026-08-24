@@ -2,18 +2,18 @@ part OTHER-PLUG {
     @type  = cableconnector;
     @mates = SOMETHING-ELSE;
 
-    [1:2] = P[1:2]<>;
+    [1:2] : P[1:2]<>;
 };
 
 part WIRE {
     @type = wire;
 
-    1 = A &CASUAL;
-    2 = B &CASUAL;
+    1 : A &CASUAL;
+    2 : B &CASUAL;
 };
 
 cable wrong-loom {
-    {K1~OTHER-PLUG}P[1:2] = [[.{W%[1:2]~WIRE}.]] = P[1:2]{K2~OTHER-PLUG};
+    {K1~OTHER-PLUG}.P[1:2] = [[.{W%[1:2]~WIRE}.]] = P[1:2].{K2~OTHER-PLUG};
 };
 
 part HDR2 {
@@ -21,13 +21,13 @@ part HDR2 {
     @mate       = wrong-loom;
     @~footprint = F;
 
-    1 = A< &TYPE=POWER;
-    2 = B<;
+    1 : A< &TYPE=POWER;
+    2 : B<;
 };
 
 block bd {
     GND &TYPE=GROUND;
-    X = A{J1~HDR2};
+    X = A.{J1~HDR2};
     X &STUB;
-    B{J1} == GND;
+    B.{J1} == GND;
 };

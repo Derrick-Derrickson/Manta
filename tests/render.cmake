@@ -31,47 +31,47 @@ netclass power { &CURRENT=1A; };
 
 netclass raw-power { &CURRENT=2A; };
 
-part FIX-R { @!type = resistor; @~footprint = R-0603; #value = 10kR; 1 = A &CASUAL; 2 = B &CASUAL; };
-part FIX-C { @!type = capacitor; @~footprint = C-0603; #value = 100nF; 1 = A &CASUAL; 2 = B &CASUAL; };
-part FIX-LED { @!type = led; @~footprint = R-0603; #value = red; 1 = A; 2 = K; };
-part FIX-TP { @!type = testpoint; @~footprint = TP-1MM; 1 = T; };
+part FIX-R { @!type = resistor; @~footprint = R-0603; #value = 10kR; 1 : A &CASUAL; 2 : B &CASUAL; };
+part FIX-C { @!type = capacitor; @~footprint = C-0603; #value = 100nF; 1 : A &CASUAL; 2 : B &CASUAL; };
+part FIX-LED { @!type = led; @~footprint = R-0603; #value = red; 1 : A; 2 : K; };
+part FIX-TP { @!type = testpoint; @~footprint = TP-1MM; 1 : T; };
 part FIX-MCU {
     @~footprint = QFP-STM32-32;
-    1 = VCC< &TYPE=POWER;
-    2 = GND< &TYPE=POWER &~NET=GND;
-    3 = RST<;
-    4 = IO0>;
-    5 = IO1>;
-    6 = AVDD< &TYPE=POWER;
+    1 : VCC< &TYPE=POWER;
+    2 : GND< &TYPE=POWER &~NET=GND;
+    3 : RST<;
+    4 : IO0>;
+    5 : IO1>;
+    6 : AVDD< &TYPE=POWER;
 };
 part FIX-NC {
     @~footprint = QFN-4;
-    1 = IN;
-    2 = OUT;
-    3 = SPARE &TYPE=NC;
-    4 = SPARE2 &TYPE=NC;
+    1 : IN;
+    2 : OUT;
+    3 : SPARE &TYPE=NC;
+    4 : SPARE2 &TYPE=NC;
 };
 part FIX-HDR {
     @!type = boardconnector;
     @~footprint = HDR-1x4;
-    1 = A &CASUAL;
-    2 = B &CASUAL;
-    3 = C &CASUAL;
-    4 = D &CASUAL;
+    1 : A &CASUAL;
+    2 : B &CASUAL;
+    3 : C &CASUAL;
+    4 : D &CASUAL;
 };
 part FIX-DUAL {
     @~footprint = QFN-8;
-    1 = VA< &TYPE=POWER;
-    2 = VB< &TYPE=POWER;
-    3 = IO0>;
-    4 = IO1<;
+    1 : VA< &TYPE=POWER;
+    2 : VB< &TYPE=POWER;
+    3 : IO0>;
+    4 : IO1<;
 };
 
 block sub {
     >DRIVE;
     >>GND;
     DRIVE = .{R1~FIX-R}. = INNER-NODE;
-    INNER-NODE = A{D1~FIX-LED}K = GND;
+    INNER-NODE = A.{D1~FIX-LED}.K = GND;
 };
 
 block fixture {
@@ -83,35 +83,35 @@ block fixture {
     PG-OUT &STUB;
 
 
-    {U9~FIX-R: A = LEFTY[0]; B = LEFTY[1];};
+    {U9~FIX-R: .A = LEFTY[0]; .B = LEFTY[1];};
 
     --- MCU CORE
-    {U1~FIX-MCU: VCC = 3V3; RST = nRST; IO0 = LED-A; IO1 = SPI-CLK; AVDD = VBAT;};
-    {J2~FIX-HDR: A = nRST;};
+    {U1~FIX-MCU: .VCC = 3V3; .RST = nRST; .IO0 = LED-A; .IO1 = SPI-CLK; .AVDD = VBAT;};
+    {J2~FIX-HDR: .A = nRST;};
     3V3 = .{R1~FIX-R}. = nRST;
     LED-A = .{R2~FIX-R}. = LED-K;
-    LED-K = A{D1~FIX-LED}K = GND;
+    LED-K = A.{D1~FIX-LED}.K = GND;
     3V3 = .{C1~FIX-C: . = GND;};
     3V3 = .{C2~FIX-C: . = GND;};
     VBAT = .{C3~FIX-C: . = GND;};
     VBAT = .{C4~FIX-C: . = GND;};
 
     --- IO HEADER
-    {J1~FIX-HDR: A = SPI-CLK; B = GND; C = VBAT; D = EXTRA;};
+    {J1~FIX-HDR: .A = SPI-CLK; .B = GND; .C = VBAT; .D = EXTRA;};
 
     --- PIN GROUP
-    {U5~FIX-DUAL: VA = RAILX; VB = RAILX; IO0 = PG-OUT;};
+    {U5~FIX-DUAL: .VA = RAILX; .VB = RAILX; .IO0 = PG-OUT;};
 
     --- MISC
-    {R7~FIX-R: A = LEFTY[0]; B = LEFTY[1];};
-    {R8~FIX-R: A = LEFTY[0]; B = LEFTY[1];};
-    {TP1~FIX-TP: T = SPI-CLK;};
-    {TP2~FIX-TP: T = PROBE;};
-    {TP3~FIX-TP: T = RAWPWR;};
-    {U4~FIX-NC: IN = SPI-CLK; OUT = LED-A; SPARE = DEAD-PIN;};
+    {R7~FIX-R: .A = LEFTY[0]; .B = LEFTY[1];};
+    {R8~FIX-R: .A = LEFTY[0]; .B = LEFTY[1];};
+    {TP1~FIX-TP: .T = SPI-CLK;};
+    {TP2~FIX-TP: .T = PROBE;};
+    {TP3~FIX-TP: .T = RAWPWR;};
+    {U4~FIX-NC: .IN = SPI-CLK; .OUT = LED-A; .SPARE = DEAD-PIN;};
 
     --- SUBS
-    DRV[0:1] = [[{SUB%[1:2]~sub}DRIVE]];
+    DRV[0:1] = [[{SUB%[1:2]~sub}.DRIVE]];
 };
 ")
 

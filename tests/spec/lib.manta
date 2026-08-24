@@ -5,63 +5,63 @@
 static part R-0603-generic {
     @~footprint = R-0603;
     @!type      = resistor;
-    1 = A &CASUAL;
-    2 = B &CASUAL;
+    1 : A &CASUAL;
+    2 : B &CASUAL;
 };
 
-part 10kR-0603  { @~footprint = R-0603; #value = 10kR;  @!type = resistor; 1 = A &CASUAL; 2 = B &CASUAL; };
-part 50R-0603   { @~footprint = R-0603; #value = 50R;   @!type = resistor; 1 = A &CASUAL; 2 = B &CASUAL; };
-part 100kR-0603 { @~footprint = R-0603; #value = 100kR; @!type = resistor; 1 = A &CASUAL; 2 = B &CASUAL; };
-part 0R-0603    { @~footprint = R-0603; #value = 0R;    @!type = resistor; 1 = A &CASUAL; 2 = B &CASUAL; };
+part 10kR-0603  { @~footprint = R-0603; #value = 10kR;  @!type = resistor; 1 : A &CASUAL; 2 : B &CASUAL; };
+part 50R-0603   { @~footprint = R-0603; #value = 50R;   @!type = resistor; 1 : A &CASUAL; 2 : B &CASUAL; };
+part 100kR-0603 { @~footprint = R-0603; #value = 100kR; @!type = resistor; 1 : A &CASUAL; 2 : B &CASUAL; };
+part 0R-0603    { @~footprint = R-0603; #value = 0R;    @!type = resistor; 1 : A &CASUAL; 2 : B &CASUAL; };
 
-part 100nF-0603 { @~footprint = C-0603; #value = 100nF; @!type = capacitor; 1 = A &CASUAL; 2 = B &CASUAL; };
-part 10uF-0805  { @~footprint = C-0805; #value = 10uF;  @!type = capacitor; 1 = A &CASUAL; 2 = B &CASUAL; };
+part 100nF-0603 { @~footprint = C-0603; #value = 100nF; @!type = capacitor; 1 : A &CASUAL; 2 : B &CASUAL; };
+part 10uF-0805  { @~footprint = C-0805; #value = 10uF;  @!type = capacitor; 1 : A &CASUAL; 2 : B &CASUAL; };
 
-part MT100UFA { @~footprint = IND-1210; #value = 10uH; @!type = inductor; 1 = A &CASUAL; 2 = B &CASUAL; };
-part BLM18PG  { @~footprint = L-0603;   #value = 600R; @!type = ferrite;  1 = A &CASUAL; 2 = B &CASUAL; };
+part MT100UFA { @~footprint = IND-1210; #value = 10uH; @!type = inductor; 1 : A &CASUAL; 2 : B &CASUAL; };
+part BLM18PG  { @~footprint = L-0603;   #value = 600R; @!type = ferrite;  1 : A &CASUAL; 2 : B &CASUAL; };
 
 part DI3643 {
     @~footprint = SOD-323;
     @!type      = diode;
-    1 = A;
-    2 = K;
+    1 : A;
+    2 : K;
 };
 
 part FFET123 {
     @~footprint = SOT-23;
     @!type      = fet;
-    1 = G<;
-    2 = S;
-    3 = D;
+    1 : G<;
+    2 : S;
+    3 : D;
 };
 
 part AMP012 {
     @~footprint = SOT-23-5;
     #value      = AMP012;
-    1 = I<;
-    2 = O>;
-    3 = EN<;
-    4 = PWR<  &TYPE=POWER &~NET=3V3;
-    5 = GND<  &TYPE=POWER &~NET=GND;
+    1 : I<;
+    2 : O>;
+    3 : EN<;
+    4 : PWR<  &TYPE=POWER &~NET=3V3;
+    5 : GND<  &TYPE=POWER &~NET=GND;
 };
 
 part LM324 {
     @~footprint = SOIC-14;
     #value      = LM324;
-    1  = OUTA>;
-    2  = INA<;
-    3  = INB<;
-    4  = v-pos< &TYPE=POWER;
-    5  = OUTB>;
-    6  = INC<;
-    7  = IND<;
-    8  = OUTC>;
-    9  = OUTD>;
-    10 = NC1   &TYPE=NC;
-    11 = v-neg< &TYPE=POWER;
-    12 = NC2   &TYPE=NC;
-    13 = NC3   &TYPE=NC;
-    14 = NC4   &TYPE=NC;
+    1  : OUTA>;
+    2  : INA<;
+    3  : INB<;
+    4  : v-pos< &TYPE=POWER;
+    5  : OUTB>;
+    6  : INC<;
+    7  : IND<;
+    8  : OUTC>;
+    9  : OUTD>;
+    10 : NC1   &TYPE=NC;
+    11 : v-neg< &TYPE=POWER;
+    12 : NC2   &TYPE=NC;
+    13 : NC3   &TYPE=NC;
+    14 : NC4   &TYPE=NC;
 };
 
 // Spec 2.3: "Pin names in a part definition follow these rules, and may
@@ -69,35 +69,35 @@ part LM324 {
 // "1{J?~conn-4}", so this connector's pins are named by number.
 part conn-4 {
     @~footprint = HDR-1x4;
-    1 = 1<>;
-    2 = 2<>;
-    3 = 3<>;
-    4 = 4<>;
+    1 : 1<>;
+    2 : 2<>;
+    3 : 3<>;
+    4 : 4<>;
 };
 
 part ESD2013 {
     @~footprint = SOT-23-6;
-    1 = IO<>;
-    2 = GND< &TYPE=POWER;
-    3 = VCC< &TYPE=POWER;
+    1 : IO<>;
+    2 : GND< &TYPE=POWER;
+    3 : VCC< &TYPE=POWER;
 };
 
 part iso7741 {
     @~footprint = SOIC-16;
-    1 = VCCA< &TYPE=POWER;
-    2 = GNDA< &TYPE=POWER;
-    3 = VCCB< &TYPE=POWER;
-    4 = GNDB< &TYPE=POWER;
+    1 : VCCA< &TYPE=POWER;
+    2 : GNDA< &TYPE=POWER;
+    3 : VCCB< &TYPE=POWER;
+    4 : GNDB< &TYPE=POWER;
 };
 
 part ddr-chip {
     @~footprint = BGA-96;
-    [1:16] = DQ[0:15]<> &~PINDELAY=12ps;
+    [1:16] : DQ[0:15]<> &~PINDELAY=12ps;
 };
 
 // A source for the rails the board consumes but does not generate, so the
 // supply checks of spec 11.6 have something to see.
 part board-supply {
     @~footprint = TP-1MM;
-    1 = VOUT> &TYPE=POWER;
+    1 : VOUT> &TYPE=POWER;
 };

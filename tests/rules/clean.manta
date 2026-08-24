@@ -2,28 +2,28 @@
 // that proves the rules do not fire on correct work.
 part REG-AMPLE {
     @~footprint = SOT-23-5;
-    1 = VOUT> &TYPE=POWER #SUPPLY=600mA;
-    2 = GND<  &TYPE=POWER &~NET=GND;
+    1 : VOUT> &TYPE=POWER #SUPPLY=600mA;
+    2 : GND<  &TYPE=POWER &~NET=GND;
 };
 
 part DRV-5V {
     @~footprint = SOT-23;
-    1 = Q>   #VOH=4V5 #VOL=0V4;
-    2 = VCC< &TYPE=POWER &~NET=3V3 #DRAW=20mA;
-    3 = GND< &TYPE=POWER &~NET=GND;
+    1 : Q>   #VOH=4V5 #VOL=0V4;
+    2 : VCC< &TYPE=POWER &~NET=3V3 #DRAW=20mA;
+    3 : GND< &TYPE=POWER &~NET=GND;
 };
 
 part RX-5V-OK {
     @~footprint = SOT-23;
-    1 = D<   #VIH=3V5 #VIL=1V5;
-    2 = VCC< &TYPE=POWER &~NET=3V3 #DRAW=200mA;
-    3 = GND< &TYPE=POWER &~NET=GND;
+    1 : D<   #VIH=3V5 #VIL=1V5;
+    2 : VCC< &TYPE=POWER &~NET=3V3 #DRAW=200mA;
+    3 : GND< &TYPE=POWER &~NET=GND;
 };
 
 block b {
     GND &TYPE=GROUND;
-    RAIL = VOUT{U1~REG-AMPLE}GND;
+    RAIL = VOUT.{U1~REG-AMPLE}.GND;
     RAIL = 3V3;
-    SIG = Q{U2~DRV-5V}Q;
-    SIG = D{U3~RX-5V-OK}D;
+    SIG = Q.{U2~DRV-5V}.Q;
+    SIG = D.{U3~RX-5V-OK}.D;
 };

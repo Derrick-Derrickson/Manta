@@ -23,7 +23,7 @@ block indicator {
     // assigned once however many times the block is instantiated. The flat
     // names at export are BLK1.R1, BLK2.R1 and so on (spec 13.4).
     DRIVE = .{R1~R-$"series-r"$kR-0603}. = LED-ANODE;
-    LED-ANODE = A{D1~LED-0603}K = GND;
+    LED-ANODE = A.{D1~LED-0603}.K = GND;
 };
 
 block blinky {
@@ -44,7 +44,7 @@ block blinky {
 
     // The connector's VBUS pin is 'POWER>', so it is the source that satisfies
     // the supply check for the whole VBUS net.
-    {J1~CONN-USB-C: VBUS = VBUS; CC1  = CC1; CC2  = CC2;};
+    {J1~CONN-USB-C: .VBUS = VBUS; .CC1  = CC1; .CC2  = CC2;};
 
     // CC pull-downs advertise a device to the host. Written as one statement
     // each so that neither net is single-referenced.
@@ -56,7 +56,7 @@ block blinky {
     // The bulk cap sits on VBUS and the bypass on 3V3, which is what keeps
     // W-04 quiet on both supply pins.
     VBUS = .{C1~C-10uF-0805: . = GND;};
-    VBUS = VIN{U1~LDO-3V3: EN = VBUS; NC = ?;}VOUT = 3V3 &CURRENT=600mA &!VOLTAGE=6V;
+    VBUS = VIN.{U1~LDO-3V3: .EN = VBUS; .NC = ?;}.VOUT = 3V3 &CURRENT=600mA &!VOLTAGE=6V;
     3V3 = .{C2~C-10uF-0805: . = GND;};
 
     --- MCU
@@ -64,12 +64,12 @@ block blinky {
     // VCC and GND take their default nets from the part's '&~NET', so neither
     // needs binding here (spec 11.6).
     {U2~MCU-8PIN:
-        nRESET  = nRESET;
-        GPIO[0] = LED-DRIVE[0];
-        GPIO[1] = LED-DRIVE[1];
-        SDA     = i2c.SDA;
-        SCL     = i2c.SCL;
-        MISO    = TP-MISO;
+        .nRESET  = nRESET;
+        .GPIO[0] = LED-DRIVE[0];
+        .GPIO[1] = LED-DRIVE[1];
+        .SDA     = i2c.SDA;
+        .SCL     = i2c.SCL;
+        .MISO    = TP-MISO;
     };
 
     // Two decoupling caps on the supply pin, one bulk and one high frequency.
@@ -95,7 +95,7 @@ block blinky {
     // One copy of the block per element of the bus flowing through it. The
     // block's arity is its declared port count, so two wires give two copies
     // (spec 8.3).
-    LED-DRIVE[0:1] = [[{BLK%[1:2]~indicator: #series-r = 1;}DRIVE]];
+    LED-DRIVE[0:1] = [[{BLK%[1:2]~indicator: #series-r = 1;}.DRIVE]];
 
     // ---- test point -------------------------------------------------------
     // Deliberately referenced once, which is what '&STUB' declares (spec 11.8).

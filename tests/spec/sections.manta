@@ -4,8 +4,8 @@
 static part SECT-R {
     @~footprint = R-0603;
 
-    1 = A &CASUAL;
-    2 = B &CASUAL;
+    1 : A &CASUAL;
+    2 : B &CASUAL;
 };
 
 block section-demo {

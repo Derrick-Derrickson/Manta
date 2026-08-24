@@ -125,7 +125,7 @@ endif()
 # how an un-annotated block once reached the netlist unreported.
 set(BLOCKSRC "${WORK}/blocks.manta")
 file(WRITE "${BLOCKSRC}" "\
-part BR-1k { @~footprint = R-0603; #value = 1kR; 1 = A &CASUAL; 2 = B &CASUAL; 3 = SHIELD; };
+part BR-1k { @~footprint = R-0603; #value = 1kR; 1 : A &CASUAL; 2 : B &CASUAL; 3 : SHIELD; };
 
 block clamp {
     >TAP;
@@ -134,24 +134,24 @@ block clamp {
 
 block leg {
     >IN;
-    IN = .{R1~BR-1k: SHIELD = ?;}. = BGND;
-    {CL1~clamp: TAP = BGND;};
+    IN = .{R1~BR-1k: .SHIELD = ?;}. = BGND;
+    {CL1~clamp: .TAP = BGND;};
 };
 
 block blocktop {
     BGND &TYPE=GROUND &STUB;
     BPWR>>;
-    {U9~BR-1k: A = BDRIVE[0]; B = BDRIVE[1]; SHIELD = ?;};
+    {U9~BR-1k: .A = BDRIVE[0]; .B = BDRIVE[1]; .SHIELD = ?;};
 
     --- LEGS
-    BDRIVE[0:1] = [[{BLK%[1:2]~leg}IN]];
+    BDRIVE[0:1] = [[{BLK%[1:2]~leg}.IN]];
     BDRIVE[0] = BPWR;
     BDRIVE[1] = BPWR;
 
     --- SENSE
-    {U8~BR-1k: A = BSENSE; B = BFEED; SHIELD = ?;};
-    BSENSE = {BLK3~clamp}TAP;
-    TAP{BLK4~clamp} == BFEED;
+    {U8~BR-1k: .A = BSENSE; .B = BFEED; .SHIELD = ?;};
+    BSENSE = {BLK3~clamp}.TAP;
+    TAP.{BLK4~clamp} == BFEED;
 };
 ")
 run_manta(compile -o "${WORK}/blockbuild/" "${BLOCKSRC}")

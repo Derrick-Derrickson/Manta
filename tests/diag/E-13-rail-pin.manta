@@ -1,6 +1,6 @@
 part p {
-    1 = A &RAIL;
-    2 = B;
+    1 : A &RAIL;
+    2 : B;
 };
 
 block b {

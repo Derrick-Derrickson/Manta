@@ -52,7 +52,7 @@ every `=` and `==` you write is forced, never stylistic. The buck idiom reads
 attach, stay, stay, advance:
 
 ```
-SW = K{D2~dio: A=GND;} == .{C3~cap: .=BST;} == A{L1~ind}B = .{C4~cap: .=GND} == 5V;
+SW = K.{D2~dio: .A=GND;} == .{C3~cap: .=BST;} == A.{L1~ind}.B = .{C4~cap: .=GND} == 5V;
 ```
 
 The diode and the boot cap hang on the SW node, the chain leaves through the
@@ -62,7 +62,7 @@ element.
 
 A deliberate short is written as a **multi-pin terminal**, never as a chain
 trick: `..{R1~res}` takes both casual pins onto one node, `[A,K]{D1~dio}`
-does the same by name, and `[1,2]{J5~conn}[3,4]` parallels connector pins two
+does the same by name, and `[1,2]{J5~conn}.[3,4]` parallels connector pins two
 per side. W-02 stays quiet about a bridge spelled this way and fires on one
 that merely happens across separate statements.
 
@@ -106,7 +106,7 @@ copy a replication made, and every segment across `^`. It does not reach through
 a `:` binding or into a part.
 
 ```
-SW = SW-NODE = S{Q1~fet: G=nEN}D = SWITCHED &CURRENT=3A;
+SW = SW-NODE = S.{Q1~fet: .G=nEN}.D = SWITCHED &CURRENT=3A;
 ```
 
 `SW`, `SW-NODE` and `SWITCHED` carry the current limit. `nEN` does not. To
@@ -123,7 +123,7 @@ block rc-filter {
     #~r-value = 10;              // weak: a call site may override
     >IN;
     OUT>;
-    IN = .{R1~R-$"r-value"$kR-0603}. = .{C1~C-100nF: .=GND} == OUT;
+    .IN = .{R1~R-$"r-value"$kR-0603}. = .{C1~C-100nF: .=GND} == OUT;
 };
 ```
 
@@ -131,8 +131,8 @@ Instantiate it exactly like a part. A block instantiated twice with different
 parameters produces two elaborations from one source:
 
 ```
->SIG-A = {BLK1~rc-filter: #r-value=10; }OUT = FILTERED-A>;
->SIG-B = {BLK2~rc-filter: #r-value=47; }OUT = FILTERED-B>;
+>SIG-A = {BLK1~rc-filter: #r-value=10; }.OUT = FILTERED-A>;
+>SIG-B = {BLK2~rc-filter: #r-value=47; }.OUT = FILTERED-B>;
 ```
 
 A `--- TITLE` line inside a block body names a render section: purely
@@ -147,10 +147,10 @@ netlist and BOM, with the wires and crimps as real line items.
 
 ```
 cable jumper-8way {
-    {J1~JST-8-PLUG}P[1:8]
+    {J1~JST-8-PLUG}.P[1:8]
         = [[ .{C%[1:8]~JST-8-CRIMP}. = .{W%[1:8]~WIRE-22AWG}.
            = .{C%[9:16]~JST-8-CRIMP}. ]]
-        = P[1:8]{J2~JST-8-PLUG};
+        = P[1:8].{J2~JST-8-PLUG};
 };
 ```
 

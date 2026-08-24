@@ -24,7 +24,7 @@ index. But a terminal's width is what gives a replicated unit its arity, so a
 multi-output unit cannot be expressed at all without a range there:
 
 ```
-[4[ I{U?~splitter}O[0:1] ]8]      // 1-in 2-out unit: 4 copies, 8 out
+[4[ I.{U?~splitter}.O[0:1] ]8]      // 1-in 2-out unit: 4 copies, 8 out
 ```
 
 **Resolution.** A terminal accepts a range. The production should read

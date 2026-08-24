@@ -12,7 +12,7 @@
   pin is bound inside its `{}`, a device attached by one pin, a `*N` group.
   Both mismatches are the new parse error **E-49**, so every `=` and `==` in
   a file is forced, never stylistic. The buck idiom reads attach, stay, stay,
-  advance: `SW = K{D2~dio: A=GND;} == .{C3~cap: .=BST;} == A{L1~ind}B =
+  advance: `SW = K.{D2~dio: .A=GND;} == .{C3~cap: .=BST;} == A.{L1~ind}.B =
   .{C4~cap: .=GND} == 5V;` — and nothing can short L1, because `==` never
   joins across an element. A binding opens with `=`, `=*` or `*=`; a pin
   passes through, so `==` never opens one (§6.2, §6.3, §7.4).
@@ -20,7 +20,7 @@
 - **Multi-pin terminals: the written form of a bridge.** A run of dots takes
   that many next-unassigned casual pins onto one node — `..{R1}` is both pads
   of R1, a deliberate short — and a pin list does the same by name:
-  `[A,K]{D1}`. Lists work on both sides, so `VIN = [1,2]{J5~conn}[3,4] =
+  `[A,K].{D1}`. Lists work on both sides, so `VIN = [1,2].{J5~conn}.[3,4] =
   GND;` parallels connector pins two per side. Either form is one wire wide
   however many pins it consumes (§7.3).
 
@@ -29,6 +29,17 @@
   across separate statements, which the old syntactic check could never see —
   *except* when a multi-pin terminal spelled the bridge out, which is intent,
   not accident.
+
+- **The membership dot everywhere, and `:` for pin declarations.** The dot
+  of `U5.EN` generalises: a chain terminal touches its braces through it —
+  `A.{D1~dio}.K`, `[1,2].{J5~conn}.[3,4]`, the bare `.` casual terminal being
+  its own attachment — and a binding names this instance's pin with a blank
+  left side: `.VIN = VPOS;`, `.NC = ?;`, `.IO[3] #VOH=3V0;`. A pin on the
+  left of a binding is always marked, so `.GND = GND;` cannot be misread as
+  a chain, and the old whitespace-sensitive exit-terminal rule is gone. A
+  part's pin declaration maps its pad with `:` — `5: SDA<> &TYPE=OPENDRAIN;`
+  — because a declaration names where `=` assigns values and joins nets.
+  Declarations name, references attach, connectors join.
 
 - **A `<>` pin satisfies E-02.** A bidirectional pin can drive, so a GPIO
   wired straight into an input pin is normal, not a floating input. E-01 is

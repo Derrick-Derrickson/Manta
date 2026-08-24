@@ -1,5 +1,5 @@
-part amp { @~footprint = F; 1 = I<; 2 = O>; };
+part amp { @~footprint = F; 1 : I<; 2 : O>; };
 block b {
     GND &TYPE=GROUND;
-    >X[0:3] = [4[ I{U?~amp}O ]6] = Y[0:5]>;
+    >X[0:3] = [4[ I.{U?~amp}.O ]6] = Y[0:5]>;
 };

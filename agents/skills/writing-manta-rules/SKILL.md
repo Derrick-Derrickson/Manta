@@ -23,11 +23,11 @@ A `#` field on a pin map line applies to every pin that line produces:
 ```
 part MCU-48 {
     @~footprint = LQFP-48;
-    [1:48] = IO[1:48]<> #VOH=2V4 #VOL=0V4 #VIH=2V0 #VIL=0V8;
+    [1:48]: IO[1:48]<> #VOH=2V4 #VOL=0V4 #VIH=2V0 #VIL=0V8;
 };
 
 part LDO-3V3 {
-    5 = VOUT> &TYPE=POWER #SUPPLY=600mA;
+    5: VOUT> &TYPE=POWER #SUPPLY=600mA;
 };
 ```
 

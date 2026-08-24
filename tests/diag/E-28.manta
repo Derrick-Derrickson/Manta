@@ -1,7 +1,7 @@
-part reg { @~footprint = F; 1 = VO> &TYPE=POWER; 2 = G< &TYPE=POWER; };
+part reg { @~footprint = F; 1 : VO> &TYPE=POWER; 2 : G< &TYPE=POWER; };
 block b {
     GND &TYPE=GROUND;
-    RAIL = VO{U1~reg}G = GND;
-    RAIL2 = VO{U2~reg}G = GND;
+    RAIL = VO.{U1~reg}.G = GND;
+    RAIL2 = VO.{U2~reg}.G = GND;
     RAIL = RAIL2;
 };

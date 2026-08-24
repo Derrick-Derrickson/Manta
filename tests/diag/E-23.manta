@@ -1,4 +1,4 @@
-part d { @~footprint = F; 1 = A; 2 = K; };
+part d { @~footprint = F; 1 : A; 2 : K; };
 block b {
     GND &TYPE=GROUND;
     X = .{D1~d}. = Y;

@@ -1,4 +1,4 @@
 block b {
     GND &TYPE=GROUND;
-    A = I{U3}O = C;
+    A = I.{U3}.O = C;
 };

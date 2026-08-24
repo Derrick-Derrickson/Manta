@@ -1,5 +1,5 @@
-part sp { @~footprint = F; 1 = I[1]<; 2 = I[2]<; 3 = O>; };
+part sp { @~footprint = F; 1 : I[1]<; 2 : I[2]<; 3 : O>; };
 block b {
     GND &TYPE=GROUND;
-    >X[0:2] = [[ I{U?~sp}O ]] = Y>;
+    >X[0:2] = [[ I.{U?~sp}.O ]] = Y>;
 };

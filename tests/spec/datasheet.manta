@@ -8,8 +8,8 @@ part STM32F0QA5 {
     #value         = STM32F0QA5;
     #!manufacturer = "ST Microelectronics";
 
-    1 = VCC< &TYPE=POWER &~NET=3V3;
-    2 = GND< &TYPE=POWER &~NET=GND;
+    1 : VCC< &TYPE=POWER &~NET=3V3;
+    2 : GND< &TYPE=POWER &~NET=GND;
 };
 
 ---

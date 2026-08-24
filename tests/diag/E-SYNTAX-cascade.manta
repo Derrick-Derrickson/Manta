@@ -11,7 +11,7 @@ block cascade-demo {
     GND &TYPE=GROUND;
 
     {U2~SOME-PART:
-        VIN  = VPOS PROT;
+        .VIN  = VPOS PROT;
         GND  = GND;
         EP   = GND;
         SW   = SW-NODE;

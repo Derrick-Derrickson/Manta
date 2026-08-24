@@ -5,22 +5,22 @@
 part EQ-CHIP {
     @~footprint = SOT-23-6;
     #value      = eq-chip;
-    1 = VIN;
-    2 = SW;
-    3 = FB;
-    4 = EN;
-    5 = COMP;
-    6 = GND;
+    1 : VIN;
+    2 : SW;
+    3 : FB;
+    4 : EN;
+    5 : COMP;
+    6 : GND;
 };
 
 part EQ-BUS {
     @~footprint = BGA-96;
-    [1:4]  = LANE[0:3];
-    5      = REF;
-    6      = SPARE;
-    [7:10] = SIDE[0:3];
+    [1:4]  : LANE[0:3];
+    5      : REF;
+    6      : SPARE;
+    [7:10] : SIDE[0:3];
 };
 
-part EQ-R { @~footprint = R-0603; #value = 10kR;  @!type = resistor;  1 = A &CASUAL; 2 = B &CASUAL; };
-part EQ-C { @~footprint = C-0603; #value = 100nF; @!type = capacitor; 1 = A &CASUAL; 2 = B &CASUAL; };
-part EQ-D { @~footprint = SOD-323; #value = diode; @!type = diode;    1 = A; 2 = K; };
+part EQ-R { @~footprint = R-0603; #value = 10kR;  @!type = resistor;  1 : A &CASUAL; 2 : B &CASUAL; };
+part EQ-C { @~footprint = C-0603; #value = 100nF; @!type = capacitor; 1 : A &CASUAL; 2 : B &CASUAL; };
+part EQ-D { @~footprint = SOD-323; #value = diode; @!type = diode;    1 : A; 2 : K; };

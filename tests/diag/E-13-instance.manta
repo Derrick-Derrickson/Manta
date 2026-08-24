@@ -1,6 +1,6 @@
 part p {
-    1 = A &CASUAL;
-    2 = B &CASUAL;
+    1 : A &CASUAL;
+    2 : B &CASUAL;
 };
 
 block b {

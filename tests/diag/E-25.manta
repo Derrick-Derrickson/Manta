@@ -1,8 +1,8 @@
-part p { @~footprint = F; 1 = A &CASUAL; 2 = N &TYPE=NC; };
-part r { @~footprint = F; 1 = A &CASUAL; 2 = B &CASUAL; };
+part p { @~footprint = F; 1 : A &CASUAL; 2 : N &TYPE=NC; };
+part r { @~footprint = F; 1 : A &CASUAL; 2 : B &CASUAL; };
 block b {
     GND &TYPE=GROUND;
-    X = A{R1~p}N = SHARED;
+    X = A.{R1~p}.N = SHARED;
     SHARED = .{R2~r}. = GND;
     X = GND;
 };

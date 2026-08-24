@@ -1,9 +1,9 @@
 // '@type' is an open set, so a misspelt structural role cannot be an error --
 // but 'boardconector' is silently not a connector, and every check that depends
 // on one stops applying without a word. W-TYPE is that word.
-part J-TYPO { @~footprint = F; @type = boardconector; 1 = A &CASUAL; 2 = B &CASUAL; };
+part J-TYPO { @~footprint = F; @type = boardconector; 1 : A &CASUAL; 2 : B &CASUAL; };
 // An ordinary classification is not a near miss and must stay quiet.
-part R-FINE { @~footprint = F; @type = resistor;      1 = A &CASUAL; 2 = B &CASUAL; };
+part R-FINE { @~footprint = F; @type = resistor;      1 : A &CASUAL; 2 : B &CASUAL; };
 
 block b {
     GND &TYPE=GROUND;

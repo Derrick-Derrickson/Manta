@@ -58,27 +58,27 @@ set(SRC "${WORK}/nodes.manta")
 file(WRITE "${SRC}" "\
 netclass power { &CURRENT=1A; };
 
-part FIX-R { @!type = resistor; @~footprint = R-0603; #value = 10kR; 1 = A &CASUAL; 2 = B &CASUAL; };
-part FIX-C { @!type = capacitor; @~footprint = C-0603; #value = 100nF; 1 = A &CASUAL; 2 = B &CASUAL; };
-part FIX-L { @!type = inductor; @~footprint = L-0805; #value = 4u7H; 1 = A &CASUAL; 2 = B &CASUAL; };
-part FIX-LED { @!type = led; @~footprint = R-0603; #value = red; 1 = A; 2 = K; };
+part FIX-R { @!type = resistor; @~footprint = R-0603; #value = 10kR; 1 : A &CASUAL; 2 : B &CASUAL; };
+part FIX-C { @!type = capacitor; @~footprint = C-0603; #value = 100nF; 1 : A &CASUAL; 2 : B &CASUAL; };
+part FIX-L { @!type = inductor; @~footprint = L-0805; #value = 4u7H; 1 : A &CASUAL; 2 : B &CASUAL; };
+part FIX-LED { @!type = led; @~footprint = R-0603; #value = red; 1 : A; 2 : K; };
 part FIX-SW {
     @!type = switch;
     @~footprint = SW-SMD;
-    1 = A1 &CASUAL; 2 = A2 &CASUAL; 3 = B1 &CASUAL; 4 = B2 &CASUAL;
+    1 : A1 &CASUAL; 2 : A2 &CASUAL; 3 : B1 &CASUAL; 4 : B2 &CASUAL;
 };
-part FIX-J { @!type = boardconnector; @~footprint = HDR-1x2; 1 = A &CASUAL; 2 = B &CASUAL; };
+part FIX-J { @!type = boardconnector; @~footprint = HDR-1x2; 1 : A &CASUAL; 2 : B &CASUAL; };
 part FIX-U {
     @~footprint = QFP-32;
-    1 = VCC< &TYPE=POWER;
-    2 = IOA;
-    3 = IOB;
-    4 = BTN<;
-    5 = FB<;
-    6 = SW>;
-    7 = WIDEPIN;
-    8 = GND< &TYPE=POWER &~NET=GND;
-    9 = STR>;
+    1 : VCC< &TYPE=POWER;
+    2 : IOA;
+    3 : IOB;
+    4 : BTN<;
+    5 : FB<;
+    6 : SW>;
+    7 : WIDEPIN;
+    8 : GND< &TYPE=POWER &~NET=GND;
+    9 : STR>;
 };
 
 block fixture {
@@ -86,45 +86,45 @@ block fixture {
     3V3 &CLASS=power;
 
     {U1~FIX-U:
-        VCC = 3V3; GND = GND;
-        IOA = PAIRED; IOB = PAIRED;
-        BTN = UNCLAIMED;
-        FB = NODE3;
-        SW = NODE4;
-        WIDEPIN = WIDE;
-        STR = STRUNG;
+        .VCC = 3V3; .GND = GND;
+        .IOA = PAIRED; .IOB = PAIRED;
+        .BTN = UNCLAIMED;
+        .FB = NODE3;
+        .SW = NODE4;
+        .WIDEPIN = WIDE;
+        .STR = STRUNG;
     };
 
     // STRUNG carries on through a second part before it lands, the way an
     // LED and its series resistor do. STR-MID is inside that string, so it
     // must be a drawn conductor and never a label.
-    {R5~FIX-R: A = STRUNG; B = STR-MID;};
-    {D1~FIX-LED: A = STR-MID; K = GND;};
-    {C4~FIX-C: A = GND; B = STRUNG;};
+    {R5~FIX-R: .A = STRUNG; .B = STR-MID;};
+    {D1~FIX-LED: .A = STR-MID; .K = GND;};
+    {C4~FIX-C: .A = GND; .B = STRUNG;};
 
     // NODE3: a divider tap. R1 goes up to the rail, C1 down to ground.
-    {R1~FIX-R: A = 3V3; B = NODE3;};
-    {C1~FIX-C: A = GND; B = NODE3;};
+    {R1~FIX-R: .A = 3V3; .B = NODE3;};
+    {C1~FIX-C: .A = GND; .B = NODE3;};
 
     // NODE4: the switch-node shape -- catch part down, cap down, coil up.
-    {R2~FIX-R: A = GND; B = NODE4;};
-    {C2~FIX-C: A = BUCK-BOOT; B = NODE4;};
-    {L1~FIX-L: A = 3V3; B = NODE4;};
+    {R2~FIX-R: .A = GND; .B = NODE4;};
+    {C2~FIX-C: .A = BUCK-BOOT; .B = NODE4;};
+    {L1~FIX-L: .A = 3V3; .B = NODE4;};
 
     // PAIRED joins two pins of U1 and a third body's pin.
-    {J1~FIX-J: A = PAIRED; B = GND;};
+    {J1~FIX-J: .A = PAIRED; .B = GND;};
 
     // BUCK-BOOT joins exactly two pins: a pair, and never a junction.
-    {R4~FIX-R: A = BUCK-BOOT; B = GND;};
+    {R4~FIX-R: .A = BUCK-BOOT; .B = GND;};
 
     // WIDE: the far-end names are absurdly wide; drawing must not care.
-    {R3~FIX-R: A = A-FAR-END-NET-NAME-FAR-TOO-LONG-TO-SIT-UNDER-ANY-TRUNK-AT-ALL-1; B = WIDE;};
-    {C3~FIX-C: A = A-FAR-END-NET-NAME-FAR-TOO-LONG-TO-SIT-UNDER-ANY-TRUNK-AT-ALL-2; B = WIDE;};
+    {R3~FIX-R: .A = A-FAR-END-NET-NAME-FAR-TOO-LONG-TO-SIT-UNDER-ANY-TRUNK-AT-ALL-1; .B = WIDE;};
+    {C3~FIX-C: .A = A-FAR-END-NET-NAME-FAR-TOO-LONG-TO-SIT-UNDER-ANY-TRUNK-AT-ALL-2; .B = WIDE;};
 
     // UNCLAIMED: one pin on each of three bodies, no two-terminal part
     // between them -- the shape the classic trunk idiom had to decline.
-    {SW1~FIX-SW: A1 = UNCLAIMED; A2 = GND; B1 = GND; B2 = GND;};
-    {J2~FIX-J: A = UNCLAIMED; B = GND;};
+    {SW1~FIX-SW: .A1 = UNCLAIMED; .A2 = GND; .B1 = GND; .B2 = GND;};
+    {J2~FIX-J: .A = UNCLAIMED; .B = GND;};
 };
 ")
 

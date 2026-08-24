@@ -6,6 +6,6 @@
 // run of elements and there is no run to join to nothing.
 block binding-syntax {
     {U1~SOME-PART:
-        A == ?;
+        .A == ?;
     };
 };

@@ -1,1 +1,1 @@
-part dup { @~footprint = F; 1 = A &CASUAL; 2 = B &CASUAL; };
+part dup { @~footprint = F; 1 : A &CASUAL; 2 : B &CASUAL; };

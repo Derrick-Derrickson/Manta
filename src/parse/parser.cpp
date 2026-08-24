@@ -128,8 +128,9 @@ bool Parser::looksLikeReplication() const {
            ahead(2).kind == TokenKind::LBracket;
 }
 
-// "[A,K]{D1}": a pin list abutting a device open. Scans the bracket to its
-// match and asks what follows (spec 7.3).
+// "[A,K].{D1}": a pin list attached to a device open. Scans the bracket to
+// its match and asks what follows (spec 7.3); the undotted pre-1.6 form is
+// still recognised so parseTerminal can say what is missing.
 bool Parser::looksLikePinList() const {
     if (!at(TokenKind::LBracket)) return false;
     std::size_t i = pos_ + 1;
@@ -139,6 +140,7 @@ bool Parser::looksLikePinList() const {
         if (toks_.at(i).kind == TokenKind::RBracket) --depth;
         ++i;
     }
+    if (toks_.at(i).kind == TokenKind::Dot) ++i;
     return toks_.at(i).kind == TokenKind::LBrace;
 }
 
@@ -170,8 +172,8 @@ bool Parser::looksLikeDevice() const {
 
     std::size_t i = pos_ + 1;
     if (toks_.at(i).kind == TokenKind::LBracket) {
-        // Skip a bracketed index: "OUT[0:1]{...}" is not legal, but
-        // "GPIO[1]" as a terminal is, so scan to the matching ']'.
+        // Skip a bracketed index: "GPIO[1].{...}" is a terminal with a range,
+        // so scan to the matching ']'.
         int depth = 1;
         ++i;
         while (depth > 0 && toks_.at(i).kind != TokenKind::Eof) {
@@ -180,6 +182,9 @@ bool Parser::looksLikeDevice() const {
             ++i;
         }
     }
+    // The attachment dot of "A.{D1}" (spec 7.3). The undotted pre-1.6 form is
+    // still recognised so parseTerminal can say what is missing.
+    if (toks_.at(i).kind == TokenKind::Dot) ++i;
     return toks_.at(i).kind == TokenKind::LBrace;
 }
 
@@ -833,9 +838,40 @@ NetExpr* Parser::parseNetExpr() {
 // Devices
 // ---------------------------------------------------------------------------
 
-Terminal Parser::parseTerminal() {
+Terminal Parser::parseTerminal(bool entrySide) {
     Terminal t;
     t.span = here();
+
+    // The exit side leads with the attachment dot: "}.K", "}.[3,4]", "}."
+    // (casual), "}.." (a casual run). Spec 7.3, revision 1.6: a terminal
+    // always touches its braces through '.'.
+    if (!entrySide) {
+        expect(TokenKind::Dot, "attaching an exit terminal; a pin of the device is '.PIN'");
+        if (at(TokenKind::Dot)) {
+            // More dots: a casual run, the first dot included.
+            t.dot = true;
+            t.dotCount = 1;
+            while (accept(TokenKind::Dot)) ++t.dotCount;
+        } else if (at(TokenKind::Word) && adjacent(pos_ - 1)) {
+            t.name = parseName(true);
+            if (at(TokenKind::LBracket)) t.range = parseRange();
+        } else if (at(TokenKind::LBracket) && adjacent(pos_ - 1)) {
+            advance();
+            std::vector<Name> pins;
+            do {
+                pins.push_back(parseName(true));
+            } while (accept(TokenKind::Comma));
+            expect(TokenKind::RBracket, "closing a pin list");
+            t.list = commit(pins);
+            t.hasList = true;
+        } else {
+            t.dot = true;
+            t.dotCount = 1;
+        }
+        t.span = t.span.merge(toks_.at(pos_ - 1).span(file_.id()));
+        return t;
+    }
+
     if (at(TokenKind::Dot)) {
         // Spec 7.3: '.' takes the first unassigned casual pin from those
         // remaining. A run of dots takes that many, all onto one node --
@@ -846,7 +882,7 @@ Terminal Parser::parseTerminal() {
         return t;
     }
     if (at(TokenKind::LBracket)) {
-        // Spec 7.3: "[A,K]{D1}" -- a pin list as one terminal. Every listed
+        // Spec 7.3: "[A,K].{D1}" -- a pin list as one terminal. Every listed
         // pin joins the one node; a *range* ("O[0:1]") is a bus and needs a
         // name first, so the bare bracket is unambiguous here.
         advance();
@@ -857,11 +893,12 @@ Terminal Parser::parseTerminal() {
         expect(TokenKind::RBracket, "closing a pin list");
         t.list = commit(pins);
         t.hasList = true;
-        t.span = t.span.merge(toks_.at(pos_ - 1).span(file_.id()));
-        return t;
+    } else {
+        t.name = parseName(true);
+        if (at(TokenKind::LBracket)) t.range = parseRange();
     }
-    t.name = parseName(true);
-    if (at(TokenKind::LBracket)) t.range = parseRange();
+    // A named or listed entry terminal attaches through a dot: "A.{D1}".
+    expect(TokenKind::Dot, "attaching the terminal to its device; a pin is 'PIN.{...}'");
     t.span = t.span.merge(toks_.at(pos_ - 1).span(file_.id()));
     return t;
 }
@@ -968,11 +1005,19 @@ Binding* Parser::parseBinding() {
     }
 
     b->kind = BindingKind::PinNet;
-    if (accept(TokenKind::Dot)) {
-        b->pinIsDot = true;
+    // Revision 1.6, spec 7.4: a binding names this instance's pin with a
+    // leading '.', the blank left side meaning "this" -- ".VIN = VPOS;" is
+    // U's own VIN, never a net. '.' alone stays the casual-pin binding.
+    if (at(TokenKind::Dot)) {
+        advance();
     } else {
+        error(here(), "a pin binding opens with '.'; this instance's pin is '.PIN'");
+    }
+    if (at(TokenKind::Word)) {
         b->pin = parseName(true);
         if (at(TokenKind::LBracket)) b->pinRange = parseRange();
+    } else {
+        b->pinIsDot = true;
     }
 
     // Revision 1.4, spec 7.4: a binding is a chain rooted at a pin of the
@@ -1087,7 +1132,7 @@ Device* Parser::parseDevice() {
     // The terminals written outside the braces are the pins through which the
     // chain passes: the left is the entry, the right the exit (spec 7.3).
     if (!at(TokenKind::LBrace)) {
-        dev->entry = parseTerminal();
+        dev->entry = parseTerminal(/*entrySide=*/true);
         dev->hasEntry = true;
     }
 
@@ -1095,11 +1140,33 @@ Device* Parser::parseDevice() {
     dev->instance = parseInstance();
     expect(TokenKind::RBrace, "closing a device");
 
-    // An exit terminal follows only when it abuts the closing brace; a word on
-    // the next line is the start of something else.
-    if ((at(TokenKind::Word) || at(TokenKind::Dot) || at(TokenKind::LBracket)) &&
-        adjacent(pos_ - 1)) {
-        dev->exit = parseTerminal();
+    // An exit terminal leads with the attachment dot -- "}.K" -- so the old
+    // whitespace rule ("abuts the closing brace") is only needed to keep a
+    // '.' on the next line from being read as this device's exit.
+    if (at(TokenKind::Dot) && adjacent(pos_ - 1)) {
+        dev->exit = parseTerminal(/*entrySide=*/false);
+        dev->hasExit = true;
+    } else if ((at(TokenKind::Word) || at(TokenKind::LBracket)) && adjacent(pos_ - 1)) {
+        // The pre-1.6 undotted exit, recognised for the error's sake and
+        // parsed as written -- no attachment dot to demand a second time.
+        error(here(), "an exit terminal attaches through '.'; a pin of the device is '}.PIN'");
+        Terminal t;
+        t.span = here();
+        if (at(TokenKind::LBracket)) {
+            advance();
+            std::vector<Name> pins;
+            do {
+                pins.push_back(parseName(true));
+            } while (accept(TokenKind::Comma));
+            expect(TokenKind::RBracket, "closing a pin list");
+            t.list = commit(pins);
+            t.hasList = true;
+        } else {
+            t.name = parseName(true);
+            if (at(TokenKind::LBracket)) t.range = parseRange();
+        }
+        t.span = t.span.merge(toks_.at(pos_ - 1).span(file_.id()));
+        dev->exit = t;
         dev->hasExit = true;
     }
 
@@ -1423,7 +1490,15 @@ PinMap* Parser::parsePinMap() {
     }
     p->physSpan = p->physSpan.merge(toks_.at(pos_ - 1).span(file_.id()));
 
-    expect(TokenKind::Eq, "in a pin map");
+    // Revision 1.6: a pin declaration *maps* the pad to its name. ':' is the
+    // mapping; '=' assigns values (fields) and joins nets (chains), and a pin
+    // declaration does neither.
+    if (at(TokenKind::Eq)) {
+        error(here(), "a pin declaration maps its pad to a name with ':'");
+        advance();
+    } else {
+        expect(TokenKind::Colon, "in a pin declaration");
+    }
 
     // pin_name = identifier [ "[" range "]" ] | identifier "." "[" members "]"
     p->logical = parseName(true);

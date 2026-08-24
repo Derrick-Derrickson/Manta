@@ -1,4 +1,4 @@
-part p { @~footprint = F; 1 = A &CASUAL; 2 = B &CASUAL; };
+part p { @~footprint = F; 1 : A &CASUAL; 2 : B &CASUAL; };
 block b {
     GND &TYPE=GROUND;
     SIG-A = .{R1~p}. = GND;

@@ -57,30 +57,30 @@ set(SRC "${WORK}/cluster.manta")
 file(WRITE "${SRC}" "\
 netclass power { &CURRENT=1A; };
 
-part FIX-NPN { @!type = npn; @~footprint = SOT-23; 1 = B; 2 = C; 3 = E; };
-part FIX-RB { @!type = resistor; @~footprint = R-0603; #value = 1kR; 1 = A &CASUAL; 2 = B &CASUAL; };
-part FIX-RPD { @!type = resistor; @~footprint = R-0603; #value = 10kR; 1 = A &CASUAL; 2 = B &CASUAL; };
-part FIX-D { @!type = diode; @~footprint = SOD-123; 1 = A; 2 = K; };
-part FIX-C { @!type = capacitor; @~footprint = C-0603; #value = 100nF; 1 = A &CASUAL; 2 = B &CASUAL; };
-part FIX-L { @!type = inductor; @~footprint = L-0805; #value = 4u7H; 1 = A &CASUAL; 2 = B &CASUAL; };
-part FIX-X { @!type = crystal; @~footprint = HC-49; #value = 8MHz; 1 = A &CASUAL; 2 = B &CASUAL; };
+part FIX-NPN { @!type = npn; @~footprint = SOT-23; 1 : B; 2 : C; 3 : E; };
+part FIX-RB { @!type = resistor; @~footprint = R-0603; #value = 1kR; 1 : A &CASUAL; 2 : B &CASUAL; };
+part FIX-RPD { @!type = resistor; @~footprint = R-0603; #value = 10kR; 1 : A &CASUAL; 2 : B &CASUAL; };
+part FIX-D { @!type = diode; @~footprint = SOD-123; 1 : A; 2 : K; };
+part FIX-C { @!type = capacitor; @~footprint = C-0603; #value = 100nF; 1 : A &CASUAL; 2 : B &CASUAL; };
+part FIX-L { @!type = inductor; @~footprint = L-0805; #value = 4u7H; 1 : A &CASUAL; 2 : B &CASUAL; };
+part FIX-X { @!type = crystal; @~footprint = HC-49; #value = 8MHz; 1 : A &CASUAL; 2 : B &CASUAL; };
 part FIX-BUCK {
     @~footprint = SOIC-8;
-    1 = VIN< &TYPE=POWER;
-    2 = VIN2< &TYPE=POWER;
-    3 = SW>;
-    4 = BST;
-    5 = EN<;
-    6 = GND< &TYPE=POWER &~NET=GND;
+    1 : VIN< &TYPE=POWER;
+    2 : VIN2< &TYPE=POWER;
+    3 : SW>;
+    4 : BST;
+    5 : EN<;
+    6 : GND< &TYPE=POWER &~NET=GND;
 };
 part FIX-OSC {
     @~footprint = QFN-16;
-    1 = XI;
-    2 = XO;
-    3 = D0>;
-    4 = D1>;
-    5 = VCC< &TYPE=POWER;
-    6 = GND< &TYPE=POWER &~NET=GND;
+    1 : XI;
+    2 : XO;
+    3 : D0>;
+    4 : D1>;
+    5 : VCC< &TYPE=POWER;
+    6 : GND< &TYPE=POWER &~NET=GND;
 };
 
 block fixture {
@@ -90,24 +90,24 @@ block fixture {
     3V3 &CLASS=power;
 
     --- CHANNELS
-    {Q1~FIX-NPN: B = BASE1; C = LOAD1; E = GND;};
-    {R1~FIX-RB: A = IN1; B = BASE1;};
-    {R2~FIX-RPD: A = BASE1; B = GND;};
-    {Q2~FIX-NPN: B = BASE2; C = LOAD2; E = GND;};
-    {R3~FIX-RB: A = CH2-INPUT; B = BASE2;};
-    {R4~FIX-RPD: A = BASE2; B = GND;};
+    {Q1~FIX-NPN: .B = BASE1; .C = LOAD1; .E = GND;};
+    {R1~FIX-RB: .A = IN1; .B = BASE1;};
+    {R2~FIX-RPD: .A = BASE1; .B = GND;};
+    {Q2~FIX-NPN: .B = BASE2; .C = LOAD2; .E = GND;};
+    {R3~FIX-RB: .A = CH2-INPUT; .B = BASE2;};
+    {R4~FIX-RPD: .A = BASE2; .B = GND;};
 
     --- BUCK
-    {U1~FIX-BUCK: VIN = VBUS; VIN2 = VBUS; SW = SWNODE; BST = BOOT; EN = ENA;};
-    {D1~FIX-D: A = GND; K = SWNODE;};
-    {C1~FIX-C: A = SWNODE; B = BOOT;};
-    {L1~FIX-L: A = SWNODE; B = VOUT;};
+    {U1~FIX-BUCK: .VIN = VBUS; .VIN2 = VBUS; .SW = SWNODE; .BST = BOOT; .EN = ENA;};
+    {D1~FIX-D: .A = GND; .K = SWNODE;};
+    {C1~FIX-C: .A = SWNODE; .B = BOOT;};
+    {L1~FIX-L: .A = SWNODE; .B = VOUT;};
 
     --- CLOCK
-    {U2~FIX-OSC: XI = XTI; XO = XTO; VCC = 3V3; D0 = DAT0; D1 = DAT1;};
-    {Y1~FIX-X: A = XTI; B = XTO;};
-    {C2~FIX-C: A = GND; B = XTI;};
-    {C3~FIX-C: A = GND; B = XTO;};
+    {U2~FIX-OSC: .XI = XTI; .XO = XTO; .VCC = 3V3; .D0 = DAT0; .D1 = DAT1;};
+    {Y1~FIX-X: .A = XTI; .B = XTO;};
+    {C2~FIX-C: .A = GND; .B = XTI;};
+    {C3~FIX-C: .A = GND; .B = XTO;};
     3V3 = .{C4~FIX-C: . = GND;};
 };
 ")

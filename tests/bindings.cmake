@@ -112,11 +112,11 @@ file(WRITE "${WORK}/w01.manta" "\
 block w01-top {
     GND &TYPE=GROUND;
     {U1~EQ-CHIP:
-        VIN  = VRAIL = .{C1~EQ-C: . = GND;};
-        SW   = K{D1~EQ-D: A = GND;};
-        FB   = .{R1~EQ-R: . = GND;};
-        EN   = VRAIL;
-        GND  = GND;
+        .VIN  = VRAIL = .{C1~EQ-C: . = GND;};
+        .SW   = K.{D1~EQ-D: .A = GND;};
+        .FB   = .{R1~EQ-R: . = GND;};
+        .EN   = VRAIL;
+        .GND  = GND;
     };
 };
 ")
@@ -151,7 +151,7 @@ endif()
 file(WRITE "${WORK}/e08.manta" "\
 block e08-top {
     GND &TYPE=GROUND;
-    VRAIL = A{R9~EQ-R: A = .{C9~EQ-C: . = GND;};}B = GND;
+    VRAIL = A.{R9~EQ-R: .A = .{C9~EQ-C: . = GND;};}.B = GND;
 };
 ")
 execute_process(COMMAND "${MANTA}" compile -o "${WORK}/e08/"
@@ -168,7 +168,7 @@ endif()
 file(WRITE "${WORK}/e08-net.manta" "\
 block e08-net-top {
     GND &TYPE=GROUND;
-    VRAIL = A{R9~EQ-R: A = GND;}B = GND;
+    VRAIL = A.{R9~EQ-R: .A = GND;}.B = GND;
 };
 ")
 execute_process(COMMAND "${MANTA}" compile -o "${WORK}/e08net/"
@@ -190,9 +190,9 @@ file(WRITE "${ANNSRC}" "\
 block ann-top {
     GND &TYPE=GROUND;
     {U1~EQ-CHIP:
-        VIN  = VRAIL = .{C?~EQ-C: . = .{R?~EQ-R: . = GND;};};
-        SW   = K{D?~EQ-D: A = GND;};
-        GND  = GND;
+        .VIN  = VRAIL = .{C?~EQ-C: . = .{R?~EQ-R: . = GND;};};
+        .SW   = K.{D?~EQ-D: .A = GND;};
+        .GND  = GND;
     };
 };
 ")

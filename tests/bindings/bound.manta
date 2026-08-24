@@ -14,29 +14,29 @@ block eq-top {
     {U1~EQ-CHIP:
         // The rail, then the shunt capacitor on it -- plain joins all
         // the way, since a shunt has no far side (spec 6.2).
-        VIN   = VRAIL = .{C1~EQ-C: . = GND;};
+        .VIN   = VRAIL = .{C1~EQ-C: . = GND;};
         // The diode attaches by K and dead-ends; '==' continues on the pin's
         // node, where the capacitor's first pad attaches (spec 6.3).
-        SW    = K{D1~EQ-D: A = GND;} == .{C2~EQ-C: . = BOOT;};
+        .SW    = K.{D1~EQ-D: .A = GND;} == .{C2~EQ-C: . = BOOT;};
         // A two-resistor divider whose midpoint is the pin.
-        FB    = .{R1~EQ-R: . = VRAIL;} == .{R2~EQ-R: . = GND;};
+        .FB    = .{R1~EQ-R: . = VRAIL;} == .{R2~EQ-R: . = GND;};
         // A series element between the pin and a net.
-        EN    = .{R3~EQ-R}. = VRAIL;
+        .EN    = .{R3~EQ-R}. = VRAIL;
         // A device nested two levels deep inside a binding.
-        COMP  = .{R4~EQ-R: . = .{C3~EQ-C: . = GND;};};
+        .COMP  = .{R4~EQ-R: . = .{C3~EQ-C: . = GND;};};
         // The pre-1.4 spelling, one bare net after '='.
-        GND   = GND;
+        .GND   = GND;
     };
 
     {U2~EQ-BUS:
-        SPARE = ?;
+        .SPARE = ?;
         // An array-pin binding: four pins, four copies, four nets.
-        LANE  = [[.{RS%[1:4]~EQ-R}.]] = LANE-OUT[0:3];
+        .LANE  = [[.{RS%[1:4]~EQ-R}.]] = LANE-OUT[0:3];
         // Four pins against a net that states no range at all: only the
         // pins say how wide this is, so SIDE-BUS[0:3] exists because the
         // seeded pin's width reaches the bare net (spec 8.1).
-        SIDE  = SIDE-BUS;
+        .SIDE  = SIDE-BUS;
         // A series element between two pins.
-        REF   = .{R5~EQ-R}. = U1.SW;
+        .REF   = .{R5~EQ-R}. = U1.SW;
     };
 };

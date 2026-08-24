@@ -16,11 +16,11 @@ part LDO-3V3 {
     @!type      = regulator;
     #~mpn       = "AP2112K-3.3TRG1";
 
-    1 = VIN<  &TYPE=POWER;
-    2 = GND<  &TYPE=POWER &~NET=GND;
-    3 = EN<;
-    4 = NC    &TYPE=NC;
-    5 = VOUT> &TYPE=POWER;
+    1: VIN<  &TYPE=POWER;
+    2: GND<  &TYPE=POWER &~NET=GND;
+    3: EN<;
+    4: NC    &TYPE=NC;
+    5: VOUT> &TYPE=POWER;
 };
 ```
 
@@ -61,13 +61,13 @@ there is no separate tri-state type, and E-01 fires only on multiple `>` pins.
 so a call site can override:
 
 ```
-1 = VCC< &TYPE=POWER &~NET=3V3;
-2 = GND< &TYPE=POWER &~NET=GND;
+1: VCC< &TYPE=POWER &~NET=3V3;
+2: GND< &TYPE=POWER &~NET=GND;
 ```
 
 ```
 {U1~cool-mcu};                  VCC→3V3, GND→GND
-{U2~cool-mcu: VCC=1V8; };       VCC→1V8, GND→GND
+{U2~cool-mcu: .VCC=1V8; };       VCC→1V8, GND→GND
 ```
 
 This removes an enormous amount of noise from a board. Supply and ground pins
@@ -90,8 +90,8 @@ part R-10kR-0603 {
     @~footprint = R-0603;
     #value      = 10kR;
     @!type      = resistor;
-    1 = A &CASUAL;
-    2 = B &CASUAL;
+    1: A &CASUAL;
+    2: B &CASUAL;
 };
 ```
 
@@ -100,8 +100,8 @@ in one package do not become mutually swappable:
 
 ```
 part dual-resistor {
-    [1:2] = A[1:2] &CASUAL;      // one group
-    [3:4] = B[1:2] &CASUAL;      // a different one
+    [1:2]: A[1:2] &CASUAL;      // one group
+    [3:4]: B[1:2] &CASUAL;      // a different one
 };
 ```
 
@@ -113,8 +113,8 @@ expressible:
 
 ```
 part buffer4 {
-    [1:4] = IN[1:4]<  &SWAP=ch;
-    [5:8] = OUT[1:4]> &SWAP=ch;
+    [1:4]: IN[1:4]<  &SWAP=ch;
+    [5:8]: OUT[1:4]> &SWAP=ch;
 };
 ```
 
@@ -127,7 +127,7 @@ do, and give W-08.
 A contiguous run of physical pins maps to an array, and the widths must match:
 
 ```
-[3:11] = GPIO[1:9]<>;        nine pins, nine signals
+[3:11]: GPIO[1:9]<>;        nine pins, nine signals
 ```
 
 Range order is significant and defines wire order. A harness member list is
@@ -135,8 +135,8 @@ written out so the mapping is stated where it is read, and its length must equal
 the pin range width:
 
 ```
-[12:13] = USB.[+,-]<>;
-[20:22] = i2c.[SDA,SCL,ALERT]<>;
+[12:13]: USB.[+,-]<>;
+[20:22]: i2c.[SDA,SCL,ALERT]<>;
 ```
 
 Pin names follow the ordinary identifier rules and may additionally be an
@@ -196,15 +196,15 @@ part BACKPLANE-OUT {
     @~mate      = jumper-8way;      // and this is what
     @~footprint = "Connector_JST:JST_PH_S8B-PH-K_1x08_P2.00mm_Horizontal";
 
-    1 = VPOS< &TYPE=POWER;
-    2 = GNDP< &TYPE=POWER &~NET=GND;
+    1: VPOS< &TYPE=POWER;
+    2: GNDP< &TYPE=POWER &~NET=GND;
 };
 
 part JST-8-PLUG {
     @type  = cableconnector;        // it plugs into something
     @mates = BACKPLANE-OUT;         // and this is what
 
-    [1:8] = P[1:8]<>;
+    [1:8]: P[1:8]<>;
 };
 ```
 
@@ -227,8 +227,8 @@ part WIRE-22AWG-RED {
     #insulation = PVC;
     #mpn        = "3257-RD-100";
 
-    1 = A &CASUAL;
-    2 = B &CASUAL;
+    1: A &CASUAL;
+    2: B &CASUAL;
 };
 ```
 
@@ -238,7 +238,7 @@ already have for `USB.[+,-]`:
 ```manta
 part CABLE-2P-SHIELDED {
     @type = wire;
-    [1:3] = A.[WHITE,BLUE,SHIELD];
-    [4:6] = B.[WHITE,BLUE,SHIELD];
+    [1:3]: A.[WHITE,BLUE,SHIELD];
+    [4:6]: B.[WHITE,BLUE,SHIELD];
 };
 ```

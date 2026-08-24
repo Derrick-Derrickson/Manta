@@ -1,5 +1,5 @@
-part c { @~footprint = F; @!type = capacitor; 1 = A &CASUAL; 2 = B &CASUAL; };
-part r { @~footprint = F; 1 = A &CASUAL; 2 = B &CASUAL; };
+part c { @~footprint = F; @!type = capacitor; 1 : A &CASUAL; 2 : B &CASUAL; };
+part r { @~footprint = F; 1 : A &CASUAL; 2 : B &CASUAL; };
 block b {
     GND &TYPE=GROUND;
     SIGA = .{C1~c}. = SIGB;

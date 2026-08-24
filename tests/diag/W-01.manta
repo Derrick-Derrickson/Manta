@@ -1,5 +1,5 @@
-part quad { @~footprint = F; [1:4] = IN[1:4]<; [5:8] = OUT[1:4]>; };
+part quad { @~footprint = F; [1:4] : IN[1:4]<; [5:8] : OUT[1:4]>; };
 block b {
     GND &TYPE=GROUND;
-    A = IN[1]{U1~quad}OUT[1] = C;
+    A = IN[1].{U1~quad}.OUT[1] = C;
 };

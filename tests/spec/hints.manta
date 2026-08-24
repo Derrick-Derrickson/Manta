@@ -8,9 +8,9 @@
 part HNT-CONN-6 {
     @~footprint = HDR-1x6;
     @!type      = boardconnector;
-    1     = VIN<>;
-    2     = GNDP<>;
-    [3:6] = S[0:3]<>;
+    1     : VIN<>;
+    2     : GNDP<>;
+    [3:6] : S[0:3]<>;
 };
 
 block hints-demo {
@@ -22,7 +22,7 @@ block hints-demo {
     HSYS-PROT = .{C1~100nF-0603: . = HGND;};
 
     // The connector faces the left sheet edge.
-    {J1~HNT-CONN-6: &EDGE=LEFT; VIN = HSYS-PROT; GNDP = HGND; S[0:3] = HSIG[0:3]; };
+    {J1~HNT-CONN-6: &EDGE=LEFT; .VIN = HSYS-PROT; .GNDP = HGND; .S[0:3] = HSIG[0:3]; };
 
     // The far ends, one resistor per signal (spec 8.3, 13.3).
     HSIG[0:3] = [[.{R%[1:4]~10kR-0603}.]] =* HGND;

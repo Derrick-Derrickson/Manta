@@ -325,8 +325,8 @@ TEST_CASE("a range value survives the object round trip") {
     @~footprint = F;
     #map = [[1:20],[20:1]];
     #mixed = [3, 7:9, 4];
-    1 = A &CASUAL;
-    2 = B &CASUAL;
+    1: A &CASUAL;
+    2: B &CASUAL;
 };
 )");
 }
@@ -339,7 +339,7 @@ TEST_CASE("spec 15.8: compiling twice gives byte-identical objects") {
 TEST_CASE("rev 1.6: multi-pin terminals round-trip through .mantaO") {
     // A dot run and pin lists on both sides survive write -> read -> write
     // byte-identically.
-    std::string obj = compileToObject("block b { A = B = ..{R1~r}; C = [X,Y]{D1~d}[Z]; };");
+    std::string obj = compileToObject("block b { A = B = ..{R1~r}; C = [X,Y].{D1~d}.[Z]; };");
     bool ok = false;
     std::string second = reserialise(obj, &ok);
     CHECK(ok);
@@ -619,8 +619,8 @@ TEST_CASE("rev 1.4: a plain binding is written exactly as 1.3 wrote it") {
     // overwhelmingly common binding -- one bare net reached through '=' --
     // serialises to the bytes an earlier toolchain produced.
     std::size_t errors = 0;
-    std::string obj = compileToObject("block b {\n    {U1~mcu:\n        GND = AGND;\n"
-                                      "        VCC = VBUS;\n    };\n};\n", &errors);
+    std::string obj = compileToObject("block b {\n    {U1~mcu:\n        .GND = AGND;\n"
+                                      "        .VCC = VBUS;\n    };\n};\n", &errors);
     CHECK_EQ(errors, std::size_t{0});
     CHECK(obj.find("\"connector\"") == std::string::npos);
     CHECK(obj.find("\"rhs\"") == std::string::npos);

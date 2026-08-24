@@ -14,9 +14,14 @@
 > never stylistic. Deliberate shorts get a written form instead of a chain
 > trick: a run of dots (`..{R1}`) or a pin list (`[A,K]{D1}`) attaches that
 > many pins of one part to one node (§7.3), and W-02 becomes a connectivity
-> check that stays quiet about bridges spelled that way. Sources written for
-> 1.5 respell a joining `==` as `=` and keep `==` only after shunts and other
-> dead-end attachments.
+> check that stays quiet about bridges spelled that way. The membership dot
+> generalises: a terminal touches its braces through it (`A.{D1~d}.K`), and a
+> binding names this instance's pin with a blank left side (`.VIN = VPOS;`),
+> so a pin on the left of a binding is always marked and never misread as a
+> net. A pin declaration maps its pad with `:` (`5: SDA<>;`): declarations
+> name, references attach, `=` assigns and joins. Sources written for 1.5
+> respell a joining `==` as `=`, keep `==` only after dead-end attachments,
+> dot their bindings and terminals, and swap pin-declaration `=` for `:`.
 >
 > **1.5 says what a net and a connector are for the page.** Two directives, one
 > revision. `&RAIL` (§11.3) marks a net as a power rail for rendering, whatever
@@ -239,7 +244,7 @@ Every statement is terminated by `;`. This includes chain statements, field decl
 port declarations, directive statements, and the closing brace of every definition.
 
 ```
->SIG-IN = I{U1~AMP012}O = SIG-OUT>;
+>SIG-IN = I.{U1~AMP012}.O = SIG-OUT>;
 #board-rev = C;
 >VIN;
 block amp { ... };
@@ -261,8 +266,8 @@ part STM32F0QA5 {
     #value         = STM32F0QA5;
     #!manufacturer = "ST Microelectronics";
 
-    1 = VCC< &TYPE=POWER &~NET=3V3;
-    2 = GND< &TYPE=POWER &~NET=GND;
+    1: VCC< &TYPE=POWER &~NET=3V3;
+    2: GND< &TYPE=POWER &~NET=GND;
 };
 
 ---
@@ -441,8 +446,8 @@ block top {
 };
 
 part cool_mcu {
-    1 = VCC< &TYPE=POWER;
-    2 = GND< &TYPE=POWER;
+    1: VCC< &TYPE=POWER;
+    2: GND< &TYPE=POWER;
 };
 ```
 
@@ -463,8 +468,8 @@ A declaration may carry a linkage keyword.
 ```
 static part house-resistor-0603 {
     @~footprint = R-0603;
-    1 = A &CASUAL;
-    2 = B &CASUAL;
+    1: A &CASUAL;
+    2: B &CASUAL;
 };
 ```
 
@@ -517,7 +522,7 @@ block amp-stage {
     AMPED-SIG>;
     <>i2c;
 
-    SIG-IN = I{U?~AMP012}O = AMPED-SIG;
+    SIG-IN = I.{U?~AMP012}.O = AMPED-SIG;
 };
 ```
 
@@ -536,13 +541,14 @@ A part maps a package's physical pins to named pins and declares the part's fiel
 
 ```ebnf
 part_def = [ linkage ] "part" identifier "{" { field_decl | pin_map } "}" ";" ;
-pin_map  = pin_spec "=" identifier [ arrow ] { directive | field_decl } ";" ;
+pin_map  = pin_spec ":" identifier [ arrow ] { directive | field_decl } ";" ;
 pin_spec = integer | "[" integer ":" integer "]" ;
 ```
 
-Each pin line is `physical = logical`, with the direction arrow attached to the logical
-name and directives following it. Ranges are bracketed on both sides and shall be of equal
-width.
+Each pin line is `physical: logical`, with the direction arrow attached to the logical
+name and directives following it. The colon is a *mapping*, not an assignment or a join —
+`=` assigns values and connects nets, and a pin declaration does neither. Ranges are
+bracketed on both sides and shall be of equal width.
 
 ```
 part cool-mcu {
@@ -550,13 +556,13 @@ part cool-mcu {
     #value         = STM32F0QA5;
     #!manufacturer = "ST Microelectronics";
 
-    1       = VCC<        &TYPE=POWER &~NET=3V3;
-    2       = GND<        &TYPE=POWER &~NET=GND;
-    [3:11]  = GPIO[1:9]<>;
-    [12:13] = USB.[+,-]<>;
-    14      = SDA<>       &TYPE=OPENDRAIN;
-    15      = SCL<        &TYPE=OPENDRAIN;
-    16      = NC          &TYPE=NC;
+    1:       VCC<        &TYPE=POWER &~NET=3V3;
+    2:       GND<        &TYPE=POWER &~NET=GND;
+    [3:11]:  GPIO[1:9]<>;
+    [12:13]: USB.[+,-]<>;
+    14:      SDA<>       &TYPE=OPENDRAIN;
+    15:      SCL<        &TYPE=OPENDRAIN;
+    16:      NC          &TYPE=NC;
 };
 ```
 
@@ -566,8 +572,8 @@ bus states a figure once:
 
 ```
 part MCU-48 {
-    [1:48] = IO[1:48]<> #VOH=2V4 #VOL=0V4 #VIH=2V0 #VIL=0V8;
-    49     = SDA<>      &TYPE=OPENDRAIN #VOL=0V6;
+    [1:48]: IO[1:48]<> #VOH=2V4 #VOL=0V4 #VIH=2V0 #VIL=0V8;
+    49:     SDA<>      &TYPE=OPENDRAIN #VOL=0V6;
 };
 ```
 
@@ -581,7 +587,7 @@ Pin fields take the strength ladder of §9.2, and a call site overrides one the 
 it overrides any other field — by declaring a stronger one:
 
 ```
-{U1~MCU-48: IO[3] #!VOH=3V0; };
+{U1~MCU-48: .IO[3] #!VOH=3V0; };
 ```
 
 They stay on the pin. They are not BOM columns, which are per component.
@@ -595,8 +601,8 @@ At a call site a part and a block are instantiated identically. A block's ports 
 pins, and a part may be replaced by a block of the same interface without editing callers.
 
 ```
->IN = {BLK?~rc-filter}OUT = MID>;      // a block
->IN = A{D?~DI3643}K       = MID>;      // a part
+>IN = {BLK?~rc-filter}.OUT = MID>;      // a block
+>IN = A.{D?~DI3643}.K       = MID>;      // a part
 ```
 
 ### 4.7 Render sections
@@ -616,10 +622,10 @@ names the section, so `--- I/O // left` is one title, not a title and a comment.
 ```
 block charger {
     --- POWER IN
-    {J1~CONN-USB-C: VBUS = VBUS;};
+    {J1~CONN-USB-C: .VBUS = VBUS;};
 
     --- REGULATION
-    VBUS = VIN{U1~LDO-3V3}VOUT = 3V3;
+    VBUS = VIN.{U1~LDO-3V3}.VOUT = 3V3;
 };
 ```
 
@@ -765,7 +771,7 @@ node, and every connector in the line states truthfully whether the chain moved.
 The buck idiom reads the same way — attach, stay, stay, advance:
 
 ```
-SW = K{D2~DI3643: A=GND;} == .{C3~100nF-0603: .=BUCK-BST;} == A{L1~MT100UFA}B
+SW = K.{D2~DI3643: .A=GND;} == .{C3~100nF-0603: .=BUCK-BST;} == A.{L1~MT100UFA}.B
    = .{C4~10uF-0805: .=GND} == 5V;
 ```
 
@@ -801,7 +807,7 @@ electrical relationship, and exists so that a physically associated group whose 
 relationship is not expressed in this file can be written as one readable chain.
 
 ```
-SIG-IN = I{U2~AMP012}  ^  {U3~AMP012}O = AMPED-SIG;
+SIG-IN = I.{U2~AMP012}  ^  {U3~AMP012}.O = AMPED-SIG;
 ```
 
 `SIG-IN` connects to `U2`'s `I` pin, and `U3`'s `O` pin connects to `AMPED-SIG`. `U2` and
@@ -852,7 +858,7 @@ designator that no object declares is error **E-31**.
 
 From tightest to loosest:
 
-1. terminal attachment — `I{...}O`
+1. terminal attachment — `I.{...}.O`
 2. multiplicity — `+N`, `|N`, `*N`
 3. grouping — `( ... )`
 4. `=`, `==`, `=*`, `*=` — equal precedence, left-associative
@@ -879,8 +885,8 @@ The presence of `~` distinguishes declaring a new instance from referencing an e
 one.
 
 ```
-I{U?~AMP012: PWR=PWR-SWITCHED}O      // declares a new AMP012
-I{U3}O                                // references existing U3
+I.{U?~AMP012: .PWR=PWR-SWITCHED}.O      // declares a new AMP012
+I.{U3}.O                                // references existing U3
 ```
 
 Referencing a designator that is never declared is error **E-07**.
@@ -888,15 +894,18 @@ Referencing a designator that is never declared is error **E-07**.
 ### 7.3 Terminals
 
 The terminals written outside the braces are the pins through which the chain passes: the
-left is the entry, the right the exit.
+left is the entry, the right the exit. A terminal always touches its braces through the
+membership dot — the same dot as `U5.EN` — pointing from the pin to its instance: entry
+pins are written `PIN.{...}`, exit pins `{...}.PIN`. A bare dot is the casual-pin
+terminal, its own attachment.
 
 ```
-A{D1~DI3643}K                          // diode: anode in, cathode out
-S{Q1~FFET123}D                         // FET: source in, drain out
-I{U5~AMP012}O                          // amplifier: input in, output out
-.{R1~10kR-0603}.                       // resistor: either pin
-Down{U9~USB-ISO}Up                     // any pin name may be a terminal
-{BLK1~rc-filter}OUT                    // a block: its ports are its pins
+A.{D1~DI3643}.K                          // diode: anode in, cathode out
+S.{Q1~FFET123}.D                         // FET: source in, drain out
+I.{U5~AMP012}.O                          // amplifier: input in, output out
+.{R1~10kR-0603}.                         // resistor: either pin
+Down.{U9~USB-ISO}.Up                     // any pin name may be a terminal
+{BLK1~rc-filter}.OUT                     // a block: its ports are its pins
 ```
 
 The entry terminal is omitted where the device begins a statement. The exit terminal is
@@ -909,7 +918,7 @@ A pin used as a terminal shall not also appear in the binding list. That is erro
 **E-08**.
 
 ```
-A{D1~DI3643: A=VIN}K      // ERROR E-08
+A.{D1~DI3643: .A=VIN}.K      // ERROR E-08
 ```
 
 #### The `.` terminal
@@ -924,8 +933,8 @@ A{D1~DI3643: A=VIN}K      // ERROR E-08
 
 ```
 part resistor-0603 {
-    1 = A &CASUAL;
-    2 = B &CASUAL;
+    1: A &CASUAL;
+    2: B &CASUAL;
 };
 
 .{R1~resistor-0603}.       // legal
@@ -942,8 +951,8 @@ one net, where `O[0:1]` is two wires of a bus.
 
 ```
 X = Y = ..{R1~10kR-0603};        // both pads of R1 on the X node: a written short
-X = Y = [A,K]{D1~DI3643};        // the same by name, for pins that are not casual
-VIN = [1,2]{J5~PWR-CONN}[3,4] = GND;   // paralleled connector pins, two per side
+X = Y = [A,K].{D1~DI3643};        // the same by name, for pins that are not casual
+VIN = [1,2].{J5~PWR-CONN}.[3,4] = GND;   // paralleled connector pins, two per side
 ```
 
 Writing two or more pins of one part onto one node is the explicit spelling of a
@@ -957,29 +966,33 @@ one and writing no exit dead-ends, and the chain continues with `==` (§6.3).
 permitted, and preferred in new code.
 
 ```
-S{Q1~FFET123: G=nPWR-EN; }D
-I{U5~AMP012: EN=AMP-EN; PWR=PWR-SWITCHED; GND=GND; }O
+S.{Q1~FFET123: .G=nPWR-EN; }.D
+I.{U5~AMP012: .EN=AMP-EN; .PWR=PWR-SWITCHED; .GND=GND; }.O
 ```
 
-**A binding is a chain rooted at a pin of the enclosing instance.** A binding is written as
-a pin of the instance, a connector, and a segment. It means exactly what that connector and
+**A binding is a chain rooted at a pin of the enclosing instance.** A binding is written
+as a leading `.`, a pin of the instance, a connector, and a segment. The dot is the same
+membership dot as `U5.EN`, with the blank left side meaning *this instance* — so a pin on
+the left of a binding is always marked, and `.GND = GND;` cannot be misread as a chain
+joining two nets. The bare `.` binding (§7.3's casual pin) is the degenerate case: this
+instance's next unassigned casual pin. A binding means exactly what its connector and
 that segment mean in a statement of the enclosing body whose leading element is a reference
 to the pin: the pin takes the place of that leading element, and everything after the
 connector is an ordinary segment (§19), with all of §6's connectors and all of §8's
 grouping and replication available.
 
 ```
-VBAT = VIN{U5~ldo: GND=GND; EN = .{R7~100kR-0603}. = VBAT; }VOUT = 3V3;
+VBAT = VIN.{U5~ldo: .GND=GND; .EN = .{R7~100kR-0603}. = VBAT; }.VOUT = 3V3;
 ```
 
 The `EN` binding is the second of these two statements, written where the pin is:
 
 ```
-VBAT = VIN{U5~ldo: GND=GND; }VOUT = 3V3;
+VBAT = VIN.{U5~ldo: .GND=GND; }.VOUT = 3V3;
 U5.EN = .{R7~100kR-0603}. = VBAT;
 ```
 
-`PIN = NET` is the degenerate case of the same rule, where the segment is a single net
+`.PIN = NET` is the simplest case of the same rule, where the segment is a single net
 element. It joins the pin and the net onto one node, as any `=` does (§6.2).
 
 A binding opens with `=`, `=*` or `*=` — each with its
@@ -989,9 +1002,9 @@ bindings or a separate statement.
 
 ```
 {U2~buck-3a:
-    VIN  = VPOS = .{C1~10uF-0805: .=GND; };
-    FB   = .{R3~51kR-0603: .=5V; } == .{R4~10kR-0603: .=GND; };
-    COMP = .{C2~1nF-0603}. = GND;
+    .VIN  = VPOS = .{C1~10uF-0805: .=GND; };
+    .FB   = .{R3~51kR-0603: .=5V; } == .{R4~10kR-0603: .=GND; };
+    .COMP = .{C2~1nF-0603}. = GND;
 };
 ```
 
@@ -1009,13 +1022,13 @@ attaches to the pin, as it always has (§11.5, §11.6), and a pin may carry one 
 right-hand side at all.
 
 ```
-{U1~ddr-chip: DQ[0] = MEM-D0 &PINDELAY=18ps; DQ[1] &PINDELAY=18ps; }
+{U1~ddr-chip: .DQ[0] = MEM-D0 &PINDELAY=18ps; .DQ[1] &PINDELAY=18ps; }
 ```
 
 `&PINDELAY` attaches to `DQ[0]`, not to `MEM-D0`.
 
-A binding whose right-hand side is a single net is a pin-scoped `&NET` (§11.6); `GND=AGND`
-and `GND &NET=AGND` are one mechanism. `PIN = ?` unbinds a pin (§11.6) and is written only
+A binding whose right-hand side is a single net is a pin-scoped `&NET` (§11.6); `.GND=AGND`
+and `.GND &NET=AGND` are one mechanism. `.PIN = ?` unbinds a pin (§11.6) and is written only
 with `=`.
 
 A device declared inside a binding is an ordinary instance of the enclosing body: it takes
@@ -1052,10 +1065,10 @@ designator are the same physical package. Bindings are declared once, on the sta
 that declares the instance; later references inherit them.
 
 ```
-SIG-A-IN = INA{U3~LM324: v-pos=5V; v-neg=GND}OUTA = SIG-A-OUT;
-SIG-B-IN = INB{U3}OUTB = SIG-B-OUT;
-SIG-C-IN = INC{U3}OUTC = SIG-C-OUT;
-SIG-D-IN = IND{U3}OUTD = SIG-D-OUT;
+SIG-A-IN = INA.{U3~LM324: .v-pos=5V; .v-neg=GND}.OUTA = SIG-A-OUT;
+SIG-B-IN = INB.{U3}.OUTB = SIG-B-OUT;
+SIG-C-IN = INC.{U3}.OUTC = SIG-C-OUT;
+SIG-D-IN = IND.{U3}.OUTD = SIG-D-OUT;
 ```
 
 A reference requires an assigned designator, so a designator intended for multiple
@@ -1086,7 +1099,7 @@ wide and both ascend.
 Where one side omits its range it is inferred from the other.
 
 ```
->SIG-IN[0:3] = [[ I{U?~AMP012}O ]] = AMPED>;      // AMPED is 4 wide
+>SIG-IN[0:3] = [[ I.{U?~AMP012}.O ]] = AMPED>;      // AMPED is 4 wide
 ```
 
 ### 8.2 Pin ranges
@@ -1094,7 +1107,7 @@ Where one side omits its range it is inferred from the other.
 Within a part, a contiguous run of physical pins maps to an array. Widths shall match.
 
 ```
-[3:11] = GPIO[1:9]>;      // nine pins, nine signals
+[3:11]: GPIO[1:9]>;      // nine pins, nine signals
 ```
 
 ### 8.3 Replication
@@ -1109,7 +1122,7 @@ The copy count follows from the arity of the replicated unit and the width of th
 connection.
 
 ```
->SIG2-IN[0:3] = [[ I{U?~AMP012: PWR=3V3; GND=GND}O ]] = AMPED[0:3]>;
+>SIG2-IN[0:3] = [[ I.{U?~AMP012: PWR=3V3; GND=GND}.O ]] = AMPED[0:3]>;
 ```
 
 Four copies, because `AMP012` is one-in one-out and the bus is four wide.
@@ -1121,7 +1134,7 @@ The copy count is `N / in_arity`, which shall equal `M / out_arity`. Where the w
 not divide, that is error **E-05**; where the two quotients disagree, error **E-06**.
 
 ```
-[4[ I{U?~splitter}O[0:1] ]8]      // 1-in 2-out unit: 4 copies, 8 out
+[4[ I.{U?~splitter}.O[0:1] ]8]      // 1-in 2-out unit: 4 copies, 8 out
 ```
 
 The bracketed widths are repeated on the closing delimiter so a mismatched pair is caught
@@ -1141,7 +1154,7 @@ Within `[[ ]]`, connections carrying an array index per copy; connections to a s
 broadcast to every copy.
 
 ```
->SIG[0:3] = [[ I{U?~AMP012: PWR=PWR-SWITCHED; GND=GND}O ]] = OUT[0:3]>;
+>SIG[0:3] = [[ I.{U?~AMP012: PWR=PWR-SWITCHED; GND=GND}.O ]] = OUT[0:3]>;
 ```
 
 Each amplifier receives its own signal; all four share `PWR-SWITCHED` and `GND`.
@@ -1151,7 +1164,7 @@ Each amplifier receives its own signal; all four share `PWR-SWITCHED` and `GND`.
 `%` supplies a distinct value to each copy.
 
 ```
-[[ I{U?~AMP012: EN=%AMP-EN[0:3]; PWR=3V3}O ]]
+[[ I.{U?~AMP012: EN=%AMP-EN[0:3]; PWR=3V3}.O ]]
 ```
 
 `%NAME[range]` draws the *n*th element for the *n*th copy. `%[a,b,c]` supplies an explicit
@@ -1173,9 +1186,9 @@ Multiplicity applies to a parenthesised group.
 
 ```
 (.{L?~MT100UFA}.)+2                              // two inductors in series
-(A{D?~DI3643}K)|2                                // two diodes in parallel
+(A.{D?~DI3643}.K)|2                                // two diodes in parallel
 ({C?~100nF-0603: .=GND}.)*4                      // four caps to ground
-({D?~ESD2013: VCC=5V; GND=GND}.)*2               // two ESD diodes sharing VCC
+({D?~ESD2013: .VCC=5V; .GND=GND}.)*2               // two ESD diodes sharing VCC
 ({C?~10uF-0805: .=%[GND,-1V,-5V]}.)*3            // three caps, three rails
 ```
 
@@ -1313,8 +1326,8 @@ part R-10k-1pct-0603 {
     #~cost      = 0.002;
     #~supplier  = digikey;
 
-    1 = A &CASUAL;
-    2 = B &CASUAL;
+    1: A &CASUAL;
+    2: B &CASUAL;
 };
 ```
 
@@ -1368,11 +1381,11 @@ input and away from it for an output.
 | `<>SIG` / `SIG<>` | bidirectional |
 
 Canonical form, which new code should write: leading `>` at the start of a statement,
-trailing `>` at the end, and `pin=NET>` in a binding. The formatter leaves any accepted
+trailing `>` at the end, and `.pin=NET>` in a binding. The formatter leaves any accepted
 form as written.
 
 ```
->SIG-IN = I{U1~AMP012}O = AMPED-SIG>;
+>SIG-IN = I.{U1~AMP012}.O = AMPED-SIG>;
 ```
 
 ### 10.2 Bare port declarations
@@ -1443,7 +1456,7 @@ It does not cover:
 
 ```
 SW-NODE = ({C?~100nF-0603: .=GND}.)*4 == 3V3
-        = S{Q?~FFET123: G=nPWR-EN}D = PWR-SWITCHED &CURRENT=3A;
+        = S.{Q?~FFET123: .G=nPWR-EN}.D = PWR-SWITCHED &CURRENT=3A;
 ```
 
 `SW-NODE`, `3V3` and `PWR-SWITCHED` carry `&CURRENT=3A`. `GND` and `nPWR-EN` do not.
@@ -1560,10 +1573,10 @@ assembly can override it.
 
 ```
 part ddr-chip {
-    [1:16] = DQ[0:15]<> &~PINDELAY=12ps;
+    [1:16]: DQ[0:15]<> &~PINDELAY=12ps;
 };
 
-{U5~ddr-chip: DQ[0] &PINDELAY=18ps; }      // override at a call site
+{U5~ddr-chip: .DQ[0] &PINDELAY=18ps; }      // override at a call site
 ```
 
 ### 11.6 Pin type and default net
@@ -1581,16 +1594,16 @@ are orthogonal and combine freely.
 
 ```
 part ldo {
-    1 = VIN<   &TYPE=POWER;      // consumes a rail
-    2 = GND<   &TYPE=POWER;
-    3 = VOUT>  &TYPE=POWER;      // provides one
-    4 = EN<;                     // SIGNAL
-    5 = NC     &TYPE=NC;
+    1: VIN<   &TYPE=POWER;      // consumes a rail
+    2: GND<   &TYPE=POWER;
+    3: VOUT>  &TYPE=POWER;      // provides one
+    4: EN<;                     // SIGNAL
+    5: NC     &TYPE=NC;
 };
 
 part resistor-0603 {
-    1 = A &CASUAL;               // PASSIVE
-    2 = B &CASUAL;
+    1: A &CASUAL;               // PASSIVE
+    2: B &CASUAL;
 };
 ```
 
@@ -1611,18 +1624,18 @@ call site overrides it.
 
 ```
 part cool-mcu {
-    1 = VCC< &TYPE=POWER &~NET=3V3;
-    2 = GND< &TYPE=POWER &~NET=GND;
+    1: VCC< &TYPE=POWER &~NET=3V3;
+    2: GND< &TYPE=POWER &~NET=GND;
 };
 
 {U1~cool-mcu};                          // VCC→3V3, GND→GND
-{U2~cool-mcu: VCC=1V8; };               // VCC→1V8, GND→GND
+{U2~cool-mcu: .VCC=1V8; };               // VCC→1V8, GND→GND
 ```
 
 `&NET=?` unbinds a pin. No net is created, so no `&STUB` is required.
 
 ```
-{U5~iso7741: GNDB=?; }                  // deliberately floating this side
+{U5~iso7741: .GNDB=?; }                  // deliberately floating this side
 ```
 
 `&TYPE=NC` and `&NET=?` both leave a pin unconnected for different reasons: `NC` means the
@@ -1636,8 +1649,8 @@ index permutes together, which is what makes a ganged swap expressible.
 
 ```
 part buffer4 {
-    [1:4] = IN[1:4]<  &SWAP=ch;
-    [5:8] = OUT[1:4]> &SWAP=ch;
+    [1:4]: IN[1:4]<  &SWAP=ch;
+    [5:8]: OUT[1:4]> &SWAP=ch;
 };
 ```
 
@@ -1645,19 +1658,19 @@ Exchanging channels 2 and 3 permutes `IN` and `OUT` identically.
 
 ```
 part opamp-quad {
-    [1:4]   = INP[1:4]< &SWAP=ch;
-    [5:8]   = INN[1:4]< &SWAP=ch;
-    [9:12]  = OUT[1:4]> &SWAP=ch;
+    [1:4]:   INP[1:4]< &SWAP=ch;
+    [5:8]:   INN[1:4]< &SWAP=ch;
+    [9:12]:  OUT[1:4]> &SWAP=ch;
 };
 
 part fpga-bank {
-    [1:48] = IO[1:48]<> &SWAP=bank0;
+    [1:48]: IO[1:48]<> &SWAP=bank0;
 };
 
 part nand-quad {
-    [1:8]  = A[1:4]<  &SWAP=gate;      // gates swap with each other
-    [9:12] = B[1:4]<  &SWAP=gate;
-    [13:16]= Y[1:4]>  &SWAP=gate;
+    [1:8]:  A[1:4]<  &SWAP=gate;      // gates swap with each other
+    [9:12]: B[1:4]<  &SWAP=gate;
+    [13:16]:Y[1:4]>  &SWAP=gate;
 };
 ```
 
@@ -1668,8 +1681,8 @@ elements in one part do not become mutually swappable.
 
 ```
 part dual-resistor {
-    [1:2] = A[1:2] &CASUAL;      // group CASUAL#1
-    [3:4] = B[1:2] &CASUAL;      // group CASUAL#2 — pin 1 and pin 3 do not swap
+    [1:2]: A[1:2] &CASUAL;      // group CASUAL#1
+    [3:4]: B[1:2] &CASUAL;      // group CASUAL#2 — pin 1 and pin 3 do not swap
 };
 ```
 
@@ -1722,7 +1735,7 @@ directive has it.
 | `&EDGE` | `LEFT`, `RIGHT`, `TOP` or `BOTTOM` | Which sheet edge the connector faces. |
 
 ```
-{J1~CONN-6P: &EDGE=LEFT; VIN = VPOS; GND = GND; };
+{J1~CONN-6P: &EDGE=LEFT; .VIN = VPOS; .GND = GND; };
 ```
 
 The value set is fixed, so it is upper case (§2.6); `&EDGE=left` is error
@@ -1778,8 +1791,8 @@ A harness type shall not be assigned to a bare pin range; that is error **E-38**
 are written as an ordered list, so the mapping is stated where it is read.
 
 ```
-[12:13] = USB.[+,-]<>;
-[20:22] = i2c.[SDA,SCL,ALERT]<>;
+[12:13]: USB.[+,-]<>;
+[20:22]: i2c.[SDA,SCL,ALERT]<>;
 ```
 
 `NAME.[member, …]` selects members in the order written. Its length shall equal the width
@@ -1847,10 +1860,10 @@ one nobody can answer from either alone.
 cable jumper-8way {
     #length = 300mm;
 
-    {J1~JST-PH-8-PLUG}P[1:8]
+    {J1~JST-PH-8-PLUG}.P[1:8]
         = [[ .{C%[1:8]~JST-PH-8-CRIMP}. = .{W%[1:8]~WIRE-22AWG-RED}.
            = .{C%[9:16]~JST-PH-8-CRIMP}. ]]
-        = P[1:8]{J2~JST-PH-8-PLUG};
+        = P[1:8].{J2~JST-PH-8-PLUG};
 };
 ```
 
@@ -2692,7 +2705,7 @@ match_def       = "match" identifier "{" { field_decl | match_def } "}" ";" ;
 cable_def       = [ linkage ] "cable" identifier "{" { item | statement } "}" ";" ;
 linkage         = "static" ;
 
-pin_map         = pin_spec "=" pin_name [ arrow ] { directive | field_decl } ";" ;
+pin_map         = pin_spec ":" pin_name [ arrow ] { directive | field_decl } ";" ;
 pin_spec        = integer | "[" integer ":" integer "]" ;
 pin_name        = identifier [ "[" range "]" ]
                 | identifier "." "[" identifier { "," identifier } "]" ;
@@ -2719,18 +2732,21 @@ multiplicity    = ( "+" | "|" | "*" ) integer ;
 replication     = "[[" segment "]]"
                 | "[" integer "[" segment "]" integer "]" ;
 
-device          = [ terminal ] "{" instance "}" [ terminal ] ;
+device          = [ entry_terminal ] "{" instance "}" [ exit_terminal ] ;
 instance        = [ "!" ] designator [ "~" identifier ]
                   [ ":" binding { ";" binding } [ ";" ] ] ;
 designator      = identifier ( "?" | integer | desig_range ) ;
 desig_range     = "%" "[" desig_part { "," desig_part } "]" ;
 desig_part      = integer [ ":" integer ] ;
-terminal        = "." { "." }
-                | "[" identifier { "," identifier } "]"
-                | identifier [ "[" range "]" ] ;
-binding         = pin_ref [ connector segment | "=" "?" ] { directive | field_decl }
+entry_terminal  = "." { "." }
+                | ( "[" identifier { "," identifier } "]"
+                  | identifier [ "[" range "]" ] ) "." ;
+exit_terminal   = "." { "." }
+                | "." ( "[" identifier { "," identifier } "]"
+                      | identifier [ "[" range "]" ] ) ;
+binding         = "." pin_ref [ connector segment | "=" "?" ] { directive | field_decl }
                 | field_decl | directive ;
-pin_ref         = identifier [ "[" range "]" ] | "." ;
+pin_ref         = [ identifier [ "[" range "]" ] ] ;
 
 net_expr        = [ arrow ] net_name [ arrow ] ;
 net_name        = identifier { "." identifier } [ "[" range "]" ]
@@ -2790,8 +2806,8 @@ static part R-10k-1pct-0603 {
     #~mpn       = "RC0603FR-0710KL";
     #~cost      = 0.002;
 
-    1 = A &CASUAL;
-    2 = B &CASUAL;
+    1: A &CASUAL;
+    2: B &CASUAL;
 };
 ```
 
@@ -2807,13 +2823,13 @@ part cool-mcu {
     #!manufacturer = "ST Microelectronics";
     >#~source      = digikey;
 
-    1       = VCC<        &TYPE=POWER &~NET=3V3;
-    2       = GND<        &TYPE=POWER &~NET=GND;
-    [3:11]  = GPIO[1:9]<> &SWAP=gpio-bank;
-    [12:13] = USB.[+,-]<> &~PINDELAY=8ps;
-    14      = SDA<>       &TYPE=OPENDRAIN;
-    15      = SCL<        &TYPE=OPENDRAIN;
-    16      = NC          &TYPE=NC;
+    1:       VCC<        &TYPE=POWER &~NET=3V3;
+    2:       GND<        &TYPE=POWER &~NET=GND;
+    [3:11]:  GPIO[1:9]<> &SWAP=gpio-bank;
+    [12:13]: USB.[+,-]<> &~PINDELAY=8ps;
+    14:      SDA<>       &TYPE=OPENDRAIN;
+    15:      SCL<        &TYPE=OPENDRAIN;
+    16:      NC          &TYPE=NC;
 };
 ```
 
@@ -2826,10 +2842,10 @@ part buffer4 {
     @~footprint = TSSOP-14;
     #value      = SN74LVC125A;
 
-    [1:4]  = IN[1:4]<   &SWAP=ch;
-    [5:8]  = OUT[1:4]>  &SWAP=ch;
-    13     = VCC<       &TYPE=POWER &~NET=3V3;
-    14     = GND<       &TYPE=POWER &~NET=GND;
+    [1:4]:  IN[1:4]<   &SWAP=ch;
+    [5:8]:  OUT[1:4]>  &SWAP=ch;
+    13:     VCC<       &TYPE=POWER &~NET=3V3;
+    14:     GND<       &TYPE=POWER &~NET=GND;
 };
 ```
 
@@ -2892,8 +2908,8 @@ block rc-filter {
 Instantiated twice with different parameters, producing two elaborations from one source:
 
 ```
->SIG-A = {BLK?~rc-filter: #r-value=10; }OUT = FILTERED-A>;
->SIG-B = {BLK?~rc-filter: #r-value=47; #c-value=10; }OUT = FILTERED-B>;
+>SIG-A = {BLK?~rc-filter: #r-value=10; }.OUT = FILTERED-A>;
+>SIG-B = {BLK?~rc-filter: #r-value=47; #c-value=10; }.OUT = FILTERED-B>;
 ```
 
 ### 20.7 A complete board
@@ -2925,11 +2941,11 @@ block power-and-signal {
 
     SW = SW-NODE
         = (.{L?~MT100UFA}.)+2
-        = (A{D?~DI3643}K)|2
+        = (A.{D?~DI3643}.K)|2
         = ({C?~100nF-0603: .=GND}.)*4
         == ({C?~10uF-0805: .=%[GND,AGND,GND]}.)*3
         == 3V3
-        = S{Q?~FFET123: G=nPWR-EN; }D
+        = S.{Q?~FFET123: .G=nPWR-EN; }.D
         = PWR-SWITCHED
         &CURRENT=3A &!VOLTAGE=6V &~LAYER=inner1;
 
@@ -2938,11 +2954,11 @@ block power-and-signal {
     USB &HARNESS=usb2;
 
     {U1~cool-mcu:
-        GPIO[1:9] = IO[1:9];
-        SDA       = i2c.SDA;
-        SCL       = i2c.SCL;
-        USB       = MCU-USB;
-        NC        = ?;
+        .GPIO[1:9] = IO[1:9];
+        .SDA       = i2c.SDA;
+        .SCL       = i2c.SCL;
+        .USB       = MCU-USB;
+        .NC        = ?;
     };
 
     i2c<>;
@@ -2950,17 +2966,17 @@ block power-and-signal {
     <>USB.- = .{R?~50R-0603}. = MCU-USB.-;
 
     // ---- enable RC ---------------------------------------------------
-    {U1}GPIO[1] = .{R?~50R-0603}.
+    {U1}.GPIO[1] = .{R?~50R-0603}.
                 = .{C?~100nF-0603: .=GND}
                == nPWR-EN;
 
     // ---- single amplifier --------------------------------------------
-    >SIG-IN = I{U?~AMP012: PWR=PWR-SWITCHED; }O = AMPED-SIG> &IMP=50R;
+    >SIG-IN = I.{U?~AMP012: .PWR=PWR-SWITCHED; }.O = AMPED-SIG> &IMP=50R;
 
     // ---- replicated amplifiers with per-copy enables ------------------
     >SIG2-IN[0:3]
-        = [[ I{U?~AMP012: EN=%AMP-EN[0:3]; PWR=PWR-SWITCHED; }O ]]
-        = IN{U?~buffer4: VCC=PWR-SWITCHED; }OUT
+        = [[ I.{U?~AMP012: EN=%AMP-EN[0:3]; PWR=PWR-SWITCHED; }.O ]]
+        = IN.{U?~buffer4: .VCC=PWR-SWITCHED; }.OUT
         = AMPED-SIG2[0:3]> &MATCH=ddr-addr;
 
     // ---- passive summing network, gathered ---------------------------
@@ -2970,7 +2986,7 @@ block power-and-signal {
     VREF *= BIAS[0:7];
 
     // ---- a mated connector pair, not internally connected ------------
-    PANEL-OUT = 1{J?~conn-4}  ^  {J?~conn-4}1 = PANEL-RETURN;
+    PANEL-OUT = 1.{J?~conn-4}  ^  {J?~conn-4}.1 = PANEL-RETURN;
 
     // ---- unpopulated in this build -----------------------------------
     {!R?~0R-0603};
@@ -2982,10 +2998,10 @@ block power-and-signal {
     extern U9.1 = GND;
 
     // ---- multi-unit package ------------------------------------------
-    SIG-A-IN = INA{U20~LM324: v-pos=3V3; v-neg=GND; }OUTA = SIG-A-OUT;
-    SIG-B-IN = INB{U20}OUTB = SIG-B-OUT;
-    SIG-C-IN = INC{U20}OUTC = SIG-C-OUT;
-    SIG-D-IN = IND{U20}OUTD = SIG-D-OUT;
+    SIG-A-IN = INA.{U20~LM324: .v-pos=3V3; .v-neg=GND; }.OUTA = SIG-A-OUT;
+    SIG-B-IN = INB.{U20}.OUTB = SIG-B-OUT;
+    SIG-C-IN = INC.{U20}.OUTC = SIG-C-OUT;
+    SIG-D-IN = IND.{U20}.OUTD = SIG-D-OUT;
 };
 ```
 

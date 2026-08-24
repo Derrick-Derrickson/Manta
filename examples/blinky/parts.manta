@@ -19,8 +19,8 @@ part R-1kR-0603 {
     @!type      = resistor;
     #~mpn       = "RC0603FR-071KL";
 
-    1 = A &CASUAL;
-    2 = B &CASUAL;
+    1 : A &CASUAL;
+    2 : B &CASUAL;
 };
 
 part R-10kR-0603 {
@@ -31,8 +31,8 @@ part R-10kR-0603 {
     @!type      = resistor;
     #~mpn       = "RC0603FR-0710KL";
 
-    1 = A &CASUAL;
-    2 = B &CASUAL;
+    1 : A &CASUAL;
+    2 : B &CASUAL;
 };
 
 part C-100nF-0603 {
@@ -41,8 +41,8 @@ part C-100nF-0603 {
     #voltage    = 16V;
     @!type      = capacitor;
 
-    1 = A &CASUAL;
-    2 = B &CASUAL;
+    1 : A &CASUAL;
+    2 : B &CASUAL;
 };
 
 part C-10uF-0805 {
@@ -51,8 +51,8 @@ part C-10uF-0805 {
     #voltage    = 16V;
     @!type      = capacitor;
 
-    1 = A &CASUAL;
-    2 = B &CASUAL;
+    1 : A &CASUAL;
+    2 : B &CASUAL;
 };
 
 // ---- actives --------------------------------------------------------------
@@ -65,11 +65,11 @@ part LDO-3V3 {
     @!type      = regulator;
     #~mpn       = "AP2112K-3.3TRG1";
 
-    1 = VIN< &TYPE=POWER;
-    2 = GND< &TYPE=POWER &~NET=GND;
-    3 = EN<;
-    4 = NC &TYPE=NC;
-    5 = VOUT> &TYPE=POWER #SUPPLY=600mA;
+    1 : VIN< &TYPE=POWER;
+    2 : GND< &TYPE=POWER &~NET=GND;
+    3 : EN<;
+    4 : NC &TYPE=NC;
+    5 : VOUT> &TYPE=POWER #SUPPLY=600mA;
 };
 
 part MCU-8PIN {
@@ -77,14 +77,14 @@ part MCU-8PIN {
     #value         = ATTINY85;
     #!manufacturer = "Microchip";
 
-    1 = nRESET<;
-    2 = GPIO[0]>;
-    3 = GPIO[1]>;
-    4 = GND< &TYPE=POWER &~NET=GND;
-    5 = SDA<> &TYPE=OPENDRAIN;
-    6 = SCL<> &TYPE=OPENDRAIN;
-    7 = MISO>;
-    8 = VCC< &TYPE=POWER &~NET=3V3;
+    1 : nRESET<;
+    2 : GPIO[0]>;
+    3 : GPIO[1]>;
+    4 : GND< &TYPE=POWER &~NET=GND;
+    5 : SDA<> &TYPE=OPENDRAIN;
+    6 : SCL<> &TYPE=OPENDRAIN;
+    7 : MISO>;
+    8 : VCC< &TYPE=POWER &~NET=3V3;
 };
 
 part LED-0603 {
@@ -93,8 +93,8 @@ part LED-0603 {
     @!type      = led;
     #~current   = 5mA;
 
-    1 = A;
-    2 = K;
+    1 : A;
+    2 : K;
 };
 
 part CONN-USB-C {
@@ -106,10 +106,10 @@ part CONN-USB-C {
     @!type      = boardconnector;
     @~mate      = usb-c-1m;
 
-    1 = VBUS> &TYPE=POWER #SUPPLY=500mA;
-    2 = GND< &TYPE=POWER &~NET=GND;
-    3 = CC1<> &SWAP=cc;
-    4 = CC2<> &SWAP=cc;
+    1 : VBUS> &TYPE=POWER #SUPPLY=500mA;
+    2 : GND< &TYPE=POWER &~NET=GND;
+    3 : CC1<> &SWAP=cc;
+    4 : CC2<> &SWAP=cc;
 };
 
 // --- the lead ---------------------------------------------------------------
@@ -123,15 +123,15 @@ part USB-C-PLUG {
     // What it plugs into. The compiler checks the pins line up.
     @mates = CONN-USB-C;
 
-    [1:4] = P[1:4]<>;
+    [1:4] : P[1:4]<>;
 };
 
 part CRIMP-USB-C {
     @type = crimp;
     #mpn  = "AMP-1734592-1";
 
-    1 = A &CASUAL;
-    2 = B &CASUAL;
+    1 : A &CASUAL;
+    2 : B &CASUAL;
 };
 
 part WIRE-24AWG-RED {
@@ -142,13 +142,13 @@ part WIRE-24AWG-RED {
     #insulation = PVC;
     #mpn        = "3257-RD-100";
 
-    1 = A &CASUAL;
-    2 = B &CASUAL;
+    1 : A &CASUAL;
+    2 : B &CASUAL;
 };
 
 cable usb-c-1m {
     #length = 1m;
-    {P1~USB-C-PLUG}P[1:4]
+    {P1~USB-C-PLUG}.P[1:4]
         = [[.{X%[1:4]~CRIMP-USB-C}. = .{W%[1:4]~WIRE-24AWG-RED}. = .{X%[5:8]~CRIMP-USB-C}.]]
-        = P[1:4]{P2~USB-C-PLUG};
+        = P[1:4].{P2~USB-C-PLUG};
 };
