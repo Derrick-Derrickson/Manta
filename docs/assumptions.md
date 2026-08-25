@@ -153,7 +153,7 @@ specifying a dialect for any of them.
 | Target | Format written |
 |---|---|
 | `kicad` | KiCad S-expression netlist (`.net`) |
-| `altium` | Protel/Altium netlist: `[` component `]` blocks, `(` net `)` blocks |
+| `altium` | Protel netlist 2.0: `[` component `]` blocks of exactly six content lines (designator, footprint, value, then `#mpn`, `#manufacturer` and a blank on the three description lines), `(` net `)` blocks of `DESIGNATOR-PIN` on physical pins. Altium's importer parses the block positionally, so the shape is fixed — which is also why a DNP part exports like any other: its pads belong on the board, fitted-ness is the BOM's concern, and a conditional extra line would break the block. |
 | `orcad` | OrCAD PCB II flat netlist |
 | `allegro` | Allegro Telesis: `$PACKAGES` / `$NETS` |
 

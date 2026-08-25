@@ -384,12 +384,24 @@ std::string exportKiCad(const Design& design, const ExportOptions& options, Diag
 }
 
 std::string exportAltium(const Design& design, const ExportOptions& options) {
-    // Protel/Altium: a '[' block per component, a '(' block per net.
+    // Protel netlist 2.0, the dialect Altium's netlist importer parses
+    // positionally: every '[' component block is exactly six content lines --
+    // designator, footprint, part type, three description lines -- and every
+    // '(' net block is the net name followed by DESIGNATOR-PIN entries on
+    // physical package pins. Docs/assumptions.md C4 records the choices.
+    //
+    // DNP components export like any other: an unfitted part keeps its pads
+    // on the board, and fitted-ness is the BOM's concern, not the netlist's.
+    // A conditional extra line would also break the fixed block shape.
     std::string out;
     for (const Component& c : design.components) {
         std::string_view value = c.partName;
+        std::string_view mpn;
+        std::string_view manufacturer;
         for (const auto& [name, v] : c.fields) {
             if (name == "value") value = v;
+            else if (name == "mpn") mpn = v;
+            else if (name == "manufacturer") manufacturer = v;
         }
         out += "[\n";
         out += flatName(c, options.flatFormat);
@@ -398,7 +410,11 @@ std::string exportAltium(const Design& design, const ExportOptions& options) {
         out += '\n';
         out += value;
         out += '\n';
-        if (!c.fitted) out += "DNP\n";
+        out += mpn;           // description 1
+        out += '\n';
+        out += manufacturer;  // description 2
+        out += '\n';
+        out += '\n';          // description 3, always blank
         out += "]\n";
     }
     for (const Net& net : design.nets) {

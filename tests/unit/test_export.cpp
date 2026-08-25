@@ -318,4 +318,40 @@ TEST_CASE("the other backends take the map but need no library") {
     CHECK_EQ(diags.warningCount(), std::size_t{0});
 }
 
+// ---------------------------------------------------------------------------
+// The Altium emitter: Protel netlist 2.0 (docs/assumptions.md, C4)
+// ---------------------------------------------------------------------------
+
+std::string altiumOf(const Design& design) {
+    SourceManager sources;
+    DiagEngine diags(sources);
+    return exportDesign(design, ExportFormat::Altium, ExportOptions{}, diags);
+}
+
+TEST_CASE("an altium component block is exactly six content lines") {
+    std::string out = altiumOf(tinyDesign());
+    // designator, footprint, value, three description lines -- positionally
+    // parsed by Altium's importer, so the shape is the contract.
+    CHECK(contains(out, "[\nU1\nSOT-23-5\nAP2112K-3.3\n\n\n\n]\n"));
+    CHECK(contains(out, "(\n3V3\nU1-5\n)\n"));
+}
+
+TEST_CASE("a DNP component exports byte-identically to a fitted one") {
+    Design fitted = tinyDesign();
+    Design dnp = tinyDesign();
+    dnp.components[0].fitted = false;
+    // An unfitted part keeps its pads on the board; fitted-ness is the BOM's
+    // concern, and the fixed block shape admits no conditional line.
+    CHECK_EQ(altiumOf(dnp), altiumOf(fitted));
+    CHECK(contains(altiumOf(dnp), "U1-5"));
+}
+
+TEST_CASE("'#mpn' and '#manufacturer' ride the description lines") {
+    Design design = tinyDesign();
+    design.components[0].fields.emplace_back("mpn", "AP2112K-3.3TRG1");
+    design.components[0].fields.emplace_back("manufacturer", "Diodes Inc");
+    std::string out = altiumOf(design);
+    CHECK(contains(out, "[\nU1\nSOT-23-5\nAP2112K-3.3\nAP2112K-3.3TRG1\nDiodes Inc\n\n]\n"));
+}
+
 TEST_MAIN()

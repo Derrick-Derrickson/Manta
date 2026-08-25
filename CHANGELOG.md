@@ -52,6 +52,14 @@
   routed tree or a wordless chain. Values are fixed and upper case
   (`&RENDER=wire` is E-34); conflicts take the strength ladder (E-12).
 
+- **`--format altium` emits strict Protel netlist 2.0.** Component blocks
+  are a fixed six content lines — designator, footprint, value, then `#mpn`,
+  `#manufacturer` and a blank on the three description lines — because
+  Altium's importer parses them positionally. The old conditional `DNP` line
+  is gone: an unfitted part keeps its pads on the board, so it exports like
+  any other and fitted-ness stays a BOM concern. Net blocks are unchanged:
+  `DESIGNATOR-PIN` on physical package pins, `.fpmap` renames applied.
+
 - **A `<>` pin satisfies E-02.** A bidirectional pin can drive, so a GPIO
   wired straight into an input pin is normal, not a floating input. E-01 is
   unchanged — it still counts only `>` pins, so two bus pins on one net are
