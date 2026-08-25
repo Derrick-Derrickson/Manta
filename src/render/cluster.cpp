@@ -178,6 +178,11 @@ void Planner::classify() {
     claimed.assign(nc, 0);
     plan.consumed.assign(nc, 0);
     plan.netState.assign(pg.nets.size(), NetState::Free);
+    // '&RENDER=LABEL' (revision 1.6): pre-named, so no artery, shunt or
+    // junction may consume the net into a wordless drawing.
+    for (std::size_t ni = 0; ni < pg.nets.size(); ++ni) {
+        if (pg.nets[ni].force == ForceMode::Label) plan.netState[ni] = NetState::Named;
+    }
 
     for (std::uint32_t idx : room.components) {
         inRoom[idx] = 1;

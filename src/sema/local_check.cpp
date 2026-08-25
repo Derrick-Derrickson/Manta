@@ -84,6 +84,28 @@ void LocalChecker::checkValueType(const Directive* d, ValueType expected) {
             return;
         }
 
+        case ValueType::RenderMode: {
+            if (v->kind != ValueKind::Identifier) {
+                diags_.report(DiagId::Type, v->span,
+                              std::format("'&{}' takes WIRE or LABEL", name));
+                return;
+            }
+            NetRenderMode mode{};
+            bool caseError = false;
+            std::string_view spelled = interner_.text(v->text);
+            if (!lookupRenderMode(spelled, mode, caseError)) {
+                diags_.report(DiagId::Type, v->span,
+                              std::format("'{}' is not a render mode; write WIRE or LABEL",
+                                          spelled));
+                return;
+            }
+            if (caseError) {
+                // Spec 2.6, exactly as "&TYPE=power": a fixed-set directive
+                // value shall be upper case.
+                diags_.report(DiagId::E34, v->span, spelled, renderModeName(mode));
+            }
+            return;
+        }
         case ValueType::Edge: {
             if (v->kind != ValueKind::Identifier) {
                 diags_.report(DiagId::Type, v->span,

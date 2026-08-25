@@ -54,6 +54,9 @@ MANTA_DIAG(Unannotated, "E-UNANNOTATED", "unannotated", Severity::Error,
 // '--footprint-map' or '--footprint-lib' is how you silence it, and
 // '-Werror=footprint' is how you refuse to ship one that would not place.
 MANTA_DIAG(Footprint, "W-FOOTPRINT", "footprint", Severity::Warning, "{}")
+// A '&RENDER=WIRE' net the renderer had to connect by name after all
+// (spec 11.3, revision 1.6). The message says which net, where and why.
+MANTA_DIAG(Render, "W-RENDER", "render", Severity::Warning, "{}")
 // A '@type' value that is nearly, but not exactly, one of the structural roles.
 // The set is open on purpose -- '@type = resistor' is ordinary and means nothing
 // to the compiler -- so a typo cannot be an error. But the consequence of one is

@@ -176,7 +176,13 @@ end, and `pin=NET>` in a binding.
 ladder as fields.
 
 Net: `&IMP` `&CURRENT` `&PEAK` `&VOLTAGE` `&MAXDELAY` `&CLASS` `&MATCH`
-`&LAYER` `&SHIELD` `&TYPE` `&STUB`.
+`&LAYER` `&SHIELD` `&TYPE` `&STUB` `&RAIL` `&RENDER`.
+
+`&RENDER=WIRE` makes the renderer join the net's pins with a drawn wire, never
+a name -- the bootstrap cap visibly hanging off its switching node.
+`&RENDER=LABEL` is the opposite: always a name, never a routed tree. Values
+are upper case (`&RENDER=wire` is E-34); a WIRE net the renderer cannot draw
+falls back to names with warning W-RENDER.
 Pin: `&TYPE` `&NET` `&PINDELAY` `&CASUAL` `&SWAP`.
 Harness: `&HARNESS`.
 

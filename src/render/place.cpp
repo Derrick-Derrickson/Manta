@@ -391,6 +391,9 @@ void RoomPlacer::computeRoutable() {
     for (std::size_t ni = 0; ni < d.nets.size(); ++ni) {
         const RenderNet& rn = pg.nets[ni];
         if (rn.mark != NetMark::Label || rn.crossing || rn.direction != PortDir::None) continue;
+        // '&RENDER=LABEL' (revision 1.6): the author said a name, so the
+        // router never claims it.
+        if (rn.force == ForceMode::Label) continue;
         const Net& n = d.nets[ni];
         if (n.pins.size() < 2) continue;
         bool ok = true;
@@ -1529,8 +1532,26 @@ void RoomPlacer::drawArtery(const PlacedSymbol& anchor, const ArtGeom& ag, int z
                 }
                 buf.wire({tapX, vc, tapX, vc + sgn * P}, sh.endNet);
                 if (sh.endNet >= 0) {
-                    buf.mark(markKindFor(pg, sh.endNet), tapX, vc + sgn * P,
-                             sh.up ? Side::Top : Side::Bottom, sh.endNet);
+                    // A routable end hands the router a bare grid stub, the
+                    // vertical twin of drawStripEnd's Handoff -- this is what
+                    // lets a bootstrap cap's far side reach its pin as copper
+                    // instead of a label pair. Shunt columns sit off the P
+                    // grid, so the free end jogs onto it: down a step, across
+                    // to the nearest grid column, out to the grid row.
+                    const int yj = vc + sgn * P;
+                    const int gx = tapX % P <= P / 2 ? roundDownP(tapX) : roundUpP(tapX);
+                    const int gy = sgn > 0 ? roundUpP(yj) : roundDownP(yj);
+                    if (isRoutable(sh.endNet) && gx >= 0 && gy >= 0) {
+                        if (gx != tapX) buf.wire({tapX, yj, gx, yj}, sh.endNet);
+                        if (gy != yj) buf.wire({gx, yj, gx, gy}, sh.endNet);
+                        buf.reserveWire(Rect{std::min(tapX, gx) - 2, std::min(yj, gy) - 2,
+                                             std::max(tapX, gx) + 2, std::max(yj, gy) + 2});
+                        netPts[static_cast<std::size_t>(sh.endNet)].push_back(
+                            StubPt{gx, gy, sh.up ? Side::Top : Side::Bottom});
+                    } else {
+                        buf.mark(markKindFor(pg, sh.endNet), tapX, yj,
+                                 sh.up ? Side::Top : Side::Bottom, sh.endNet);
+                    }
                 }
             }
             cursor = lastX;
@@ -1808,6 +1829,31 @@ void RoomPlacer::finishBars() {
 // ---------------------------------------------------------------------------
 
 void RoomPlacer::routeAll() {
+    // A handoff whose free end was buried by later furniture -- a cluster
+    // band's solid reserved after the string drew -- pokes out along its own
+    // direction to the first free grid cell, so the router can reach it.
+    for (std::size_t ni = 0; ni < d.nets.size(); ++ni) {
+        if (!routable[ni]) continue;
+        for (StubPt& sp : netPts[ni]) {
+            int guard = 0;
+            int x0 = sp.x, y0 = sp.y;
+            while (guard++ < 16 && sp.x >= 0 && sp.y >= 0 &&
+                   buf.collides(Rect{sp.x, sp.y, sp.x, sp.y})) {
+                switch (sp.side) {
+                    case Side::Left: sp.x -= P; break;
+                    case Side::Right: sp.x += P; break;
+                    case Side::Top: sp.y -= P; break;
+                    case Side::Bottom: sp.y += P; break;
+                }
+            }
+            if (sp.x != x0 || sp.y != y0) {
+                buf.wire({x0, y0, sp.x, sp.y}, static_cast<std::int32_t>(ni));
+                buf.reserveWire(Rect{std::min(x0, sp.x) - 2, std::min(y0, sp.y) - 2,
+                                     std::max(x0, sp.x) + 2, std::max(y0, sp.y) + 2});
+            }
+        }
+    }
+
     for (std::size_t ni = 0; ni < d.nets.size(); ++ni) {
         if (!routable[ni]) continue;
         const std::vector<StubPt>& v = netPts[ni];

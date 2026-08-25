@@ -13,7 +13,7 @@ using namespace DirCtx;
 
 // Spec 11.3 net directives, plus the pin directives of 11.5-11.7, the instance
 // directive of 11.10 (revision 1.5) and the harness assignment of 12.1.
-constexpr std::array<DirectiveInfo, 18> kDirectives{{
+constexpr std::array<DirectiveInfo, 19> kDirectives{{
     // Net directives (spec 11.3).
     {"IMP",       ValueType::Resistance, Net | Netclass | Harness, true},
     {"CURRENT",   ValueType::Current,    Net | Netclass | Harness, true},
@@ -30,6 +30,10 @@ constexpr std::array<DirectiveInfo, 18> kDirectives{{
     // net's name or class. Masked as &CLASS is: it is the same kind of
     // display-affecting, net-level membership claim.
     {"RAIL",      ValueType::None,       Net | Harness,            false},
+    // Revision 1.6: how the renderer connects this net's pins. Display-only,
+    // like '&RAIL': the heuristics that decide wire against label remain, and
+    // this is the author's override for the nets they miss.
+    {"RENDER",    ValueType::RenderMode, Net | Harness,            true},
 
     // Pin directives (spec 11.5-11.7).
     {"PINDELAY",  ValueType::Time,       Pin,                      true},
@@ -201,6 +205,43 @@ std::string_view edgeSideName(EdgeSide s) noexcept {
         case EdgeSide::Bottom: return "BOTTOM";
     }
     return "LEFT";
+}
+
+bool lookupRenderMode(std::string_view value, NetRenderMode& out, bool& caseError) noexcept {
+    struct Entry {
+        std::string_view name;
+        NetRenderMode mode;
+    };
+    static constexpr Entry kModes[] = {
+        {"WIRE", NetRenderMode::Wire},
+        {"LABEL", NetRenderMode::Label},
+    };
+
+    caseError = false;
+    for (const auto& e : kModes) {
+        if (e.name == value) {
+            out = e.mode;
+            return true;
+        }
+    }
+    // Spec 2.6, exactly as &TYPE and &EDGE: a recognisable but wrongly-cased
+    // spelling is E-34, not an unknown value.
+    for (const auto& e : kModes) {
+        if (equalFold(e.name, value)) {
+            out = e.mode;
+            caseError = true;
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string_view renderModeName(NetRenderMode m) noexcept {
+    switch (m) {
+        case NetRenderMode::Wire: return "WIRE";
+        case NetRenderMode::Label: return "LABEL";
+    }
+    return "WIRE";
 }
 
 namespace {

@@ -41,6 +41,17 @@
   — because a declaration names where `=` assigns values and joins nets.
   Declarations name, references attach, connectors join.
 
+- **`&RENDER=WIRE` and `&RENDER=LABEL`: the author's answer to the
+  wire-or-label choice.** A net directive in the `&RAIL` mould — display-only,
+  no electrical claim, the heuristics remain and this is the override for the
+  nets they miss. `WIRE` means copper, never a name: the net is kept off the
+  rail-flag and label paths and must be drawn, and where it cannot be — pins
+  in different rooms of the author's own sectioning, a block port — it falls
+  back to names and reports the new warning **W-RENDER**, naming the net, the
+  page and the reason. `LABEL` is the opposite pole: always a name, never a
+  routed tree or a wordless chain. Values are fixed and upper case
+  (`&RENDER=wire` is E-34); conflicts take the strength ladder (E-12).
+
 - **A `<>` pin satisfies E-02.** A bidirectional pin can drive, so a GPIO
   wired straight into an input pin is normal, not a floating input. E-01 is
   unchanged — it still counts only `>` pins, so two bus pins on one net are

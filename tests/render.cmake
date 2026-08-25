@@ -352,3 +352,68 @@ endif()
 
 message(STATUS "render: rooms, rail bars, routed nets, labels, port flags, block "
                "pages and determinism all verified")
+
+# --- '&RENDER' (spec 11.3, revision 1.6) -------------------------------------
+# WIRE must draw copper, never a name; LABEL must name, never route; and a
+# WIRE net that cannot be drawn -- here one spanning two rooms -- falls back
+# to names and says so with W-RENDER.
+set(RSRC "${WORK}/rmode.manta")
+file(WRITE "${RSRC}" "\
+netclass power { &CURRENT=1A; };
+
+part RM-R { @~footprint = R-0603; 1 : A &CASUAL; 2 : B &CASUAL; };
+part RM-TP { @~footprint = TP-1MM; 1 : T; };
+
+block rmode {
+    GND &TYPE=GROUND;
+
+    // The rail heuristics would flag RAILY at every pin; WIRE overrides them.
+    RAILY &CLASS=power &RENDER=WIRE;
+    {R1~RM-R: .A = RAILY; .B = GND;};
+    {T1~RM-TP: .T = RAILY;};
+
+    // The router would draw MID wordlessly; LABEL forces the name.
+    MID &RENDER=LABEL;
+    X = .{R2~RM-R}. = MID;
+    MID = .{R3~RM-R}. = GND;
+    X = .{R4~RM-R}. = GND;
+
+    FARWIRE &RENDER=WIRE;
+    --- HERE
+    {T2~RM-TP: .T = FARWIRE;};
+    --- THERE
+    {T3~RM-TP: .T = FARWIRE;};
+};
+")
+run_manta(compile -o "${WORK}/rmodebuild/" "${RSRC}")
+run_manta(link --top rmode -L "${WORK}/rmodebuild" --no-erc -o "${WORK}/rmode.mantaNets")
+execute_process(COMMAND "${MANTA}" render -o "${WORK}/rmode.html" "${WORK}/rmode.mantaNets"
+                RESULT_VARIABLE rmode_code OUTPUT_VARIABLE rmode_out ERROR_VARIABLE rmode_err)
+if(NOT rmode_code EQUAL 0)
+    message(FATAL_ERROR "render rmode failed:\n${rmode_out}${rmode_err}")
+endif()
+file(READ "${WORK}/rmode.html" rhtml)
+
+# WIRE: RAILY is drawn -- at least one wire carries it -- and never named.
+if(NOT rhtml MATCHES "class=\"wire\"[^>]*data-net=\"RAILY\"")
+    message(FATAL_ERROR "'&RENDER=WIRE' net RAILY has no drawn wire")
+endif()
+if(rhtml MATCHES "class=\"netlabel\"[^>]*data-net=\"RAILY\"")
+    message(FATAL_ERROR "'&RENDER=WIRE' net RAILY still shows a name")
+endif()
+if(rhtml MATCHES "class=\"railbar\"[^>]*data-net=\"RAILY\"")
+    message(FATAL_ERROR "'&RENDER=WIRE' net RAILY still earned a rail bar")
+endif()
+
+# LABEL: MID shows its name.
+if(NOT rhtml MATCHES "class=\"netlabel\"[^>]*data-net=\"MID\"")
+    message(FATAL_ERROR "'&RENDER=LABEL' net MID shows no name")
+endif()
+
+# The cross-room WIRE net degraded to names, and the renderer said so.
+if(NOT rmode_err MATCHES "W-RENDER")
+    message(FATAL_ERROR "no W-RENDER warning for the cross-room FARWIRE:\n${rmode_err}")
+endif()
+if(NOT rmode_err MATCHES "FARWIRE")
+    message(FATAL_ERROR "the W-RENDER warning does not name FARWIRE:\n${rmode_err}")
+endif()

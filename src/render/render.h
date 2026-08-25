@@ -8,6 +8,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "link/netlist.h"
 
@@ -15,6 +16,9 @@ namespace manta::render {
 
 struct RenderOptions {
     std::string title;  // title block override; empty means Design::top
+    // When set, collects one line per '&RENDER=WIRE' net that had to fall
+    // back to a name (revision 1.6). The caller reports them as W-RENDER.
+    std::vector<std::string>* warnings = nullptr;
 };
 
 [[nodiscard]] std::string renderSchematic(const Design& design, const RenderOptions& options);

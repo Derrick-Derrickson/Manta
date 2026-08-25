@@ -1480,6 +1480,7 @@ scope unit, reflowing a statement across lines never changes its constraints.
 | `&TYPE` | `GROUND` | Marks a ground net (§5.3). |
 | `&STUB` | *(none)* | This net is deliberately referenced once (§11.8). |
 | `&RAIL` | *(none)* | Marks a power rail for rendering, whatever the net's name or class. |
+| `&RENDER` | `WIRE` or `LABEL` | How the renderer connects this net's pins (below). |
 
 ```
 USB-DP = MCU-DP &IMP=90RD;
@@ -1493,6 +1494,25 @@ it. A renderer decides which nets are supplies by evidence and by spelling —
 `&CLASS=power`, a `&TYPE=POWER` source pin, a `3V3`-shaped name — and those
 heuristics remain; `&RAIL` is the explicit override for a rail they miss, such
 as a switched or divided supply under a project-local name.
+
+`&RENDER` (revision 1.6) is display-only in the same way, and answers the
+other choice a renderer makes: whether a net's pins are joined by a drawn
+wire or by a repeated name. `&RENDER=WIRE` says copper, never a name — the
+bootstrap cap that should visibly hang off its switching node, not point at a
+label. `&RENDER=LABEL` says a name, never a routed tree — a net the wordless
+heuristics keep claiming that reads better labelled. The value set is fixed
+and upper case; `&RENDER=wire` is error **E-34**.
+
+```
+BUCK-BST &RENDER=WIRE;
+CTRL-BUS &RENDER=LABEL;
+```
+
+`WIRE` is a command with a diagnosable failure, not a hint: where the
+renderer cannot draw the net — its pins sit in different rooms of the
+author's own sectioning, or it reaches a block port, which connects by name —
+it falls back to names and reports warning **W-RENDER**, naming the net, the
+page and the reason.
 
 An unknown directive name is error **E-13**.
 

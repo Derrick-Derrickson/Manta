@@ -257,6 +257,11 @@ short, not a subtlety.
 is simply not a connector and every mating check stops applying. The set is open
 so this cannot be an error, but it is worth a word.
 
+**W-RENDER — a `&RENDER=WIRE` net was connected by name** *(render only)*
+The renderer could not draw the net -- its pins sit in different rooms of your
+own sectioning, or it reaches a block port, which connects by name. The message
+says which net, on which page, and why.
+
 **W-FOOTPRINT — a footprint names no library** *(export only)*
 KiCad resolves `Library:Footprint`, and a bare package name will not place.
 `--footprint-map` or `--footprint-lib` supplies the library.

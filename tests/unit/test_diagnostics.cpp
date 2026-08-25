@@ -211,6 +211,10 @@ TEST_CASE("rev 1.5: a pin directive written bare in a binding list is E-13") {
 TEST_CASE("rev 1.5: '&EDGE=left' is the E-34 case error") {
     expectFiresOn("E-34", "E-34-edge");
 }
+
+TEST_CASE("rev 1.6: '&RENDER=wire' is the E-34 case error") {
+    expectFiresOn("E-34", "E-34-render");
+}
 TEST_CASE("rev 1.5: an unknown '&EDGE' value is E-TYPE") {
     expectFiresOn("E-TYPE", "E-TYPE-edge");
 }

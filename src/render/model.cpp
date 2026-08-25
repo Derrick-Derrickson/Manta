@@ -163,12 +163,22 @@ void buildPageNets(const Design& design, RenderPage& page, const BlockInstance* 
         }
     }
 
+    // '&RENDER' (revision 1.6) is read before the marks: a WIRE net must go
+    // down the routable-label path whatever the rail heuristics would say.
+    for (std::size_t i = 0; i < page.nets.size(); ++i) {
+        if (const NetDirective* rd = design.nets[i].directives.find("RENDER")) {
+            if (rd->value == "WIRE") page.nets[i].force = ForceMode::Wire;
+            else if (rd->value == "LABEL") page.nets[i].force = ForceMode::Label;
+        }
+    }
+
     // Ground and rail from the Net's own evidence; the rail-name heuristic
     // runs over the page-local spelling, so a block's "VCC" is a rail here
     // whatever its flat name became.
     for (std::size_t i = 0; i < page.nets.size(); ++i) {
         RenderNet& rn = page.nets[i];
         const Net& n = design.nets[i];
+        if (rn.force == ForceMode::Wire) continue;  // stays a routable label net
         if (isGroundNet(design, n)) rn.mark = NetMark::Ground;
         else if (isRailNet(design, n) || railName(rn.display)) rn.mark = NetMark::Rail;
     }
@@ -179,6 +189,7 @@ void buildPageNets(const Design& design, RenderPage& page, const BlockInstance* 
     for (std::size_t i = 0; i < page.nets.size(); ++i) {
         if (page.nets[i].mark == NetMark::Label) continue;
         for (std::size_t j = 0; j < page.nets.size(); ++j) {
+            if (page.nets[j].force == ForceMode::Wire) continue;  // never marked by name
             if (page.nets[j].display == page.nets[i].display) {
                 page.nets[j].mark = page.nets[i].mark;
             }

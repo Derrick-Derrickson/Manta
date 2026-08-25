@@ -37,6 +37,7 @@ enum class ValueType : std::uint8_t {
     NetName,     // &SHIELD, &NET  (&NET also accepts '?')
     PinType,     // &TYPE: one of a fixed, upper-case set
     Edge,        // &EDGE: one of a fixed, upper-case set of sheet edges
+    RenderMode,  // &RENDER: WIRE or LABEL, upper case
     MatchGroup,  // &MATCH: a group name or a group with overrides
     Boolean,     // @fitted, @bom
     Version,     // @VERSION
@@ -107,6 +108,16 @@ enum class EdgeSide : std::uint8_t { Left, Right, Top, Bottom };
 [[nodiscard]] bool lookupEdgeSide(std::string_view value, EdgeSide& out, bool& caseError) noexcept;
 
 [[nodiscard]] std::string_view edgeSideName(EdgeSide s) noexcept;
+
+// Revision 1.6: how the renderer connects a net's pins. '&RENDER=WIRE' must
+// draw copper, never a name; '&RENDER=LABEL' always connects by name. Values
+// are upper case (spec 2.6), and a lower-case spelling is error E-34.
+enum class NetRenderMode : std::uint8_t { Wire, Label };
+
+[[nodiscard]] bool lookupRenderMode(std::string_view value, NetRenderMode& out,
+                                    bool& caseError) noexcept;
+
+[[nodiscard]] std::string_view renderModeName(NetRenderMode m) noexcept;
 
 // The name a port direction is written under wherever one is emitted or read
 // back: the rules language (docs/rules.md, "direction == out") and the netlist's

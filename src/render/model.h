@@ -20,9 +20,15 @@ enum class NetMark : std::uint8_t { Label, Ground, Rail, NoConnect };
 // -- a block page labels "BLK1.LED-ANODE" as "LED-ANODE" -- while data-net in
 // the emitted HTML always carries the flat design-wide name, so a click on any
 // page highlights the conductor on every page.
+// '&RENDER' (spec 11.3, revision 1.6): the author's answer to the wire-or-
+// label choice the heuristics otherwise make. Wire means copper, never a
+// name; Label means a name, never a routed tree.
+enum class ForceMode : std::uint8_t { None, Wire, Label };
+
 struct RenderNet {
     std::string display;  // the name drawn at each stub, page-local
     NetMark mark = NetMark::Label;
+    ForceMode force = ForceMode::None;
     // Pins in two or more rooms of its page: shown as a port flag, the same
     // shape a block port (direction != None) gets. Ground and rail marks win
     // over the flag -- a rail crossing rooms is still a rail.

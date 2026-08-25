@@ -1,0 +1,10 @@
+block b {
+    GND &TYPE=GROUND;
+    X &RENDER=wire;
+    X = .{R1~p}. = GND;
+};
+
+part p {
+    1 : A &CASUAL;
+    2 : B &CASUAL;
+};

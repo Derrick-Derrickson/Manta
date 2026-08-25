@@ -89,7 +89,12 @@ int runRender(const Options& opts) {
 
     render::RenderOptions renderOptions;
     renderOptions.title = opts.title;
+    std::vector<std::string> renderWarnings;
+    renderOptions.warnings = &renderWarnings;
     std::string html = render::renderSchematic(design, renderOptions);
+    for (const std::string& w : renderWarnings) {
+        diags.report(DiagId::Render, Span{}, w);
+    }
 
     std::string outputPath =
         opts.output.empty() ? withExtension(input, ".html") : opts.output;
