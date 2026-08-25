@@ -1,6 +1,6 @@
 # Documentation
 
-**`spec.md`** — the Manta Schematic Definition Language, revision 1.3. This is
+**`spec.md`** — the Manta Schematic Definition Language, revision 1.6. This is
 the authority: when the implementation and this document disagree, the document
 is right and the implementation has a bug.
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.6.0 — 2026-08-19
 
 ### Language, revision 1.6
 
@@ -70,7 +70,9 @@
   EN;`), and a `=` there becomes `==` (decap ladders read `3V3 = .{C1: .=GND}
   == .{C2: .=GND};`). The old shorting idiom `A == .{R1}. == B` is respelled
   `..{R1}` on the joined net. The language revision in objects and netlists
-  is 1.6.
+  is 1.6; `kLanguageVersion`, both schemas and the project version move with
+  it. A 1.6 toolchain reads any older object, and `manta annotate` plus the
+  compiler's targeted E-49 messages walk a 1.5 source to 1.6 mechanically.
 
 ## 1.5.0 — 2026-08-14
 

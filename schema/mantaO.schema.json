@@ -9,7 +9,7 @@
   "properties": {
     "version": {
       "description": "The language revision this object targets. A toolchain reads any revision no newer than its own.",
-      "enum": ["1.0", "1.1", "1.2", "1.3", "1.4", "1.5"]
+      "enum": ["1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6"]
     },
     "kind": { "const": "mantaO" },
     "source": {
