@@ -155,7 +155,7 @@ TEST_CASE("a pin-pair rule never pairs a pin with itself") {
     // A bidirectional pin is both a driver and a receiver on its own net. It
     // must not be asked to clear its own threshold.
     auto r = check(R"(
-part IO { @~footprint = F; 1 = P<> #VOH=2V4 #VIH=3V5; 2 = G< &TYPE=POWER &~NET=GND; };
+part IO { @~footprint = F; 1 = P<> #VOH=2V4 #VIH=3V5; 2 = G< &TYPE=POWER; };
 block b { GND &TYPE=GROUND; X = P{U1~IO}G = GND; };
 )", R"(
 rules t {

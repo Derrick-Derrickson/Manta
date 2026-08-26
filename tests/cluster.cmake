@@ -71,7 +71,7 @@ part FIX-BUCK {
     3 : SW>;
     4 : BST;
     5 : EN<;
-    6 : GND< &TYPE=POWER &~NET=GND;
+    6 : GND< &TYPE=POWER;
 };
 part FIX-OSC {
     @~footprint = QFN-16;
@@ -80,7 +80,7 @@ part FIX-OSC {
     3 : D0>;
     4 : D1>;
     5 : VCC< &TYPE=POWER;
-    6 : GND< &TYPE=POWER &~NET=GND;
+    6 : GND< &TYPE=POWER;
 };
 
 block fixture {
@@ -98,13 +98,13 @@ block fixture {
     {R4~FIX-RPD: .A = BASE2; .B = GND;};
 
     --- BUCK
-    {U1~FIX-BUCK: .VIN = VBUS; .VIN2 = VBUS; .SW = SWNODE; .BST = BOOT; .EN = ENA;};
+    {U1~FIX-BUCK: .VIN = VBUS; .VIN2 = VBUS; .SW = SWNODE; .BST = BOOT; .EN = ENA; .GND = GND;};
     {D1~FIX-D: .A = GND; .K = SWNODE;};
     {C1~FIX-C: .A = SWNODE; .B = BOOT;};
     {L1~FIX-L: .A = SWNODE; .B = VOUT;};
 
     --- CLOCK
-    {U2~FIX-OSC: .XI = XTI; .XO = XTO; .VCC = 3V3; .D0 = DAT0; .D1 = DAT1;};
+    {U2~FIX-OSC: .XI = XTI; .XO = XTO; .VCC = 3V3; .D0 = DAT0; .D1 = DAT1; .GND = GND;};
     {Y1~FIX-X: .A = XTI; .B = XTO;};
     {C2~FIX-C: .A = GND; .B = XTI;};
     {C3~FIX-C: .A = GND; .B = XTO;};

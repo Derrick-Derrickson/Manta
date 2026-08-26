@@ -1,8 +1,8 @@
-part drv { @~footprint = F; 1 : O>; 2 : G< &TYPE=POWER &~NET=GND; };
+part drv { @~footprint = F; 1 : O>; 2 : G< &TYPE=POWER; };
 block b {
     GND &TYPE=GROUND;
     NETX = U1.O;
     NETX = U2.O;
-    A = O.{U1~drv}.O = NETX;
-    C = O.{U2~drv}.O = NETX;
+    A = O.{U1~drv: .G = GND;}.O = NETX;
+    C = O.{U2~drv: .G = GND;}.O = NETX;
 };

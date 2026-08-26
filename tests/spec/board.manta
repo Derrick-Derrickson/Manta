@@ -42,6 +42,8 @@ block power-and-signal {
         .SDA       = i2c.SDA;
         .SCL       = i2c.SCL;
         .USB       = MCU-USB;
+        .VCC       = 3V3;
+        .GND       = GND;
         .NC        = ?;
     };
 
@@ -55,12 +57,12 @@ block power-and-signal {
         == nPWR-EN;
 
     // ---- single amplifier --------------------------------------------
-    >SIG-IN = I.{U?~AMP012: .PWR=PWR-SWITCHED; }.O = AMPED-SIG> &IMP=50R;
+    >SIG-IN = I.{U?~AMP012: .PWR=PWR-SWITCHED; .GND=GND; }.O = AMPED-SIG> &IMP=50R;
 
     // ---- replicated amplifiers with per-copy enables ------------------
     >SIG2-IN[0:3]
-        = [[ I.{U?~AMP012: .EN=%AMP-EN[0:3]; .PWR=PWR-SWITCHED; }.O ]]
-        = IN.{U?~buffer4: .VCC=PWR-SWITCHED; }.OUT
+        = [[ I.{U?~AMP012: .EN=%AMP-EN[0:3]; .PWR=PWR-SWITCHED; .GND=GND; }.O ]]
+        = IN.{U?~buffer4: .VCC=PWR-SWITCHED; .GND=GND; }.OUT
         = AMPED-SIG2[0:3]> &MATCH=ddr-addr;
 
     // ---- passive summing network, gathered ---------------------------

@@ -96,8 +96,9 @@ storage for child lists; build into a local `std::vector` and `commit()` it.
   context to the lexer will break the other reading somewhere.
 - **`==` joining an element's own terminals is intentional.** It is how a device
   gets shorted, which is legal and warned about, not an error.
-- **`.mantaO` keeps a numeric value's lexeme as well as its number.** `&~NET=3V3`
-  means the rail called `3V3`, not 3.3 volts. Same word, two readings, and the
-  directive's declared type says which.
+- **`.mantaO` keeps a numeric value's lexeme as well as its number.** `.GND &NET=AGND`
+  at an instance names the net called `AGND`, and a `#value = 3V3` names a rail,
+  not 3.3 volts. Same word, two readings, and the directive's declared type says
+  which.
 - **CRLF survives loading.** Only the formatter normalises, and it does so by
   rewriting the whole file.

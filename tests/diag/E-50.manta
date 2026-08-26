@@ -1,0 +1,7 @@
+// Revision 1.7: a part declares its pins; the design connects them. A pin
+// declaration that names a net -- the old weak default -- is E-50.
+part mcu { @~footprint = F; 1 : IO>; 2 : G< &TYPE=POWER &~NET=GND; };
+block b {
+    GND &TYPE=GROUND;
+    OUT = IO.{U1~mcu: .G = GND;};
+};

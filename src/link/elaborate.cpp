@@ -716,40 +716,6 @@ std::uint32_t Elaborator::instantiatePart(const Instance* inst, const PartInfo& 
     return index;
 }
 
-void Elaborator::applyDefaultNets(Component& component, const PartInfo& part, Scope& scope) {
-    // Spec 11.6: "&NET names the net a pin joins when nothing binds it."
-    for (const BodyEntry& entry : part.decl->body) {
-        if (entry.kind != BodyKind::PinMap) continue;
-        const PinMap* line = entry.pin;
-
-        for (const Directive* d : line->directives) {
-            if (!valid(d->name.symbol)) continue;
-            if (interner_.text(d->name.symbol) != "NET") continue;
-            if (!d->value) continue;
-
-            // "&NET=?" unbinds: no net is created, so no &STUB is required.
-            bool unbind = d->value->kind == ValueKind::Unbind;
-            // &NET names a net, so the lexeme is what counts: "&~NET=3V3"
-            // means the rail called 3V3, not the quantity 3.3 volts.
-            SymbolId target = unbind ? SymbolId::kInvalid : d->value->text;
-
-            SymbolId base = line->logical.symbol;
-            for (std::uint32_t i = 0; i < component.pins.size(); ++i) {
-                ComponentPin& pin = component.pins[i];
-                if (pin.base != base) continue;
-                if (pin.connected) continue;  // a binding at the call site wins
-                if (unbind) {
-                    pin.unbound = true;
-                    continue;
-                }
-                if (!valid(target)) continue;
-                unite(pin.node, netNode(scope, target, 0, false, d->span, false));
-                pin.connected = true;
-            }
-        }
-    }
-}
-
 void Elaborator::applyBindings(const Instance* inst, std::uint32_t componentIndex, Scope& scope,
                                std::vector<std::uint32_t>& touched) {
     // Spec 15.8: bindings are elaborated in source order, and each segment in
@@ -1340,7 +1306,6 @@ Elaborator::ElemValue Elaborator::evalDevice(const Device* dev, Scope& scope,
         value.hasExit = true;
     }
 
-    applyDefaultNets(c, *part, scope);
     return value;
 }
 

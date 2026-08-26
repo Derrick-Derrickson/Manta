@@ -21,14 +21,14 @@ part REG {
     @~footprint = F;
 
     1 : VO> &TYPE=POWER;
-    2 : G< &TYPE=POWER &~NET=GND;
+    2 : G< &TYPE=POWER;
 };
 
 part MCU {
     @~footprint = F;
 
     1 : VI< &TYPE=POWER;
-    2 : G< &TYPE=POWER &~NET=GND;
+    2 : G< &TYPE=POWER;
     3 : TX>;
     4 : RX<;
 };

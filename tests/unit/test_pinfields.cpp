@@ -87,8 +87,8 @@ part MCU {
     @~footprint = LQFP-8;
     [1:4]: IO[1:4]<> #VOH=2V4 #VOL=0V4 #VIH=2V0 #VIL=0V8;
     5:     SDA<>     &TYPE=OPENDRAIN #VOL=0V6;
-    6:     VCC<      &TYPE=POWER &~NET=3V3;
-    7:     GND<      &TYPE=POWER &~NET=GND;
+    6:     VCC<      &TYPE=POWER;
+    7:     GND<      &TYPE=POWER;
 };
 part REG {
     @~footprint = SOT-23-5;

@@ -77,7 +77,7 @@ part FIX-U {
     5 : FB<;
     6 : SW>;
     7 : WIDEPIN;
-    8 : GND< &TYPE=POWER &~NET=GND;
+    8 : GND< &TYPE=POWER;
     9 : STR>;
 };
 

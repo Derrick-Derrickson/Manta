@@ -41,8 +41,8 @@ part AMP012 {
     1 : I<;
     2 : O>;
     3 : EN<;
-    4 : PWR<  &TYPE=POWER &~NET=3V3;
-    5 : GND<  &TYPE=POWER &~NET=GND;
+    4 : PWR<  &TYPE=POWER;
+    5 : GND<  &TYPE=POWER;
 };
 
 part LM324 {

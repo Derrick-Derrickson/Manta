@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Language, revision 1.7
+
+- **No default nets.** A part declares its pins; where they connect is the
+  design's decision. The weak default net — `&~NET=GND` on a pin declaration,
+  silently joining every unbound instance pin to a named net — is removed:
+  `&NET` in a pin declaration is now error **E-50** (§11.6). It was invisible
+  connectivity (the source never showed the join), it coupled part libraries
+  to one spelling of a board's rail names, and it converted forgotten power
+  hookups into silently-working defaults instead of errors. The connection is
+  written where it acts instead: a binding at the instance (`.GND = GND;`).
+  `&NET=?` at an instance — the deliberate float — and pin references are
+  untouched. Migration is mechanical: move each `&~NET=<name>` from the
+  declaration to a binding at every instance that relied on it.
+
 ## 1.6.0 — 2026-08-19
 
 ### Language, revision 1.6

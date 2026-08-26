@@ -1,9 +1,9 @@
 // A '<>' pin can drive: a GPIO wired straight into an input is normal, so a
 // net carrying a bidirectional pin and an input pin is not E-02.
-part mcu { @~footprint = F; 1 : GPIO<>; 2 : G< &TYPE=POWER &~NET=GND; };
-part rcv { @~footprint = F; 1 : IN<; 2 : G< &TYPE=POWER &~NET=GND; };
+part mcu { @~footprint = F; 1 : GPIO<>; 2 : G< &TYPE=POWER; };
+part rcv { @~footprint = F; 1 : IN<; 2 : G< &TYPE=POWER; };
 block b {
     GND &TYPE=GROUND;
-    SIG = GPIO.{U1~mcu};
-    SIG = IN.{U2~rcv};
+    SIG = GPIO.{U1~mcu: .G = GND;};
+    SIG = IN.{U2~rcv: .G = GND;};
 };

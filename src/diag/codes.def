@@ -158,6 +158,9 @@ MANTA_DIAG(E41, "E-41", "non-arithmetic-operand", Severity::Error,
 MANTA_DIAG(E42, "E-42", "negative-exponent", Severity::Error, "negative exponent")
 MANTA_DIAG(E43, "E-43", "part-exports-field", Severity::Error,
            "a 'part' declaration may not export field '{}'; export is available to blocks only")
+MANTA_DIAG(E50, "E-50", "net-in-part", Severity::Error,
+           "pin '{}' names a net in its declaration; a part declares pins, the design "
+           "connects them -- bind at the instance, or '&STUB' a pin meant to float")
 
 // ---------------------------------------------------------------------------
 // Section 16.2 — warnings

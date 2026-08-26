@@ -66,7 +66,7 @@ part LDO-3V3 {
     #~mpn       = "AP2112K-3.3TRG1";
 
     1 : VIN< &TYPE=POWER;
-    2 : GND< &TYPE=POWER &~NET=GND;
+    2 : GND< &TYPE=POWER;
     3 : EN<;
     4 : NC &TYPE=NC;
     5 : VOUT> &TYPE=POWER #SUPPLY=600mA;
@@ -80,11 +80,11 @@ part MCU-8PIN {
     1 : nRESET<;
     2 : GPIO[0]>;
     3 : GPIO[1]>;
-    4 : GND< &TYPE=POWER &~NET=GND;
+    4 : GND< &TYPE=POWER;
     5 : SDA<> &TYPE=OPENDRAIN;
     6 : SCL<> &TYPE=OPENDRAIN;
     7 : MISO>;
-    8 : VCC< &TYPE=POWER &~NET=3V3;
+    8 : VCC< &TYPE=POWER;
 };
 
 part LED-0603 {
@@ -107,7 +107,7 @@ part CONN-USB-C {
     @~mate      = usb-c-1m;
 
     1 : VBUS> &TYPE=POWER #SUPPLY=500mA;
-    2 : GND< &TYPE=POWER &~NET=GND;
+    2 : GND< &TYPE=POWER;
     3 : CC1<> &SWAP=cc;
     4 : CC2<> &SWAP=cc;
 };

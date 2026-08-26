@@ -138,8 +138,8 @@ void applyDirectives(std::span<ComponentPin> pins, const PinMap* line, std::uint
             }
             continue;
         }
-        // &NET is a default net, resolved at instantiation rather than here;
-        // the elaborator reads it straight off the declaration.
+        // &NET in a pin declaration is E-50, reported at compile by the local
+        // checker; not repeated here so the message appears once.
         if (name == "NET") continue;
 
         diags.report(DiagId::E13, d->name.span, name);

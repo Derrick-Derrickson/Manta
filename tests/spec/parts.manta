@@ -24,8 +24,8 @@ part cool-mcu {
     #!manufacturer = "ST Microelectronics";
     >#~source      = digikey;
 
-    1       : VCC<        &TYPE=POWER &~NET=3V3;
-    2       : GND<        &TYPE=POWER &~NET=GND;
+    1       : VCC<        &TYPE=POWER;
+    2       : GND<        &TYPE=POWER;
     [3:11]  : GPIO[1:9]<> &SWAP=gpio-bank;
     [12:13] : USB.[+,-]<> &~PINDELAY=8ps;
     14      : SDA<>       &TYPE=OPENDRAIN;
@@ -40,6 +40,6 @@ part buffer4 {
 
     [1:4]  : IN[1:4]<   &SWAP=ch;
     [5:8]  : OUT[1:4]>  &SWAP=ch;
-    13     : VCC<       &TYPE=POWER &~NET=3V3;
-    14     : GND<       &TYPE=POWER &~NET=GND;
+    13     : VCC<       &TYPE=POWER;
+    14     : GND<       &TYPE=POWER;
 };

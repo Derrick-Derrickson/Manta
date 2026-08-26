@@ -44,7 +44,7 @@ block blinky {
 
     // The connector's VBUS pin is 'POWER>', so it is the source that satisfies
     // the supply check for the whole VBUS net.
-    {J1~CONN-USB-C: .VBUS = VBUS; .CC1  = CC1; .CC2  = CC2;};
+    {J1~CONN-USB-C: .VBUS = VBUS; .GND = GND; .CC1  = CC1; .CC2  = CC2;};
 
     // CC pull-downs advertise a device to the host. Written as one statement
     // each so that neither net is single-referenced.
@@ -56,14 +56,16 @@ block blinky {
     // The bulk cap sits on VBUS and the bypass on 3V3, which is what keeps
     // W-04 quiet on both supply pins.
     VBUS = .{C1~C-10uF-0805: . = GND;};
-    VBUS = VIN.{U1~LDO-3V3: .EN = VBUS; .NC = ?;}.VOUT = 3V3 &CURRENT=600mA &!VOLTAGE=6V;
+    VBUS = VIN.{U1~LDO-3V3: .EN = VBUS; .GND = GND; .NC = ?;}.VOUT = 3V3 &CURRENT=600mA &!VOLTAGE=6V;
     3V3 = .{C2~C-10uF-0805: . = GND;};
 
     --- MCU
 
-    // VCC and GND take their default nets from the part's '&~NET', so neither
-    // needs binding here (spec 11.6).
+    // Power is bound here, where the design decides it: a part declares its
+    // pins, never the nets they land on (spec 11.6, revision 1.7).
     {U2~MCU-8PIN:
+        .VCC     = 3V3;
+        .GND     = GND;
         .nRESET  = nRESET;
         .GPIO[0] = LED-DRIVE[0];
         .GPIO[1] = LED-DRIVE[1];

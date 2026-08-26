@@ -38,7 +38,7 @@ part FIX-TP { @!type = testpoint; @~footprint = TP-1MM; 1 : T; };
 part FIX-MCU {
     @~footprint = QFP-STM32-32;
     1 : VCC< &TYPE=POWER;
-    2 : GND< &TYPE=POWER &~NET=GND;
+    2 : GND< &TYPE=POWER;
     3 : RST<;
     4 : IO0>;
     5 : IO1>;
@@ -86,7 +86,7 @@ block fixture {
     {U9~FIX-R: .A = LEFTY[0]; .B = LEFTY[1];};
 
     --- MCU CORE
-    {U1~FIX-MCU: .VCC = 3V3; .RST = nRST; .IO0 = LED-A; .IO1 = SPI-CLK; .AVDD = VBAT;};
+    {U1~FIX-MCU: .VCC = 3V3; .RST = nRST; .IO0 = LED-A; .IO1 = SPI-CLK; .AVDD = VBAT; .GND = GND;};
     {J2~FIX-HDR: .A = nRST;};
     3V3 = .{R1~FIX-R}. = nRST;
     LED-A = .{R2~FIX-R}. = LED-K;

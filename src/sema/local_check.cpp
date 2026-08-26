@@ -414,6 +414,17 @@ void LocalChecker::checkStatement(const Stmt* stmt) {
 void LocalChecker::checkPinMap(const PinMap* pin) {
     for (const Directive* d : pin->directives) checkDirective(d, DirCtx::Pin);
 
+    // Spec 11.6 (revision 1.7): a part declares its pins; where they connect
+    // is the design's decision. '&NET' in a pin declaration -- the old weak
+    // default net -- is error E-50. '&NET' at an instance is untouched.
+    for (const Directive* d : pin->directives) {
+        if (text(d->name) == "NET") {
+            std::string_view n = text(pin->logical);
+            diags_.report(DiagId::E50, d->span,
+                          n.empty() ? std::string_view("<substituted>") : n);
+        }
+    }
+
     std::int64_t physWidth =
         (pin->physLo <= pin->physHi ? pin->physHi - pin->physLo : pin->physLo - pin->physHi) + 1;
 

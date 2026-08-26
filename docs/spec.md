@@ -1,8 +1,18 @@
 # The Manta Schematic Definition Language
 
-**Specification, revision 1.6**
+**Specification, revision 1.7**
 
 > **Corrected against a reference implementation.**
+>
+> **1.7 keeps net names out of part declarations.** A part declares its
+> pins; where they connect is the design's decision. The weak default net —
+> `&~NET=GND` on a pin declaration, silently joining every unbound instance
+> pin to a named net — is removed: `&NET` in a pin declaration is now error
+> E-50 (§11.6). The connections it hid are written where they act, as a
+> binding at the instance (`.GND = GND;`). `&NET=?` at an instance — the
+> deliberate float — is untouched. Sources written for 1.6 move each
+> `&~NET=<name>` from the declaration to a binding at every instance that
+> relied on it.
 >
 > **1.6 makes the connector state whether the chain moved.** `=` is the
 > plain join everywhere — two bare net names included, which retires E-22 —
@@ -266,8 +276,8 @@ part STM32F0QA5 {
     #value         = STM32F0QA5;
     #!manufacturer = "ST Microelectronics";
 
-    1: VCC< &TYPE=POWER &~NET=3V3;
-    2: GND< &TYPE=POWER &~NET=GND;
+    1: VCC< &TYPE=POWER;
+    2: GND< &TYPE=POWER;
 };
 
 ---
@@ -556,8 +566,8 @@ part cool-mcu {
     #value         = STM32F0QA5;
     #!manufacturer = "ST Microelectronics";
 
-    1:       VCC<        &TYPE=POWER &~NET=3V3;
-    2:       GND<        &TYPE=POWER &~NET=GND;
+    1:       VCC<        &TYPE=POWER;
+    2:       GND<        &TYPE=POWER;
     [3:11]:  GPIO[1:9]<>;
     [12:13]: USB.[+,-]<>;
     14:      SDA<>       &TYPE=OPENDRAIN;
@@ -1599,7 +1609,7 @@ part ddr-chip {
 {U5~ddr-chip: .DQ[0] &PINDELAY=18ps; }      // override at a call site
 ```
 
-### 11.6 Pin type and default net
+### 11.6 Pin type and unbinding
 
 `&TYPE` on a pin declares electrical character. The arrow declares direction. The two axes
 are orthogonal and combine freely.
@@ -1637,22 +1647,27 @@ that uses the part: a net with `POWER<` pins and no `POWER>` source is error **E
 
 An arrow and a conflicting `&TYPE` are caught by **E-12**.
 
-#### Default nets
+#### No default nets
 
-`&NET` names the net a pin joins when nothing binds it. Declared weakly, so a binding at a
-call site overrides it.
+A part declares its pins; where they connect is the design's decision. A pin declaration
+that names a net — `&NET`, at any strength — is error **E-50**. (Revisions before 1.7
+accepted `&~NET=GND` as a weak default and silently joined every unbound instance pin to
+that net: connectivity the source never showed, coupled to one spelling of a rail name.)
+The connection is written where it acts instead — a binding at the instance.
 
 ```
 part cool-mcu {
-    1: VCC< &TYPE=POWER &~NET=3V3;
-    2: GND< &TYPE=POWER &~NET=GND;
+    1: VCC< &TYPE=POWER;
+    2: GND< &TYPE=POWER;
 };
 
-{U1~cool-mcu};                          // VCC→3V3, GND→GND
-{U2~cool-mcu: .VCC=1V8; };               // VCC→1V8, GND→GND
+{U1~cool-mcu: .VCC = 3V3; .GND = GND; };
+{U2~cool-mcu: .VCC = 1V8; .GND = GND; };
 ```
 
-`&NET=?` unbinds a pin. No net is created, so no `&STUB` is required.
+#### Unbinding
+
+`&NET=?` unbinds a pin at an instance. No net is created, so no `&STUB` is required.
 
 ```
 {U5~iso7741: .GNDB=?; }                  // deliberately floating this side
@@ -2078,8 +2093,8 @@ exchanges two members of a swap group has that exchange written back to source.
 ### 13.7 Derived information is not written to source
 
 No tool writes descriptive text into a source file. A part's description, an inferred
-replication count, a `&~NET` default that was taken, or the generated name of an unnamed
-node are derivable, and belong in an editor as hover text or inlay hints.
+replication count, or the generated name of an unnamed node are derivable, and belong in
+an editor as hover text or inlay hints.
 
 The only writes any tool makes to source are designator assignment (§13.2, §13.3) and swap
 reconciliation (§13.6). Both are semantic values that are part of the design.
@@ -2554,6 +2569,7 @@ from mistakes.
 | E-47 | Two pins that both drive are joined through a cable. |
 | E-48 | A supply and a ground are joined through a cable. |
 | E-49 | A connector disagrees with the element before it: `==` after an element that passes through, or `=` after one with no far side. |
+| E-50 | A pin declaration names a net: `&NET` binds at an instance, never in a `part`. |
 | E-UNANNOTATED | An instance still carries `?` when the netlist is built. |
 
 `E-UNANNOTATED` is the one diagnostic outside the numbered space, because it is
@@ -2843,8 +2859,8 @@ part cool-mcu {
     #!manufacturer = "ST Microelectronics";
     >#~source      = digikey;
 
-    1:       VCC<        &TYPE=POWER &~NET=3V3;
-    2:       GND<        &TYPE=POWER &~NET=GND;
+    1:       VCC<        &TYPE=POWER;
+    2:       GND<        &TYPE=POWER;
     [3:11]:  GPIO[1:9]<> &SWAP=gpio-bank;
     [12:13]: USB.[+,-]<> &~PINDELAY=8ps;
     14:      SDA<>       &TYPE=OPENDRAIN;
@@ -2864,8 +2880,8 @@ part buffer4 {
 
     [1:4]:  IN[1:4]<   &SWAP=ch;
     [5:8]:  OUT[1:4]>  &SWAP=ch;
-    13:     VCC<       &TYPE=POWER &~NET=3V3;
-    14:     GND<       &TYPE=POWER &~NET=GND;
+    13:     VCC<       &TYPE=POWER;
+    14:     GND<       &TYPE=POWER;
 };
 ```
 

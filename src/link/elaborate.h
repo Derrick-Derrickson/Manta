@@ -187,7 +187,6 @@ private:
     // instantiation may reallocate components_.
     void applyBindings(const Instance* inst, std::uint32_t componentIndex, Scope& scope,
                        std::vector<std::uint32_t>& touched);
-    void applyDefaultNets(Component& component, const PartInfo& part, Scope& scope);
 
     // ---- nodes ---------------------------------------------------------------
     std::uint32_t netNode(Scope& scope, SymbolId name, std::int64_t index, bool indexed, Span at,
