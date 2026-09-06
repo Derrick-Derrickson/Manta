@@ -30,8 +30,12 @@ bool isPowerSource(const ComponentPin& p) {
     return p.type == PinType::Power && p.direction == PortDir::Out;
 }
 
+// Spec 11.6: "'>' provides the rail, '<' and '<>' consume it." A bidirectional
+// supply pin -- a battery terminal, an OTG port's VBUS -- draws from the rail
+// and never counts as its source.
 bool isPowerConsumer(const ComponentPin& p) {
-    return p.type == PinType::Power && p.direction == PortDir::In;
+    return p.type == PinType::Power &&
+           (p.direction == PortDir::In || p.direction == PortDir::Bidir);
 }
 
 // Normalises an identifier for W-07: "Two identifiers in one design differ only
@@ -51,8 +55,8 @@ std::string_view ErcChecker::nameOf(const Component& c) const {
 }
 
 bool ErcChecker::isCapacitor(const Component& c) const {
-    // See docs/assumptions.md, B1. The specification never says how a capacitor
-    // is identified, yet W-03 and W-04 both depend on it.
+    // See docs/assumptions.md, C1. The specification never says how a capacitor
+    // is identified, yet W-04 depends on it.
     if (c.type == "capacitor") return true;
     // A '#type' user field is still honoured, because a design written before
     // 'type' moved to the system namespace is still a valid design.
@@ -236,8 +240,11 @@ void ErcChecker::checkPower() {
         }
 
         // Spec 11.6: "a net with POWER< pins and no POWER> source is error
-        // E-27 ... A ground net is exempt from E-27."
-        if (consumers > 0 && sources == 0 && !net.ground) {
+        // E-27 ... A ground net is exempt from E-27." So is a net declared a
+        // rail with '&TYPE=POWER' (spec 5.3): a rail that arrives through an
+        // inductor, a diode-OR or whichever connector has a supply plugged in
+        // has no sourcing pin, and the declaration is how the design says so.
+        if (consumers > 0 && sources == 0 && !net.ground && !net.power) {
             // A global import is supplied by another object, and a net declared
             // an input to this block is driven from outside it.
             bool supplied = net.global || net.direction == PortDir::In ||
@@ -247,12 +254,6 @@ void ErcChecker::checkPower() {
 
         // "two POWER> pins on one net is error E-28"
         if (sources >= 2) diags_.report(DiagId::E28, net.firstSeen, net.name);
-
-        // "and a POWER> net with no consumers is warning W-09"
-        if (sources > 0 && consumers == 0 && !net.global &&
-            net.direction != PortDir::Out && net.direction != PortDir::Bidir) {
-            diags_.report(DiagId::W09, net.firstSeen, net.name);
-        }
     }
 }
 
@@ -284,21 +285,6 @@ void ErcChecker::checkShortedDevices() {
 }
 
 void ErcChecker::checkCapacitors() {
-    for (const Component& c : design_.components) {
-        if (!isCapacitor(c) || c.pins.size() != 2) continue;
-
-        // W-03: "A capacitor is in series with two non-ground nets."
-        const ComponentPin& a = c.pins[0];
-        const ComponentPin& b = c.pins[1];
-        if (a.net < 0 || b.net < 0) continue;
-        const Net& na = design_.nets[static_cast<std::size_t>(a.net)];
-        const Net& nb = design_.nets[static_cast<std::size_t>(b.net)];
-        if (a.net == b.net) continue;
-        if (!na.ground && !nb.ground) {
-            diags_.report(DiagId::W03, c.span, nameOf(c), na.name, nb.name);
-        }
-    }
-
     // W-04: "A '&TYPE=POWER<' pin has no capacitor on its net within two nodes."
     // Two nodes means: on the pin's own net, or on a net one series component
     // away from it.

@@ -301,7 +301,7 @@ SymbolId Substituter::resolveName(const Name& n, const FieldEnv& env) {
             if (c == '=' || c == '~' || c == '&') { what = "an operator"; break; }
         }
         if (trailingDash) {
-            diags_.report(DiagId::E02, n.span,
+            diags_.report(DiagId::Syntax, n.span,
                           std::format("substitution produced '{}', which ends in '-'", rendered));
         } else {
             diags_.report(DiagId::E15, n.span, what);

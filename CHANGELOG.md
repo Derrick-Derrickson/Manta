@@ -1,8 +1,20 @@
 # Changelog
 
-## Unreleased
+## 2.0.0-rc1 — 2026-09-06
 
-### Language, revision 1.7
+### Why 2.0
+
+The specification promised that each revision was a superset of the one
+before. Revision 1.6 broke that promise — `=` and `==` took forced meanings,
+the exit-terminal form went, pin declarations moved from `=` to `:` — and this
+revision breaks it again by removing `&NET` from pin declarations. Two
+consecutive breaking revisions are a major version, so the language revision
+is 2.0 rather than 1.7, and the tool version moves with it. The spec's
+compatibility clause now says what has actually held: object compatibility
+(a 2.0 toolchain reads any older object) and a mechanical migration for each
+break. From 2.0 on, a minor revision is additive again.
+
+### Language, revision 2.0
 
 - **No default nets.** A part declares its pins; where they connect is the
   design's decision. The weak default net — `&~NET=GND` on a pin declaration,
@@ -15,6 +27,52 @@
   `&NET=?` at an instance — the deliberate float — and pin references are
   untouched. Migration is mechanical: move each `&~NET=<name>` from the
   declaration to a binding at every instance that relied on it.
+
+### Specification
+
+- **§12A.2's reversed-ribbon `@map` example is corrected.** It was written
+  `[[1:20],[20:1]]`, which the implementation has never accepted: a map is a
+  list of pairs, and a pair of ranges is one element, `[[1:20, 20:1]]`. The
+  compatibility clause at the head of the document now says which revisions
+  broke source compatibility and why the number is 2.0.
+
+- **W-03 is removed.** "A capacitor is in series with two non-ground nets"
+  described every AC-coupling capacitor, bootstrap capacitor, snubber and
+  differential filter on a board, so it reported ordinary work far more
+  often than a mistake, and there was no per-instance way to say a
+  particular one was intended. W-04, which catches a supply pin with no
+  decoupling, is the check that earns its keep and stays. The code is
+  retired; `-Wno-W-03` is now an unknown warning name.
+
+- **`&TYPE=POWER` on a net declares a supply rail** (§5.3). A rail that
+  arrives through an inductor, a diode-OR or whichever of several connectors
+  has a supply plugged in has no `POWER>` pin, and the only way to build one
+  was to leave the rail and every pin on it untyped, which also switched off
+  W-04 for them. The declaration satisfies E-27 for the rail's consumers;
+  E-28 and W-04 still apply. A rule reads it as `net.power`.
+- **A `POWER<>` pin consumes and never sources.** It counted for nothing in
+  E-27 and W-04; a battery terminal or an OTG port's VBUS now gets the supply
+  and decoupling checks like any other consumer.
+- **W-06 and W-09 are removed** alongside W-03, and the numbers are retired.
+  W-06 reported a weak field nobody overrode, which is a default doing its
+  job. W-09 counted only `POWER<` pins as consumers, so a rail feeding a
+  regulator input, a diode-OR or passives read as unused; E-26 already
+  catches a rail that goes nowhere. No warning starts disabled any more.
+- **An identifier ending in `-` is a syntax error.** It was reported under
+  E-02, sharing a code with the unrelated no-driver rule.
+
+### Tool
+
+- **`--assembly` writes the cable files beside the board's netlist.** They
+  were written into the current directory, whatever `-o` said; they now take
+  the netlist's directory, which is what the specification and the README
+  always described.
+- **The bundled skills and the blinky example are rewritten for 2.0.** The
+  skills no longer teach the removed default net, and they now state a house
+  style: passive networks are chains, a large IC is a binding block rather
+  than a chain element, and a comment explains the design rather than the
+  language. `examples/blinky` exercises every construct in the language and
+  still checks clean under `-Werror`.
 
 ## 1.6.0 — 2026-08-19
 

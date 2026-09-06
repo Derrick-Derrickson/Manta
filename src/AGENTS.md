@@ -17,7 +17,7 @@ Put a check at the **earliest stage that can decide it**:
 | Compile | `sema/local_check.cpp` | Decidable from one file, no external names: E-08, E-10, E-13, E-18, E-32, E-34, E-38, E-43 |
 | Link — resolve | `link/symbols.cpp` | E-30, E-31, E-36 |
 | Link — elaborate | `link/elaborate.cpp` | Needs the instantiated design: E-04..E-07, E-11, E-12, E-21..E-23, E-29, E-39..E-42 |
-| Link — ERC | `erc/erc.cpp` | Whole-design electrical properties: E-01, E-02, E-20, E-24..E-28, E-33, W-01..W-09 |
+| Link — ERC | `erc/erc.cpp` | Whole-design electrical properties: E-01, E-02, E-20, E-24..E-28, E-33, W-01, W-02, W-04, W-07, W-08 |
 | Link — mating | `link/mating.cpp` | Needs a second design, the cable: E-44..E-48 |
 
 A check that needs a part's pins needs the symbol table, so it cannot be at
@@ -47,9 +47,9 @@ Codes from the specification keep their numbers. Anything not in it uses a
 lettered code — `E-SYNTAX`, `E-TYPE`, `E-IO`, `E-UNANNOTATED` — so it can never
 collide with the numbered space.
 
-Default a warning to `Severity::Ignored` only when it would fire on idiomatic
-correct code; W-06 is the sole example, and the reasoning is in
-`docs/assumptions.md`.
+A warning that would fire on idiomatic correct code is a warning to remove,
+not to default off: 2.0 retired W-03, W-06 and W-09 on exactly that ground.
+`Severity::Ignored` exists for `-Wno-`, and no diagnostic starts there.
 
 ## Determinism
 

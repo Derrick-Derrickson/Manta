@@ -5,7 +5,7 @@ Codes are as the specification numbers them. Anything lettered — `E-SYNTAX`,
 with it.
 
 Each entry can be enabled, silenced or re-graded by code or by mnemonic:
-`-Wno-W-03` and `-Wno-cap-in-series` are the same instruction.
+`-Wno-W-04` and `-Wno-undecoupled-supply` are the same instruction.
 
 ---
 
@@ -60,7 +60,12 @@ interchangeable. A diode's pins are not. Either name the terminal explicitly
 
 **E-25 — a pin marked `&TYPE=NC` is connected**
 The datasheet forbids it. If you meant "I chose not to connect this", that is
-`&NET=?`, which is always legal and needs no `&STUB`.
+`.PIN = ?` at the instance, which is always legal and needs no `&STUB`.
+
+**E-50 — a pin declaration names a net**
+`&NET` at any strength inside a `part` is an error: a part declares its pins
+and the design decides where they connect. Move the connection to a binding
+at every instance (`.GND = GND;`). `.PIN = ?` at an instance is untouched.
 
 **E-31 — a name is referenced but never declared**
 A part, block, netclass, match group or pin that does not exist. Check spelling,
@@ -75,14 +80,11 @@ internal linkage and is invisible to other objects.
 Two outputs fighting. If they are meant to share a bus, declare them
 `&TYPE=OPENDRAIN`; if one can release the bus, it should be `<>`.
 
-**E-02 — a net has an input and no driver** *(also: an identifier ends in `-`)*
+**E-02 — a net has an input and no driver**
 A net that is nothing but input pins. A `>` pin, a `<>` pin, a `&TYPE=POWER>`
 supply or any passive pin all count as driving it, so a GPIO into an input, a
 pull-up or a rail-tied enable will not trip this — what does is an input nobody
-connected.
-
-The same code covers an identifier ending in a hyphen, which is a lexical rule
-and unrelated. The message distinguishes them.
+connected. (An identifier ending in `-` is a syntax error, E-SYNTAX.)
 
 **E-26 — a net is referenced exactly once and does not carry `&STUB`**
 Almost always a typo, including a mistyped harness member. If deliberate — a
@@ -93,8 +95,11 @@ A stub carries exactly one pin. If it has two, it is a real net and the `&STUB`
 is wrong.
 
 **E-27 — a power net has consumers and no source**
-Some part has to declare a `&TYPE=POWER>` pin. A regulator's output, a
-connector's VBUS. Ground is exempt.
+Some part has to declare a `&TYPE=POWER>` pin: a regulator's output, a
+connector's VBUS. A rail that has no such pin — it comes through an inductor,
+a diode-OR, or whichever connector has a supply plugged in — is declared on
+the board with `5V &TYPE=POWER;`. Ground is exempt. A `POWER<>` pin consumes
+and never sources.
 
 **E-28 — two `&TYPE=POWER>` pins on one net**
 Two supplies shorted together. Usually a binding mistake.
@@ -205,18 +210,11 @@ worth a look.
 **W-02 — both pads of a two-terminal device land on one net**
 Fires only on a bridge that *happens* — two pads reaching one net through
 separate statements. A deliberate short is written as a multi-pin terminal
-(`..{R1}` or `[A,K]{D1}`, spec 7.3) and stays quiet.
-
-**W-03 — a capacitor is in series with two non-ground nets**
-Usually a decoupling cap whose second pin went to the wrong net. A capacitor is
-recognised by `@type = capacitor` or by being two-terminal with a farad `#value`.
+(`..{R1}` or `[A,K].{D1}`) and stays quiet.
 
 **W-04 — a `&TYPE=POWER<` pin has no capacitor within two nodes**
-Missing decoupling.
-
-**W-06 — a weak field is never overridden** *(off by default)*
-Enable with `-WW-06`. Asks which of your suggestions nobody took. Off by default
-because a part library declares `@~footprint` weakly on purpose.
+Missing decoupling. A capacitor is recognised by `@type = capacitor` or by
+being two-terminal with a farad `#value`.
 
 **W-07 — two identifiers differ only by `-` versus `_`**
 `SIG-A` and `SIG_A` are two different nets. Almost always meant to be one.
@@ -225,9 +223,6 @@ because a part library declares `@~footprint` weakly on purpose.
 The group is frozen and the router will not permute it. Compatibility is judged
 on directives, not arrows — a ganged swap deliberately pairs inputs with
 outputs.
-
-**W-09 — a `&TYPE=POWER>` net has no consumers**
-A regulator feeding nothing.
 
 ## Connectors and cables
 
@@ -266,9 +261,8 @@ says which net, on which page, and why.
 KiCad resolves `Library:Footprint`, and a bare package name will not place.
 `--footprint-map` or `--footprint-lib` supplies the library.
 
-## One thing the checker cannot see
+## A net driven from the next board
 
-A net whose only driver is on the *next* card in a daisy chain reports **E-02**
-on this one: ERC sees a board, and the driver is not on it. That is honest — the
-board alone does have an undriven input — but a chained design carries
-`-Wno-E-02` or a `&STUB` on its uplink nets.
+A net whose only driver is on the *next* card in a daisy chain arrives through
+a connector. Declare the connector's positions `<>`, which is what they are: a
+bidirectional pin counts as a driver, so E-02 stays quiet with no flag.

@@ -1,0 +1,5 @@
+// Spec 2.3: an identifier shall not end in '-'. A lexical rule, so a syntax
+// error, not the no-driver rule it was once filed under.
+block b {
+    VCC- = GND &TYPE=GROUND;
+};

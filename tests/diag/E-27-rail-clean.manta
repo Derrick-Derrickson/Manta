@@ -1,0 +1,11 @@
+// Spec 5.3: a net declared '&TYPE=POWER' is a supply rail, so its consumers
+// are supplied whether or not a 'POWER>' pin drives it -- a rail that arrives
+// through an inductor, a diode-OR or a connector has no such pin.
+part p { @~footprint = F; 1 : V< &TYPE=POWER; 2 : B &CASUAL; };
+part cap { @~footprint = F; @!type = capacitor; 1 : A &CASUAL; 2 : B &CASUAL; };
+block b {
+    GND &TYPE=GROUND;
+    RAIL &TYPE=POWER;
+    RAIL = V.{U1~p}.B = GND;
+    RAIL = .{C1~cap: .=GND};
+};

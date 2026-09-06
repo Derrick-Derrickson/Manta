@@ -600,22 +600,10 @@ std::uint32_t Elaborator::instantiatePart(const Instance* inst, const PartInfo& 
     FieldEnv env(&callSiteFields);
     for (const FieldDecl* f : part.fields) {
         env.declare(f, interner_, diags_);
-        // Spec 16.2 W-06: a '~'-weak field that is never overridden anywhere in
-        // the design was written as a suggestion nobody took, which usually
-        // means the author expected a call site to supply it.
-        if (f->strength == Strength::Weak && valid(f->name.symbol)) {
-            weakFields_.insert(
-                hashCombine(mix64(raw(f->name.symbol)),
-                            mix64(reinterpret_cast<std::uintptr_t>(f))),
-                WeakField{f->name.symbol, f->ns, f->span, part.decl->name.symbol});
-        }
     }
     for (const Binding* b : inst->bindings) {
         if (b->kind == BindingKind::Field) {
             env.declare(b->field, interner_, diags_);
-            if (valid(b->field->name.symbol)) {
-                overriddenFields_.insert(FieldKey{b->field->name.symbol, b->field->ns});
-            }
         }
     }
 
@@ -2046,6 +2034,7 @@ void Elaborator::buildNets(Design& design) {
         applyDirective(net, d.name, d.value, d.strength, d.at, d.fromClass);
 
         if (d.name == "TYPE" && d.value == "GROUND") net.ground = true;
+        if (d.name == "TYPE" && d.value == "POWER") net.power = true;
         if (d.name == "STUB") net.stub = true;
         if (d.name == "HARNESS") net.harness = true;
     }
@@ -2163,14 +2152,6 @@ Design Elaborator::run(SymbolId topName, Span at) {
     buildNets(design);
     collectBlockInstances(design);
     collectMatchGroups(design);
-
-    for (const auto& [key, w] : weakFields_) {
-        if (overriddenFields_.contains(FieldKey{w.name, w.ns})) continue;
-        diags_.report(DiagId::W06, w.declaredAt,
-                      std::format("{}{}", w.ns == FieldNamespace::System ? "@" : "#",
-                                  interner_.text(w.name)),
-                      interner_.text(w.owner));
-    }
 
     for (const Component& c : design.components) {
         design.elaborationMap.emplace_back(flattenPath(c.path),

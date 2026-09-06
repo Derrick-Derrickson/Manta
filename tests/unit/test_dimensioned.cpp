@@ -168,7 +168,7 @@ TEST_CASE("spec 2.3: identifier rules, including the trailing hyphen") {
     CHECK(isIdentifierLexeme("0603", dash));
 
     CHECK_FALSE(isIdentifierLexeme("VCC-", dash));
-    CHECK(dash);  // this is what raises E-02
+    CHECK(dash);  // this is what the parser reports as a syntax error
 }
 
 TEST_CASE("spec 2.3: classification is whole-lexeme, so part names win") {

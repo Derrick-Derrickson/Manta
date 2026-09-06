@@ -1,6 +1,6 @@
 ---
 name: writing-manta-rules
-description: Write project-specific ERC checks in a .mantaRules file, and decorate a design with the '#' fields they read. Use when asked to check logic-level compatibility, current or power budgets, library policy, or any electrical rule the 47 built-in checks do not cover.
+description: Write project-specific ERC checks in a .mantaRules file, and decorate a design with the '#' fields they read. Use when asked to check logic-level compatibility, current or power budgets, library policy, or any electrical rule the built-in checks do not cover.
 ---
 
 # Writing manta rules

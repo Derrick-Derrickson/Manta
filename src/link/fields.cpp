@@ -144,7 +144,6 @@ void FieldEnv::declare(const FieldDecl* decl, StringInterner& interner, DiagEngi
 
     // Spec 9.2: "The strongest declaration wins."
     if (decl->strength > existing->strength) {
-        existing->overridden = true;
         existing->value = decl->value;
         existing->strength = decl->strength;
         existing->declaredAt = decl->span;
@@ -152,8 +151,7 @@ void FieldEnv::declare(const FieldDecl* decl, StringInterner& interner, DiagEngi
     }
 
     if (decl->strength < existing->strength) {
-        // A weaker declaration is simply ignored, but it still counts as the
-        // stronger one having *been* an override for W-06 purposes.
+        // A weaker declaration is simply ignored.
         return;
     }
 

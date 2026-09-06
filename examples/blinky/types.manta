@@ -1,9 +1,26 @@
+// Types shared by the board: bus and pair harnesses, net classes, and the
+// delay-matching group for the USB pair.
+
 harness i2c-bus {
     SDA<> &TYPE=OPENDRAIN;
     SCL<> &TYPE=OPENDRAIN;
 };
 
+// USB 2.0 full speed: a 90 ohm differential pair, matched within the
+// tolerance the USB specification allows for a device-side trace.
+harness usb2 {
+    D &HARNESS=diff;
+    &!IMP     = 90RD;
+    &MAXDELAY = 600ps;
+};
+
 netclass power {
-    &CURRENT=3A;
-    &!VOLTAGE=60V;
+    &CURRENT  = 1A;
+    &!VOLTAGE = 6V;
+};
+
+match usb-pair {
+    @src       = U2;
+    @dest      = [J1];
+    @tolerance = 100ps;
 };

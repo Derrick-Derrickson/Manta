@@ -1,6 +1,0 @@
-part p { @~footprint = F; #~note = x; 1 : A &CASUAL; 2 : B &CASUAL; };
-block b {
-    GND &TYPE=GROUND;
-    X = .{R1~p}. = GND;
-    X = Y;
-};

@@ -2,72 +2,85 @@
 
 ## `blinky`
 
-A complete, working board: USB-C in, a 3V3 regulator, an eight-pin
-microcontroller, an I²C bus and two LEDs driven through a replicated block.
+A complete, working board: USB-C in, a 3V3 LDO, an STM32F042 with USB and
+I²C, two indicator LEDs through a replicated block, a bicolour status LED,
+two option switches, a VBUS sense divider and an SWD header. Three looms plug
+into it.
 
-It exists to be *correct*. The specification's own worked example is an excerpt
-— several of its nets are genuinely undriven, and it does not pass ERC — so it
-demonstrates syntax but cannot demonstrate a clean build. This one passes
-everything with nothing to report:
+It exists to be *correct*. The specification's own worked example is an
+excerpt — several of its nets are genuinely undriven, and it does not pass
+ERC — so it demonstrates syntax but cannot demonstrate a clean build. This one
+passes everything with nothing to report:
 
 ```sh
 manta fmt --check examples/blinky/*.manta
 manta compile -o build/ examples/blinky/*.manta
-manta check --top blinky -L build/ -Werror
-manta link  --top blinky -L build/ --bom build/bom.csv -o build/blinky.mantaNets
+manta check --top blinky -L build/ --rules examples/blinky/blinky.mantaRules -Werror
+manta link  --top blinky -L build/ --rules examples/blinky/blinky.mantaRules \
+            -Werror --assembly --bom build/bom.csv -o build/blinky.mantaNets
 manta export --format kicad --footprint-map examples/blinky/blinky.fpmap \
              -Werror -o build/blinky.net build/blinky.mantaNets
+manta render -Werror -o build/blinky.html build/blinky.mantaNets
 ```
 
-The lead is a separate thing to build, and links on its own:
+`--assembly` writes each mated loom's netlist and BOM beside the board's
+without merging them; a loom also links on its own with `--top usb-c-1m`.
+`blinky.fpmap` turns a package name into one KiCad can resolve, and under
+`-Werror` an unmapped footprint fails the export rather than producing a
+netlist Pcbnew will refuse to place.
 
-```sh
-manta link --top usb-c-1m -L build/ -Werror --bom build/lead.csv \
-           -o build/lead.mantaNets
-```
+No `--no-erc`, no `-Wno-`, and `-Werror` throughout. `tests/example.cmake`
+runs exactly that sequence, which makes this the other half of the
+conformance argument: the fixtures in `tests/diag` prove each diagnostic
+fires on a design that earns it, and this proves none of them fires on a
+design that does not.
 
-`--assembly` on the board does both at once, writing the lead's netlist and BOM
-beside the board's without ever merging them:
-
-```sh
-manta link --top blinky -L build/ --rules examples/blinky/blinky.mantaRules \
-           -Werror --assembly --bom build/bom.csv -o build/blinky.mantaNets
-```
-
-`blinky.fpmap` is what turns a package name into one KiCad can resolve:
-`@~footprint = R-0603` says what the part is, and the map says that KiCad calls
-it `Resistor_SMD:R_0603_1608Metric`. Keeping the two apart is what lets the same
-part library export to Altium, OrCAD and Allegro as well. Under `-Werror` an
-unmapped footprint fails the export rather than producing a netlist Pcbnew will
-refuse to place.
-
-No `--no-erc`, no `-Wno-`, and `-Werror` throughout. `tests/example.cmake` runs
-exactly that sequence, which makes this the other half of the conformance
-argument: the fixtures in `tests/diag` prove each diagnostic fires on a design
-that earns it, and this proves none of them fires on a design that does not.
-
-It is also written to exercise the language rather than to be minimal, so it
-doubles as a tour:
+It is written in the house style the bundled skills teach — passive networks
+as chains, large ICs and connectors as binding blocks, comments about the
+circuit — and it is written to exercise the language rather than to be
+minimal, so it doubles as a tour:
 
 | Construct | Where |
 |---|---|
-| A reusable block with a weak parameter | `block indicator`, `#~series-r` |
-| Substitution inside a part name | `R-$"series-r"$kR-0603` |
-| Replication driven by bus width | `LED-DRIVE[0:1] = [[ … ]]` |
-| A shunt continued past with `==` | the decoupling capacitors |
-| Default nets from the part | the MCU's `VCC` and `GND`, never bound |
-| A declared ground, and globals | `GND &TYPE=GROUND;`, `3V3>>` |
-| An open-drain bus as a harness | `i2c &HARNESS=i2c-bus;` |
-| A swap group | the connector's `CC1`/`CC2` |
-| A deliberate single reference | `TP1 = U2.MISO &STUB;` |
-| An unconnected pin, deliberately | the regulator's `NC=?` |
-| Net class and per-net directives | `3V3 &CLASS=power`, `&CURRENT=600mA` |
-| A connector that says what plugs in | `CONN-USB-C`, `@type = boardconnector`, `@~mate` |
-| A cable, with wires and crimps | `cable usb-c-1m` |
-| A wire's cross-section as an area | `#csa = 205000um2` |
-| Project rules over `@type` | `every-connector-is-mated`, `conductors-are-thick-enough` |
+| Parts with datasheet excerpts after `---` | `ldo.manta`, `mcu.manta`, `esd.manta` |
+| A `static` part private to one file | `TESTPOINT` in `board.manta` |
+| `@VERSION`, `@FLATFORMAT`, `@bom`, `@fitted` by substitution | `indicator`, `TESTPOINT`, `J3` |
+| Global field import and export | `>#author`, `#!>board-rev` |
+| Two declared grounds, tied through a parallel group | `AGND = (.{R9~R-0R-0603}.)|2 = GND` |
+| List-form global export | `[3V3, GND]>>` |
+| `=`, `==`, `^`, `=*`, `*=` | the LDO chain, the DIP switch, the PWM summer, `CFG-PULL` |
+| Named, casual and pin-range terminals | `A.{D1}.K`, `.{R1}.`, `A[0:1].{D3}.K` |
+| Multi-unit references | `{U3}` on the second USB line, `{SW1}` on the second pole |
+| Series, parallel and hanging multiplicity | `+2` divider, `|2` ground tie, `*2` bypasses |
+| Per-copy values | `.=%[GND,AGND]` |
+| Replication, inferred and with stated widths | `[[ ]]` on the drives, `[2[ ]1]` on the bicolour LED |
+| Range designators | `R%[6:7]`, `C%[4:5]`, `BLK%[1:2]` |
+| A block with a weak parameter and substitution | `indicator`, `R-$"series-r"$kR-0603` |
+| Chain bindings at a pin | `.EN = VBUS`, and the idioms in the skills |
+| Deliberately unbound and DNP | `.NC = ?`, `{!R5~R-0R-0603}` |
+| A second source at the call site | `#!mpn` on `R8` |
+| Pin fields for the project rules | `#VOH #VOL #VIH #VIL`, `#SUPPLY`, `#DRAW` |
+| Harness types, `diff`, harness-carried directives | `usb2`, `i2c-bus`, `USB &HARNESS=usb2` |
+| Harness member list in a part, whole-harness binding, implied harness | `USB.[+,-]`, `.USB = USB`, `swd.IO` |
+| Delay matching with a member override | `match usb-pair`, `@!tolerance` |
+| Net directives at three strengths | `&!VOLTAGE`, `&~LAYER`, `&SHIELD`, `&PEAK`, `&CLASS`, `&RAIL`, `&RENDER`, `&STUB` |
+| Pin directives | `&SWAP=cc`, `&~PINDELAY`, `&TYPE=NC`, `&CASUAL` |
+| Instance directive | `&EDGE` on every connector |
+| Render sections | the `--- TITLE` rooms |
+| Connectors that say what plugs in, with a mirrored map | `@~mate`, `@mates`, `@map = [[1:5, 5:1]]` |
+| Cables with wires and crimps, and a wire's cross-section | `leads.manta`, `#csa` |
+| Project rules over `@type` and `#` fields | `blinky.mantaRules` |
+
+Two constructs are deliberately absent. `extern` names an instance declared
+in another object, and a design with one top block has no such instance.
+`&TYPE=POWER` on a net declares a rail with no sourcing pin, such as a buck
+inductor's output or a diode-OR, and every rail here is fed by one.
 
 Designators are already assigned, so the un-annotated check passes. The two
 block instances each carry their own `R1` and `D1` — a designator is annotated
-in the scope where it is written, and export flattens the path to `BLK1_R1` and
-`BLK2_R1`.
+in the scope where it is written, and export flattens the path to `BLK1_R1`
+and `BLK2_R1`.
+
+The datasheet excerpts in the part files were written for the example and
+should be checked against the manufacturers' documents before the parts are
+reused on a real board.

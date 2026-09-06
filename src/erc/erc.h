@@ -30,12 +30,12 @@ private:
     void checkGroundDeclared();   // E-24
     void checkNotConnected();     // E-25
     void checkSingleReference();  // E-26, E-33
-    void checkPower();            // E-27, E-28, W-09
+    void checkPower();            // E-27, E-28
 
     // Section 16.2 -- warnings.
     void checkUnusedPins();       // W-01
     void checkShortedDevices();   // W-02
-    void checkCapacitors();       // W-03, W-04
+    void checkCapacitors();       // W-04
     void checkSimilarNames();     // W-07
     void checkSwapGroups();       // W-08
 
@@ -44,7 +44,7 @@ private:
     void markDnpIsolated();
 
     // See docs/assumptions.md: the specification never defines how a capacitor
-    // is recognised, and W-03 and W-04 both need to.
+    // is recognised, and W-04 needs to.
     [[nodiscard]] bool isCapacitor(const Component& c) const;
 
     [[nodiscard]] std::string_view nameOf(const Component& c) const;

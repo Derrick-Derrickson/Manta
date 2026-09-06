@@ -164,7 +164,7 @@ silently producing watts.
 | On | Available |
 |---|---|
 | a pin | `direction`, `type`, `name`, `physical`, `component`, `part`, and its `#` fields |
-| a net | `name`, `ground`, `global`, `direction`, `pins`, and its directives |
+| a net | `name`, `ground`, `power`, `global`, `direction`, `pins`, and its directives |
 | a component | `designator`, `part`, `name`, `footprint`, `fitted`, `bom`, `type`, `mate`, `pins`, and its `#` fields |
 
 A bare word that is not a binding and not a property stands for itself, which is

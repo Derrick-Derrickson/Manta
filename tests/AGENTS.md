@@ -20,9 +20,10 @@ second fixture and pass it: `expectFires("E-30", {"E-30b"})`.
 The common mistake is a fixture that passes for the wrong reason, or one that
 cannot fire at all. Three that bit during development:
 
-- **W-03** (capacitor in series between two non-ground nets) first used `==` on
-  both sides of the pull-down resistors, which shorted both cap nets to ground —
-  so both *were* ground and the rule correctly stayed quiet. Fixed by using `=`.
+- A ground-relative rule (W-04 was one) first used `==` on both sides of a
+  pull-down resistor, which shorted the nets it meant to keep apart onto ground
+  — so the rule correctly stayed quiet. Check what a fixture's connectors do
+  before trusting that it exercises the rule.
 - **E-05** (replication width not divisible by unit arity) first used a *counted*
   replication, whose width comes from the brackets and always divides. It needs
   an inferred `[[ ]]` with a two-in unit and a three-wide bus.

@@ -140,6 +140,7 @@ struct Net {
     // order, so the emitted netlist is stable.
     FlatMap<std::string, NetDirective> directives;
     bool ground = false;
+    bool power = false;   // declared a supply rail with '&TYPE=POWER' (spec 5.3)
     bool stub = false;
     bool global = false;
     // Carries '&HARNESS': the identifier names a bundle type (spec 12.1), not

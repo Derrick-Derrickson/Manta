@@ -1,0 +1,70 @@
+part LDO-3V3 {
+    @~footprint    = SOT-23-5;
+    #value         = AP2112K-3.3;
+    @!type         = regulator;
+    #~mpn          = "AP2112K-3.3TRG1";
+    #!manufacturer = "Diodes Incorporated";
+
+    1 : VIN<  &TYPE=POWER;
+    2 : GND<  &TYPE=POWER;
+    3 : EN<   #VIH=1V4 #VIL=0V4;
+    4 : NC    &TYPE=NC;
+    5 : VOUT> &TYPE=POWER #SUPPLY=600mA;
+};
+
+---
+
+# AP2112K-3.3
+
+**Source:** Diodes Incorporated, AP2112 datasheet, document DS31563.
+SOT-25 (SOT-23-5) package, fixed 3.3 V output, 600 mA CMOS LDO with enable.
+
+## Pins
+
+| Pin | Name | Function |
+|---|---|---|
+| 1 | VIN | Input supply |
+| 2 | GND | Ground |
+| 3 | EN | Enable, active high. Do not leave floating |
+| 4 | NC | No connection |
+| 5 | VOUT | Regulated output |
+
+## Absolute maximum ratings
+
+| Parameter | Value |
+|---|---|
+| VIN | −0.3 to 7 V |
+| EN | −0.3 to VIN + 0.3 V |
+| Output current | internally limited |
+| Junction temperature | 150 °C |
+| Storage temperature | −65 to +150 °C |
+
+## Recommended operating conditions
+
+| Parameter | Min | Max |
+|---|---|---|
+| Input voltage | 2.5 V | 6 V |
+| Ambient temperature | −40 °C | +85 °C |
+
+## Electrical characteristics (TA = 25 °C, VIN = VOUT + 1 V, unless noted)
+
+| Parameter | Condition | Min | Typ | Max | Unit |
+|---|---|---|---|---|---|
+| Output voltage accuracy | IOUT = 1 mA | −1.5 | | +1.5 | % |
+| Output current | | 600 | | | mA |
+| Dropout voltage | IOUT = 600 mA | | 250 | | mV |
+| Quiescent current | IOUT = 0, EN high | | 55 | | µA |
+| Shutdown current | EN low | | 0.01 | 1 | µA |
+| EN input high | | 1.4 | | | V |
+| EN input low | | | | 0.4 | V |
+
+## Application
+
+Stable with a 1 µF ceramic capacitor on the output; the datasheet's typical
+application uses 1 µF at VIN and 1 µF at VOUT, placed close to the pins. EN
+may be tied to VIN for always-on operation.
+
+## Package
+
+SOT-25, 2.9 × 1.6 mm body, 0.95 mm pitch. Pin 1 is at the marked corner;
+pins 1–3 on one side, 4–5 on the other.

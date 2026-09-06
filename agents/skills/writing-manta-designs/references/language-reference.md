@@ -103,9 +103,9 @@ is a chain, exactly as a block's is, and it may hold only a cable connector, a
 wire or a crimp.
 
 ```
-part JST-8-PLUG  { @type = cableconnector; @mates = BACKPLANE-OUT; [1:8] = P[1:8]<>; };
-part JST-8-CRIMP { @type = crimp;  1 = A &CASUAL; 2 = B &CASUAL; };
-part WIRE-22AWG  { @type = wire; #csa = 1mm2; 1 = A &CASUAL; 2 = B &CASUAL; };
+part JST-8-PLUG  { @type = cableconnector; @mates = BACKPLANE-OUT; [1:8] : P[1:8]<>; };
+part JST-8-CRIMP { @type = crimp;  1 : A &CASUAL; 2 : B &CASUAL; };
+part WIRE-22AWG  { @type = wire; #csa = 1mm2; 1 : A &CASUAL; 2 : B &CASUAL; };
 
 cable jumper-8way {
     {J1~JST-8-PLUG}.P[1:8]
@@ -126,15 +126,17 @@ whose elements may be ranges, and a range may descend:
 
 ```
 @map = [[2,3],[3,2]];      // a null modem
-@map = [[1:20],[20:1]];    // a reversed ribbon
+@map = [[1:20, 20:1]];      // a reversed ribbon
 ```
 
 ## Pins
 
+A pin line is `physical : logical arrow directives fields;`.
+
 ```
 part cool-mcu {
-    1:       VCC<        &TYPE=POWER &~NET=3V3;
-    2:       GND<        &TYPE=POWER &~NET=GND;
+    1:       VCC<        &TYPE=POWER;
+    2:       GND<        &TYPE=POWER;
     [3:11]:  GPIO[1:9]<> &SWAP=gpio-bank;
     [12:13]: USB.[+,-]<>;
     16:      NC          &TYPE=NC;
@@ -148,12 +150,13 @@ are orthogonal:
 |---|---|
 | omitted, no arrow | `PASSIVE` — claims nothing, skipped by drive checks |
 | omitted, arrow present | `SIGNAL` |
-| `POWER` | on a power net; `>` provides, `<` consumes |
+| `POWER` | on a power net; `>` provides, `<` and `<>` consume |
 | `OPENDRAIN` | many drivers permitted |
 | `NC` | shall not be connected |
 
-`&NET` names the net a pin joins when nothing binds it — declare it weak.
-`&NET=?` unbinds: no net is created, so no `&STUB` is needed.
+A part never names a net: `&NET` in a pin declaration is E-50. Where a pin
+connects is bound at the instance (`.VCC = 3V3;`). `.PIN = ?` unbinds a pin
+there: no net is created, so no `&STUB` is needed.
 
 `&CASUAL` makes a pin eligible for the `.` terminal and puts it in a weak
 implicit swap group, scoped per declaration line.
@@ -167,8 +170,8 @@ implicit swap group, scoped per declaration line.
 | `<>SIG` / `SIG<>` | bidirectional |
 | `>>VIN` / `3V3>>` | global, design-wide |
 
-The formatter emits leading `>` at the start of a statement, trailing `>` at the
-end, and `pin=NET>` in a binding.
+Canonical form is a leading `>` at the start of a statement, a trailing `>`
+at the end, and `.pin = NET>` in a binding.
 
 ## Directives
 
@@ -183,7 +186,8 @@ a name -- the bootstrap cap visibly hanging off its switching node.
 `&RENDER=LABEL` is the opposite: always a name, never a routed tree. Values
 are upper case (`&RENDER=wire` is E-34); a WIRE net the renderer cannot draw
 falls back to names with warning W-RENDER.
-Pin: `&TYPE` `&NET` `&PINDELAY` `&CASUAL` `&SWAP`.
+Pin: `&TYPE` `&PINDELAY` `&CASUAL` `&SWAP`; at an instance also `&NET=?`.
+Instance: `&EDGE`.
 Harness: `&HARNESS`.
 
 `&CASUAL` and `&STUB` take no value; everything else requires one.

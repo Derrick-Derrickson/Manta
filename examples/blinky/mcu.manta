@@ -1,0 +1,106 @@
+// Pins are named as the datasheet names them; a pin's alternate functions
+// are noted on its line and which one a board uses is the board's decision.
+part MCU-STM32F042 {
+    @VERSION       = 2.0+;
+    @~footprint    = TSSOP-20;
+    #value         = STM32F042F6P6;
+    @!type         = mcu;
+    #~mpn          = "STM32F042F6P6";
+    #!manufacturer = "STMicroelectronics";
+    >#~source      = digikey;
+
+    1       : BOOT0<;
+    2       : PF0<>;                    // I2C1_SDA (AF1), OSC_IN
+    3       : PF1<>;                    // I2C1_SCL (AF1), OSC_OUT
+    4       : NRST<;                    // internal 40k pull-up, filtered
+    5       : VDDA<  &TYPE=POWER;
+    [6:13]  : PA[0:7]<> #VOH=2V9 #VOL=0V4 #VIH=2V31 #VIL=0V99;   // ADC_IN0..7
+    14      : PB1<>  #VOH=2V9 #VOL=0V4 #VIH=2V31 #VIL=0V99;
+    15      : VSS<   &TYPE=POWER;
+    16      : VDD<   &TYPE=POWER;
+    [17:18] : PA[9:10]<> &~PINDELAY=8ps;  // USB_DM/USB_DP with PA11_PA12_RMP set
+    [19:20] : PA[13:14]<>;              // SWDIO, SWCLK after reset
+};
+
+---
+
+# STM32F042F6P6
+
+**Source:** STMicroelectronics, STM32F042x4/x6 datasheet, DS10696 rev 6.
+TSSOP-20 package, 32 KB flash, 6 KB SRAM, Arm Cortex-M0 at 48 MHz, USB 2.0
+full-speed device with crystal-less clock recovery.
+
+## Pins (TSSOP-20)
+
+| Pin | Name | Function |
+|---|---|---|
+| 1 | BOOT0 | Boot mode select, sampled at reset |
+| 2 | PF0-OSC_IN | GPIO; I2C1_SDA (AF1); HSE crystal input |
+| 3 | PF1-OSC_OUT | GPIO; I2C1_SCL (AF1); HSE crystal output |
+| 4 | NRST | Reset, active low, internal pull-up |
+| 5 | VDDA | Analog supply for ADC, reset block and oscillators |
+| 6–13 | PA0–PA7 | GPIO; ADC_IN0–ADC_IN7; timers, SPI1, USART1/2 alternates |
+| 14 | PB1 | GPIO; ADC_IN9; TIM3_CH4, TIM14_CH1 |
+| 15 | VSS | Ground |
+| 16 | VDD | Digital supply |
+| 17 | PA9 | GPIO; USART1_TX, I2C1_SCL (AF4); USB_DM when PA11_PA12_RMP is set |
+| 18 | PA10 | GPIO; USART1_RX, I2C1_SDA (AF4); USB_DP when PA11_PA12_RMP is set |
+| 19 | PA13 | SWDIO after reset; GPIO |
+| 20 | PA14 | SWCLK after reset; GPIO |
+
+On the 20-pin package PA11 and PA12 are not bonded out; the USB data pins are
+brought to PA9 and PA10 by the SYSCFG_CFGR1 PA11_PA12_RMP bit.
+
+## Absolute maximum ratings
+
+| Parameter | Min | Max | Unit |
+|---|---|---|---|
+| VDD, VDDA | −0.3 | 4.0 | V |
+| Input voltage on 5 V tolerant pins | −0.3 | VDD + 4.0 (≤ 5.5) | V |
+| Input voltage on other pins | −0.3 | VDD + 0.3 | V |
+| Output current sunk or sourced, any pin | | 25 | mA |
+| Total current through VDD or VSS | | 120 | mA |
+| Storage temperature | −65 | +150 | °C |
+| ESD, human body model | | 2 | kV |
+
+## Recommended operating conditions
+
+| Parameter | Min | Typ | Max | Unit |
+|---|---|---|---|---|
+| VDD | 2.0 | 3.3 | 3.6 | V |
+| VDDA (must be ≥ VDD) | 2.0 | 3.3 | 3.6 | V |
+| Ambient temperature, suffix 6 | −40 | | +85 | °C |
+| HCLK | | | 48 | MHz |
+
+## Electrical characteristics (VDD = 3.3 V, TA = 25 °C, unless noted)
+
+| Parameter | Condition | Min | Typ | Max | Unit |
+|---|---|---|---|---|---|
+| VIL, any I/O | | | | 0.3 × VDD | V |
+| VIH, any I/O | | 0.7 × VDD | | | V |
+| VOL | IOL = 8 mA | | | 0.4 | V |
+| VOH | IOH = 8 mA | VDD − 0.4 | | | V |
+| Weak pull-up / pull-down | | 25 | 40 | 55 | kΩ |
+| Run current, 48 MHz from HSI48 | peripherals off | | 10 | | mA |
+| Stop current | | | 4 | | µA |
+| POR / PDR threshold | rising / falling | 1.80 | 1.88 | 1.96 | V |
+| HSI48 accuracy | with CRS locked to USB SOF | | ±0.2 | | % |
+| ADC resolution | | | 12 | | bit |
+| ADC input range | | 0 | | VDDA | V |
+
+## Application
+
+- One 100 nF ceramic at VDD and one at VDDA, close to the pins; the reference
+  design adds 4.7 µF bulk on VDD.
+- NRST has an internal pull-up; the reference design adds 100 nF to ground
+  at the pin.
+- BOOT0 is read at reset: low boots user flash, high boots the system
+  bootloader (USART, I2C, USB DFU). Hold it with a resistor, never floating.
+- USB needs no crystal: HSI48 with the clock recovery system trimmed from
+  USB start-of-frame meets the USB tolerance. The pull-up on D+ is internal.
+- Unused I/O may be left unconnected if configured as analog by firmware.
+
+## Package
+
+TSSOP-20, 4.4 × 6.5 mm body, 0.65 mm pitch. Pin 1 is at the marked corner
+and numbering runs counter-clockwise, 1–10 down one side, 11–20 up the other.

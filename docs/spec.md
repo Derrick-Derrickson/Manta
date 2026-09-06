@@ -1,10 +1,10 @@
 # The Manta Schematic Definition Language
 
-**Specification, revision 1.7**
+**Specification, revision 2.0**
 
 > **Corrected against a reference implementation.**
 >
-> **1.7 keeps net names out of part declarations.** A part declares its
+> **2.0 keeps net names out of part declarations.** A part declares its
 > pins; where they connect is the design's decision. The weak default net —
 > `&~NET=GND` on a pin declaration, silently joining every unbound instance
 > pin to a named net — is removed: `&NET` in a pin declaration is now error
@@ -79,11 +79,18 @@
 > **1.1 added one construct**: the end-of-content marker of §2.8, which lets a
 > file carry documentation after its declarations.
 >
-> Each revision is a superset of the one before. A 1.0 source is a valid 1.5
-> source, and a toolchain reads any object whose revision is no newer than its
-> own. Every form a revision adds was an error before it — a syntax error for
-> 1.4's chain bindings, error E-13 for 1.5's directives — so no construct that
-> compiled under an earlier revision has changed meaning.
+> Revisions 1.0 to 1.5 were each a superset of the one before: every form a
+> revision added was an error before it — a syntax error for 1.4's chain
+> bindings, error E-13 for 1.5's directives — so no construct that compiled
+> under an earlier revision changed meaning. Revision 1.6 broke that promise,
+> by giving `=` and `==` their forced meanings and retiring the exit-terminal
+> and `=`-mapped pin forms, and 2.0 breaks it again by removing `&NET` from
+> pin declarations. That is why the number is 2.0 and not 1.7: a 1.5 source
+> is not a 2.0 source, and the major version says so. What still holds is
+> object compatibility — a toolchain reads any object whose revision is no
+> newer than its own — and the migration for each break is mechanical and
+> described at the head of this document. From 2.0 on, a minor revision is
+> once again additive.
 >
 > The remaining changes are editorial.
 >
@@ -176,7 +183,7 @@ PWR-EN                  // legal
 SW-NODE                 // legal
 -5V                     // legal: a negative rail
 I2C-SDA                 // legal
-VCC-                    // ERROR E-02
+VCC-                    // ERROR: a syntax error
 ```
 
 A leading `-` is resolved by grammatical position. In a net position a token beginning
@@ -706,6 +713,25 @@ AGND &TYPE=GROUND;
 
 A ground net is exempt from the supply check (§16.1, E-27). A design that declares no
 ground net is error **E-24**.
+
+#### Rails
+
+A net carrying `&TYPE=POWER` is a supply rail. Most rails need no declaration: the
+`POWER>` pin of the regulator or connector that feeds them is the source the supply check
+looks for (§11.6). A rail that arrives some other way — through an inductor from a
+switching node, through a diode-OR, or from whichever of several connectors has a supply
+plugged in — has no such pin, and the declaration is how the design says the rail is
+sourced all the same.
+
+```
+5V   &TYPE=POWER &CLASS=logic;      // the buck inductor's output
+VPOS &TYPE=POWER;                   // fed from any of four edge connectors
+```
+
+A declared rail satisfies **E-27** for every `POWER<` and `POWER<>` pin on it, whether
+or not a `POWER>` pin is present. Everything else still applies: two `POWER>` pins on it
+are **E-28**, and each consumer still wants its decoupling (**W-04**). The declaration
+is a claim about the net, not a pin, so a part library never makes it.
 
 Two grounds are tied through an ordinary chain:
 
@@ -1487,7 +1513,7 @@ scope unit, reflowing a statement across lines never changes its constraints.
 | `&MATCH` | group, or group with overrides | Delay-matching membership (§11.4). |
 | `&LAYER` | identifier | Preferred or required layer. |
 | `&SHIELD` | net name | Net that shall shield this one. |
-| `&TYPE` | `GROUND` | Marks a ground net (§5.3). |
+| `&TYPE` | `GROUND` or `POWER` | Marks a ground net or a supply rail (§5.3). |
 | `&STUB` | *(none)* | This net is deliberately referenced once (§11.8). |
 | `&RAIL` | *(none)* | Marks a power rail for rendering, whatever the net's name or class. |
 | `&RENDER` | `WIRE` or `LABEL` | How the renderer connects this net's pins (below). |
@@ -1618,7 +1644,7 @@ are orthogonal and combine freely.
 |---|---|
 | *(omitted, no arrow)* | `PASSIVE`. Claims nothing; skipped by drive checks. |
 | *(omitted, arrow present)* | `SIGNAL`. |
-| `POWER` | Sits on a power net. `>` provides the rail, `<` consumes it. |
+| `POWER` | Sits on a power net. `>` provides the rail; `<` and `<>` consume it. |
 | `OPENDRAIN` | Many drivers permitted on one net. |
 | `NC` | Shall not be connected. Weakly implies `&STUB`. |
 
@@ -1640,17 +1666,20 @@ part resistor-0603 {
 A pin that can release a bus is `<>`; there is no separate tri-state type. E-01 fires only
 on multiple `>` pins.
 
-Marking a pin `POWER` brings three checks with it, requiring no annotation in any design
-that uses the part: a net with `POWER<` pins and no `POWER>` source is error **E-27**; two
-`POWER>` pins on one net is error **E-28**; and a `POWER>` net with no consumers is warning
-**W-09**. A ground net (§5.3) is exempt from E-27.
+Marking a pin `POWER` brings the supply checks with it, requiring no annotation in any
+design that uses the part: a net with `POWER<` or `POWER<>` pins and no `POWER>` source
+is error **E-27**, and two `POWER>` pins on one net is error **E-28**. A ground net is
+exempt from E-27, and so is a net declared a rail with `&TYPE=POWER` (§5.3). A
+bidirectional supply pin — a battery terminal, an OTG port's VBUS — consumes and never
+sources: it counts toward E-27 and W-04 as a consumer and never as the `POWER>` that
+satisfies them.
 
 An arrow and a conflicting `&TYPE` are caught by **E-12**.
 
 #### No default nets
 
 A part declares its pins; where they connect is the design's decision. A pin declaration
-that names a net — `&NET`, at any strength — is error **E-50**. (Revisions before 1.7
+that names a net — `&NET`, at any strength — is error **E-50**. (Revisions before 2.0
 accepted `&~NET=GND` as a weak default and silently joined every unbound instance pin to
 that net: connectivity the source never showed, coupled to one spelling of a rail name.)
 The connection is written where it acts instead — a binding at the instance.
@@ -1940,7 +1969,7 @@ reversed ribbon is written.
 
 ```
 @map = [[2,3],[3,2],[7,8],[8,7]];    // a null modem
-@map = [[1:20],[20:1]];              // a reversed ribbon
+@map = [[1:20, 20:1]];                // a reversed ribbon
 ```
 
 ### 12A.3 What is checked
@@ -2526,7 +2555,7 @@ from mistakes.
 | Code | Rule |
 |---|---|
 | E-01 | Two or more `>` pins drive one net, with no open-drain or bus declaration. |
-| E-02 | A net has an input and nothing that can drive it — no `>` or `<>` pin, no supply, no passive. Also: an identifier ends in `-`. |
+| E-02 | A net has an input and nothing that can drive it — no `>` or `<>` pin, no supply, no passive. |
 | E-04 | Array/scalar width mismatch without `=*` or `*=`. |
 | E-05 | Replication width not divisible by unit arity. |
 | E-06 | `[N[ ]M]` widths disagree with unit arity. |
@@ -2547,7 +2576,7 @@ from mistakes.
 | E-24 | The design declares no `&TYPE=GROUND` net. |
 | E-25 | A pin marked `&TYPE=NC` is connected. |
 | E-26 | A net is referenced exactly once and does not carry `&STUB`. |
-| E-27 | A power net has `&TYPE=POWER<` pins and no `&TYPE=POWER>` source. |
+| E-27 | A net has `&TYPE=POWER<` or `POWER<>` pins, no `&TYPE=POWER>` source, and is neither a ground nor a declared rail (§5.3). |
 | E-28 | Two `&TYPE=POWER>` pins on one net. |
 | E-29 | Substitution of an undefined field. |
 | E-30 | A name is declared in more than one object. |
@@ -2603,28 +2632,30 @@ component exported as `BLK?7_R1` is no more shippable than a bare `?`.
 |---|---|
 | W-01 | A declared part has pins appearing in no chain and no binding. Catches unused sections of a multi-unit package. |
 | W-02 | Both pads of a two-terminal device land on one net without a multi-pin terminal saying so. |
-| W-03 | A capacitor is in series with two non-ground nets. |
 | W-04 | A `&TYPE=POWER<` pin has no capacitor on its net within two nodes. |
-| W-06 | A `~`-weak field is never overridden anywhere in the design. |
 | W-07 | Two identifiers in one design differ only by `-` versus `_`. |
 | W-08 | A swap group's members carry incompatible directives, so the group is frozen. |
-| W-09 | A `&TYPE=POWER>` net has no consumers. |
 | W-TYPE | A `@type` value is not a structural role but is within one edit of one (§9.7). |
 | W-FOOTPRINT | A footprint reaches a layout tool with no library nickname. Export only. |
 
-Every warning above is enabled by default except **W-06**, which is enabled with
-`-WW-06` or `-Wweak-never-overridden`. A part library declares `@~footprint`
-weakly on purpose — §9.2 makes a weak field "a suggestion", not an omission — so
-on by default it would fire on every part in §20.1 and §20.2 and bury the
-findings that matter. `-W<name>` in §15.5 exists for exactly this.
+Every warning above is enabled by default; `-Wno-<name>` in §15.5 silences one
+and `-W<name>` re-enables it.
 
-W-03 and W-04 both require recognising a capacitor, which is not a language
-construct: parts are opaque and nothing marks one as capacitive. An
-implementation shall document how it identifies one. The reference
-implementation treats a part as a capacitor when it carries `@type = capacitor`
-— the convention §9.7 establishes — or when
-it is two-terminal with a `#value` dimensioned in farads. Neither warning fires
-on a part it cannot classify.
+W-04 requires recognising a capacitor, which is not a language construct:
+parts are opaque and nothing marks one as capacitive. An implementation shall
+document how it identifies one. The reference implementation treats a part as
+a capacitor when it carries `@type = capacitor` — the convention §9.7
+establishes — or when it is two-terminal with a `#value` dimensioned in
+farads. The warning never fires on a part it cannot classify.
+
+*(Revision note: 1.x carried three warnings that 2.0 removes, and their
+numbers are retired rather than reused. W-03, "a capacitor is in series with
+two non-ground nets", described every AC-coupling capacitor, bootstrap
+capacitor, snubber and differential filter on a board. W-06, "a weak field is
+never overridden", reported a default nobody changed, which is the normal
+case; it was already off by default. W-09, "a `POWER>` net has no consumers",
+counted only `POWER<` pins, so a rail feeding a regulator input, a diode-OR
+or passives read as unused. E-26 already catches a rail that goes nowhere.)*
 
 ### 16.3 Do-not-populate interaction
 

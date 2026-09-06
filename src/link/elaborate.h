@@ -117,7 +117,7 @@ private:
         Bundle exit;
         bool hasEntry = false;
         bool hasExit = false;
-        std::int32_t component = -1;  // for W-02 and W-03
+        std::int32_t component = -1;  // for W-02
         Span span;
     };
 
@@ -302,18 +302,6 @@ private:
     // Identifiers assigned the built-in 'diff' type (spec 12.4), so that a
     // single-ended '&IMP' on one can be caught as E-14.
     FlatSet<SymbolId> diffHarnesses_;
-
-    // Weak field declarations and the set of names anything overrode, for W-06.
-    // The check is design-wide, so it can only be settled once every
-    // instantiation has been walked.
-    struct WeakField {
-        SymbolId name = SymbolId::kInvalid;
-        FieldNamespace ns = FieldNamespace::User;
-        Span declaredAt;
-        SymbolId owner = SymbolId::kInvalid;
-    };
-    FlatMap<std::uint64_t, WeakField> weakFields_;
-    FlatSet<FieldKey> overriddenFields_;
 
     // Diagnostics that ERC needs but only elaboration can see.
     friend class ErcChecker;

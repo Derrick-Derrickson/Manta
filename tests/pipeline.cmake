@@ -516,7 +516,7 @@ endif()
 # quieted as the bad-* fixtures already do: U2's TX and J1's outbound TXD pin
 # are one net -- the card re-declares the signal's direction at its boundary,
 # which the on-board driver count reads as a second driver.
-set(QUIET -Wno-W-04 -Wno-W-09 -Wno-E-01 -Wno-E-02)
+set(QUIET -Wno-W-04 -Wno-E-01 -Wno-E-02)
 run_manta(link --top sensor-card -L "${WORK}/cable" ${QUIET} -o "${WORK}/card.mantaNets")
 
 # '--assembly' writes the loom beside the board and never merges the two.
@@ -544,7 +544,7 @@ function(expect_mating_error name top code)
                             "${CABLEDIR}/bad-${name}.manta" "${CABLEDIR}/loom.manta"
                     OUTPUT_QUIET ERROR_QUIET)
     execute_process(COMMAND "${MANTA}" link --top ${top} -L "${WORK}/bad-${name}"
-                            -Wno-W-01 -Wno-W-04 -Wno-W-09 -Wno-E-01 -Wno-E-02
+                            -Wno-W-01 -Wno-W-04 -Wno-E-01 -Wno-E-02
                             -Wno-E-24 -Wno-E-27 -Wno-E-28 -o "${WORK}/bad-${name}.mantaNets"
                     ERROR_VARIABLE err RESULT_VARIABLE code_out)
     if(code_out EQUAL 0)

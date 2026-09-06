@@ -1,105 +1,175 @@
-// blinky -- a complete, ERC-clean board.
+// blinky -- a USB-powered indicator board.
 //
-// USB-C in, a 3V3 regulator, an eight-pin microcontroller, and two LEDs driven
-// through a replication. Unlike the excerpt in specification section 20.7, this
-// design passes 'manta check' with no findings, so it doubles as a regression
-// test that the checks do not fire on correct work.
+// USB-C in, a 3V3 LDO, an STM32F042 with USB and I2C, two indicator LEDs, a
+// bicolour status LED, two configuration switches, a VBUS sense divider and
+// an SWD debug header. It passes every check with nothing to report, and it
+// uses every construct the language has, so it doubles as a tour.
 
-// ---------------------------------------------------------------------------
-// A reusable indicator: a resistor in series with an LED to ground.
-// ---------------------------------------------------------------------------
+// An indicator: a series resistor and an LED to ground. The resistor value
+// is a parameter so the same block serves LEDs of different brightness.
 block indicator {
-    // Declared weakly, so a call site may pick a different value without
-    // editing the block (spec 9.2). The substitution is evaluated at link
-    // against whichever value is in force there (spec 14.1).
-    #~series-r = 1;
-    >DRIVE;
+    @VERSION    = 1.4+;
+    @FLATFORMAT = "$INSTANCE$_$COMPONENT$";
+    #~series-r  = 1;
 
-    // The board's ground, imported from the global scope (spec 10.3): without
-    // this the block's GND would be a private net and the cathodes would float.
+    >DRIVE;
     >>GND;
 
-    // A designator is annotated in the scope where it is written, so these are
-    // assigned once however many times the block is instantiated. The flat
-    // names at export are BLK1.R1, BLK2.R1 and so on (spec 13.4).
-    DRIVE = .{R1~R-$"series-r"$kR-0603}. = LED-ANODE;
-    LED-ANODE = A.{D1~LED-0603}.K = GND;
+    DRIVE = .{R1~R-$"series-r"$kR-0603}. = LED-ANODE = A.{D1~LED-0603}.K = GND;
+    LED-ANODE &RENDER=WIRE;
+};
+
+// A bare copper pad for a probe. Private to this board, and on no BOM.
+static part TESTPOINT {
+    @~footprint = TP-PAD;
+    @!type      = testpoint;
+    @bom        = FALSE;
+
+    1 : TP;
 };
 
 block blinky {
-    @VERSION = 1.0+;
-    #description = "USB-C powered two-LED indicator board";
-    #!>board-rev = A;
+    @VERSION     = 2.0+;
+    #description = "USB-C powered indicator board";
+    >#author     = TJM;
+    #!>board-rev = B;
+    #~fit-debug  = true;
 
-    // ---- rails ------------------------------------------------------------
-    // Ground is declared, not inferred, and a design that declares none is
-    // E-24 (spec 5.3).
-    GND &TYPE=GROUND;
-    GND>>;
-    3V3>>;
-    3V3 &CLASS=power;
-    VBUS &CLASS=power;
+    // Two grounds: the ADC's sense divider returns to an analog star that
+    // meets the main ground once, through paralleled 0R links.
+    GND  &TYPE=GROUND;
+    AGND &TYPE=GROUND;
+    AGND = (.{R9~R-0R-0603}.)|2 = GND;
+    [3V3, GND]>>;
+
+    VBUS &CLASS=power &PEAK=1A5;
+    3V3  &CLASS=power &RAIL;
 
     --- USB-C POWER IN
 
-    // The connector's VBUS pin is 'POWER>', so it is the source that satisfies
-    // the supply check for the whole VBUS net.
-    {J1~CONN-USB-C: .VBUS = VBUS; .GND = GND; .CC1  = CC1; .CC2  = CC2;};
+    // Rd on each CC line tells the host this is a sink; 5.1k is the value
+    // the USB-C specification names, one per line so the host can tell
+    // which way up the plug is. The shell is bonded at the enclosure, not
+    // on the board, so its pad is left alone on purpose.
+    {J1~CONN-USB-C: &EDGE=LEFT;
+        .VBUS = VBUS;
+        .GND  = GND;
+        .CC1  = CC1;
+        .CC2  = CC2;
+        .USB  = USB;
+    };
+    CC1 = .{R1~R-5k1R-0603}. = GND;
+    CC2 = .{R2~R-5k1R-0603}. = GND;
+    USB-SHIELD = J1.SHIELD &STUB;
 
-    // CC pull-downs advertise a device to the host. Written as one statement
-    // each so that neither net is single-referenced.
-    CC1 = .{R1~R-10kR-0603}. = GND;
-    CC2 = .{R2~R-10kR-0603}. = GND;
+    // The data pair runs through the ESD array, one line per pad pair, so
+    // the protection sits in series with no stub.
+    USB     &HARNESS=usb2;
+    MCU-USB &HARNESS=usb2;
+    USB.+ = IO1-A.{U3~USBLC6-2SC6: .GND = GND; .VBUS = VBUS;}.IO1-B = MCU-USB.+;
+    USB.- = IO2-A.{U3}.IO2-B = MCU-USB.-;
+    USB.+     &MATCH=usb-pair;
+    USB.-     &MATCH=usb-pair;
+    MCU-USB.+ &MATCH=usb-pair;
+    MCU-USB.- &MATCH={usb-pair: @!tolerance=50ps};
 
     --- 3V3 REGULATOR
 
-    // The bulk cap sits on VBUS and the bypass on 3V3, which is what keeps
-    // W-04 quiet on both supply pins.
-    VBUS = .{C1~C-10uF-0805: . = GND;};
-    VBUS = VIN.{U1~LDO-3V3: .EN = VBUS; .GND = GND; .NC = ?;}.VOUT = 3V3 &CURRENT=600mA &!VOLTAGE=6V;
-    3V3 = .{C2~C-10uF-0805: . = GND;};
+    // Bulk and bypass on VBUS, then the LDO, then the 1uF its datasheet
+    // wants on the output. EN tied to the input: always on.
+    VBUS = .{C1~C-10uF-0805: .=GND} == .{C2~C-100nF-0603: .=GND}
+        == VIN.{U1~LDO-3V3: .EN = VBUS; .GND = GND; .NC = ?;}.VOUT
+        = 3V3 = .{C3~C-1uF-0603: .=GND} &!VOLTAGE=6V;
+
+    --- VBUS SENSE
+
+    // 3:1 divider into ADC_IN0, three of one resistor value: full scale at
+    // 5.5V on VBUS is 1.83V. The bottom leg returns to the analog ground.
+    VBUS = (.{R%[6:7]~R-100kR-0603}.)+2
+        = VBUS-SENSE
+        = .{R8~R-100kR-0603: #!mpn = "ERJ-3EKF1003V";}. = AGND;
+    VBUS-SENSE &SHIELD=GND &~LAYER=top;
 
     --- MCU
 
-    // Power is bound here, where the design decides it: a part declares its
-    // pins, never the nets they land on (spec 11.6, revision 1.7).
-    {U2~MCU-8PIN:
-        .VCC     = 3V3;
-        .GND     = GND;
-        .nRESET  = nRESET;
-        .GPIO[0] = LED-DRIVE[0];
-        .GPIO[1] = LED-DRIVE[1];
-        .SDA     = i2c.SDA;
-        .SCL     = i2c.SCL;
-        .MISO    = TP-MISO;
+    // Every pin, in pin order. USB is on PA9/PA10 by remap, I2C on PF0/PF1,
+    // so no crystal is needed and every port pin is free for I/O.
+    {U2~MCU-STM32F042:
+        .BOOT0    = BOOT0;
+        .PF0      = i2c.SDA;
+        .PF1      = i2c.SCL;
+        .NRST     = NRST;
+        .VDDA     = 3V3 #DRAW=2mA;
+        .PA[0]    = VBUS-SENSE;
+        .PA[1:2]  = LED-BI-GPIO[0:1];
+        .PA[3:4]  = LED-DRIVE[0:1];
+        .PA[5]    = PWM[0];
+        .PA[6:7]  = CFG[0:1];
+        .PB1      = PWM[1];
+        .VSS      = GND;
+        .VDD      = 3V3 #DRAW=30mA;
+        .PA[9]    = MCU-USB.-;
+        .PA[10]   = MCU-USB.+;
+        .PA[13]   = swd.IO;
+        .PA[14]   = swd.CLK;
     };
 
-    // Two decoupling caps on the supply pin, one bulk and one high frequency.
-    3V3 = .{C3~C-100nF-0603: . = GND;};
+    // One bypass to each ground: the digital VDD's, and the ADC reference's
+    // return to the analog star.
+    3V3 = ({C%[4:5]~C-100nF-0603: .=%[GND,AGND]}.)*2;
 
-    // The reset pull-up, then the reset cap on the same node: '=' is the
-    // plain join (spec 6.2), and a shunt's one exposed terminal simply sits
-    // where the join puts it.
-    3V3 = .{R3~R-10kR-0603}. = nRESET;
-    nRESET = .{C4~C-100nF-0603: . = GND;};
+    // Reset: pull-up and filter. The header in DEBUG resets the part too.
+    3V3 = .{R3~R-10kR-0603}. = NRST = .{C6~C-100nF-0603: .=GND};
+
+    // BOOT0 held low for user flash. The 0R to 3V3 is placed and not fitted:
+    // solder it to reach the ROM bootloader over USB.
+    BOOT0 = .{R4~R-10kR-0603}. = GND;
+    {!R5~R-0R-0603: .A = BOOT0; .B = 3V3;};
+
+    // Two PWM outputs averaged into one analog level on a probe pad.
+    PWM[0:1] = [[.{R%[10:11]~R-100kR-0603}.]] =* DAC-OUT = .{C7~C-100nF-0603: .=GND};
+    DAC-OUT = TP.{TP1~TESTPOINT};
 
     --- I2C
 
-    // An open-drain bus is held high by its pull-ups rather than driven, so it
-    // needs no source (spec 11.6).
+    // Open drain, held up by its pull-ups, brought to a Qwiic-style header.
     i2c &HARNESS=i2c-bus;
-    <>i2c;
-    3V3 = .{R4~R-10kR-0603}. = i2c.SDA;
-    3V3 = .{R5~R-10kR-0603}. = i2c.SCL;
+    3V3 = .{R13~R-10kR-0603}. = i2c.SDA;
+    3V3 = .{R14~R-10kR-0603}. = i2c.SCL;
+    {J2~HDR-1x04: &EDGE=RIGHT;
+        .P[1] = GND;
+        .P[2] = 3V3;
+        .P[3] = i2c.SDA;
+        .P[4] = i2c.SCL;
+    };
+
+    --- CONFIG
+
+    // Two option switches read at boot, pulled up so an open switch reads 1.
+    // Each pole is its own pair of pads on the one package.
+    3V3 *= CFG-PULL[0:1];
+    CFG-PULL[0:1] = [[.{R%[11:12]~R-10kR-0603}.]] = CFG[0:1];
+    CFG[0] = A1.{SW1~SW-DIP-2}.B1 = GND ^ CFG[1] = A2.{SW1}.B2 = GND;
+    CFG[0:1] &RENDER=LABEL;
 
     --- INDICATORS
 
-    // One copy of the block per element of the bus flowing through it. The
-    // block's arity is its declared port count, so two wires give two copies
-    // (spec 8.3).
+    // One indicator block per drive line; the bus width sets the count.
     LED-DRIVE[0:1] = [[{BLK%[1:2]~indicator: #series-r = 1;}.DRIVE]];
 
-    // ---- test point -------------------------------------------------------
-    // Deliberately referenced once, which is what '&STUB' declares (spec 11.8).
-    TP1 = U2.MISO &STUB;
+    // The bicolour LED takes both drives on its two anodes and returns
+    // through its common cathode, so it is a two-in one-out unit.
+    LED-BI-GPIO[0:1] = [[.{R%[15:16]~R-1kR-0603}.]]
+        = [2[ A[0:1].{D3~LED-BICOLOUR}.K ]1] = GND;
+
+    --- DEBUG
+
+    // SWD header, fitted on development builds only.
+    {J3~HDR-1x05: &EDGE=BOTTOM; @fitted=$"fit-debug"$;
+        .P[1] = 3V3;
+        .P[2] = swd.IO;
+        .P[3] = swd.CLK;
+        .P[4] = NRST;
+        .P[5] = GND;
+    };
 };

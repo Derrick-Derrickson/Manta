@@ -29,7 +29,6 @@ struct FieldSlot {
     const Value* value = nullptr;
     Strength strength = Strength::Normal;
     Span declaredAt;
-    bool overridden = false;  // tracked for W-06, "a weak field never overridden"
     bool weakDeclared = false;
 };
 

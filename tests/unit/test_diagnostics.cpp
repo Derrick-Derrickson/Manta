@@ -141,7 +141,10 @@ void expectFiresOn(std::string_view code, std::string_view fixtureName) {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("E-01 multiple drivers") { expectFires("E-01"); }
-TEST_CASE("E-02 no driver, and a trailing hyphen") { expectFires("E-02"); }
+TEST_CASE("E-02 no driver") { expectFires("E-02"); }
+TEST_CASE("E-SYNTAX an identifier ending in '-'") {
+    expectFiresOn("E-SYNTAX", "E-SYNTAX-trailing-dash");
+}
 TEST_CASE("E-04 width mismatch") { expectFires("E-04"); }
 TEST_CASE("E-05 replication divisibility") { expectFires("E-05"); }
 TEST_CASE("E-06 counted replication arity") { expectFires("E-06"); }
@@ -173,6 +176,16 @@ TEST_CASE("E-02 does not fire when a '<>' pin can drive the input") {
 TEST_CASE("E-25 a NC pin is connected") { expectFires("E-25"); }
 TEST_CASE("E-26 single reference without &STUB") { expectFires("E-26"); }
 TEST_CASE("E-27 unpowered net") { expectFires("E-27"); }
+TEST_CASE("E-27 a 'POWER<>' pin consumes and never sources") {
+    expectFiresOn("E-27", "E-27-bidir");
+}
+TEST_CASE("E-27 does not fire on a net declared a rail with '&TYPE=POWER'") {
+    std::string report;
+    std::vector<std::string> codes = pipeline({fixture("E-27-rail-clean")}, report);
+    if (std::find(codes.begin(), codes.end(), "E-27") != codes.end()) {
+        ::mantatest::fail(__FILE__, __LINE__, "E-27 fired on a declared rail:\n" + report);
+    }
+}
 TEST_CASE("E-28 two power sources on one net") { expectFires("E-28"); }
 TEST_CASE("E-29 undefined field in a substitution") { expectFires("E-29"); }
 TEST_CASE("E-30 name declared in more than one object") { expectFires("E-30", {"E-30b"}); }
@@ -237,12 +250,9 @@ TEST_CASE("W-02 an incidentally bridged device") {
     CHECK(report.find("R1") != std::string::npos);
     CHECK(report.find("R2") == std::string::npos);
 }
-TEST_CASE("W-03 capacitor in series between two non-ground nets") { expectFires("W-03"); }
 TEST_CASE("W-04 undecoupled supply pin") { expectFires("W-04"); }
-TEST_CASE("W-06 weak field never overridden") { expectFires("W-06"); }
 TEST_CASE("W-07 identifiers differing only by '-' versus '_'") { expectFires("W-07"); }
 TEST_CASE("W-08 frozen swap group") { expectFires("W-08"); }
-TEST_CASE("W-09 supply with no consumers") { expectFires("W-09"); }
 TEST_CASE("W-TYPE near miss on a structural role") { expectFires("W-TYPE"); }
 
 // ---------------------------------------------------------------------------

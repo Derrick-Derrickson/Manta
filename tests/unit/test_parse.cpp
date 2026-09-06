@@ -137,16 +137,17 @@ TEST_CASE("spec 2.3: a leading '-' is resolved by grammatical position") {
     CHECK(field->field->value->num.unit == Unit::Volt);
 }
 
-TEST_CASE("spec 16.1: E-02 fires on an identifier ending in '-'") {
+TEST_CASE("spec 2.3: an identifier ending in '-' is a syntax error") {
     auto r = parse("block b { VCC- = GND; };");
-    CHECK(r->report.find("E-02") != std::string::npos);
+    CHECK(r->report.find("E-SYNTAX") != std::string::npos);
+    CHECK(r->report.find("ends in '-'") != std::string::npos);
 }
 
-TEST_CASE("spec 4.3: a version constraint ending in '-' is not E-02") {
+TEST_CASE("spec 4.3: a version constraint ending in '-' is not an error") {
     // "1.2-" means revision 1.2 or earlier, and lexes as a hyphen-terminated
     // word. Only the parser can tell it from a malformed identifier.
     auto r = parse("block b { @VERSION = 1.2-; };");
-    CHECK(r->report.find("E-02") == std::string::npos);
+    CHECK(r->report.find("ends in '-'") == std::string::npos);
     expectClean(r, "upper-bound version constraint");
 
     auto range = parse("block b { @VERSION = 0.2-1.2; };");
@@ -437,11 +438,11 @@ TEST_CASE("spec 7.5: the DNP prefix parses on parts and blocks") {
 }
 
 TEST_CASE("a pin name follows the identifier rules like any other") {
-    // A trailing '-' is E-02 wherever it appears, including on a pin. A part
-    // that needs a negative supply rail names it something the identifier
-    // grammar can produce.
+    // A trailing '-' is a syntax error wherever it appears, including on a
+    // pin. A part that needs a negative supply rail names it something the
+    // identifier grammar can produce.
     auto bad = parse("block b { X = INA.{U1~op: .V-=GND; }.OUTA = Y; };");
-    CHECK(bad->report.find("E-02") != std::string::npos);
+    CHECK(bad->report.find("ends in '-'") != std::string::npos);
 
     auto good = parse("block b { X = INA.{U1~op: .v-neg=GND; }.OUTA = Y; };");
     expectClean(good, "hyphenated pin name");

@@ -59,7 +59,7 @@ Two consequences that are easy to break:
 
 - **Do not add context to the lexer.** Any lookahead that "helps" it decide will
   be wrong in the other position.
-- **A value keeps its lexeme as well as its parsed number.** `&~NET=3V3` means
+- **A value keeps its lexeme as well as its parsed number.** `.VCC &NET=3V3` at an instance means
   the rail called `3V3`, not 3.3 volts, and only the directive's declared value
   type says which reading applies. `Value::text` carries the lexeme, and
   `.mantaO` serialises it alongside `num`.
@@ -84,8 +84,9 @@ lettered code â€” `E-SYNTAX`, `E-TYPE`, `E-IO`, `E-UNANNOTATED`, `E-INTERNAL` â€
 it can never collide with the numbered space. E-03, E-16, E-19, E-35 and W-05 do
 not exist in the specification and are never emitted.
 
-Default a warning to `Severity::Ignored` only when it would fire on idiomatic
-correct code. W-06 is the sole case; the reasoning is in `docs/assumptions.md`.
+A warning that would fire on idiomatic correct code is removed, not defaulted
+off: 2.0 retired W-03, W-06 and W-09 on exactly that ground. No diagnostic
+starts at `Severity::Ignored`; that severity exists for `-Wno-`.
 
 ---
 

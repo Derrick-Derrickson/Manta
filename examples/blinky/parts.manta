@@ -1,16 +1,24 @@
-// A small part library for the blinky example.
+// Part library for the blinky example. One declaration per part; the
+// datasheet excerpts for the actives live in their own files, after the
+// end-of-content marker, so a designer reads the part and its facts together.
 //
-// Every part carries a weak '@~footprint' so a call site may substitute a
-// different package without editing the part (spec 9.2), and a locked '@!type'
-// so the checker can recognise what it is.
-//
-// None of these is 'static': internal linkage would make them invisible to the
-// board that uses them, which is the whole point of a shared library (spec 4.2).
+// Every part carries a weak '@~footprint' naming a package, never a library:
+// blinky.fpmap says what KiCad calls each package. Nothing here is 'static',
+// because a library part has to be visible to the board that uses it.
 
 // ---- passives -------------------------------------------------------------
-// Symmetric two-terminal parts mark both pins '&CASUAL', which is what lets a
-// chain reach them with the '.' terminal and what puts them in a swap group
-// (spec 7.3, 11.7).
+
+part R-0R-0603 {
+    @~footprint = R-0603;
+    #value      = 0R;
+    #power      = 100mW;
+    @!type      = resistor;
+    #~mpn       = "RC0603JR-070RL";
+
+    1 : A &CASUAL;
+    2 : B &CASUAL;
+};
+
 part R-1kR-0603 {
     @~footprint = R-0603;
     #value      = 1kR;
@@ -18,6 +26,18 @@ part R-1kR-0603 {
     #power      = 100mW;
     @!type      = resistor;
     #~mpn       = "RC0603FR-071KL";
+
+    1 : A &CASUAL;
+    2 : B &CASUAL;
+};
+
+part R-5k1R-0603 {
+    @~footprint = R-0603;
+    #value      = 5k1R;
+    #tolerance  = ±1%;
+    #power      = 100mW;
+    @!type      = resistor;
+    #~mpn       = "RC0603FR-075K1L";
 
     1 : A &CASUAL;
     2 : B &CASUAL;
@@ -35,10 +55,34 @@ part R-10kR-0603 {
     2 : B &CASUAL;
 };
 
+part R-100kR-0603 {
+    @~footprint = R-0603;
+    #value      = 100kR;
+    #tolerance  = ±1%;
+    #power      = 100mW;
+    @!type      = resistor;
+    #~mpn       = "RC0603FR-07100KL";
+
+    1 : A &CASUAL;
+    2 : B &CASUAL;
+};
+
 part C-100nF-0603 {
     @~footprint = C-0603;
     #value      = 100nF;
-    #voltage    = 16V;
+    #voltage    = 50V;
+    #dielectric = X7R;
+    @!type      = capacitor;
+
+    1 : A &CASUAL;
+    2 : B &CASUAL;
+};
+
+part C-1uF-0603 {
+    @~footprint = C-0603;
+    #value      = 1uF;
+    #voltage    = 25V;
+    #dielectric = X7R;
     @!type      = capacitor;
 
     1 : A &CASUAL;
@@ -48,85 +92,129 @@ part C-100nF-0603 {
 part C-10uF-0805 {
     @~footprint = C-0805;
     #value      = 10uF;
-    #voltage    = 16V;
+    #voltage    = 25V;
+    #dielectric = X5R;
     @!type      = capacitor;
 
     1 : A &CASUAL;
     2 : B &CASUAL;
 };
 
-// ---- actives --------------------------------------------------------------
-
-// A regulator provides a rail, so VOUT is 'POWER>'. That one annotation is what
-// satisfies the supply check on every net it feeds (spec 11.6).
-part LDO-3V3 {
-    @~footprint = SOT-23-5;
-    #value      = AP2112K-3.3;
-    @!type      = regulator;
-    #~mpn       = "AP2112K-3.3TRG1";
-
-    1 : VIN< &TYPE=POWER;
-    2 : GND< &TYPE=POWER;
-    3 : EN<;
-    4 : NC &TYPE=NC;
-    5 : VOUT> &TYPE=POWER #SUPPLY=600mA;
-};
-
-part MCU-8PIN {
-    @~footprint    = SOIC-8;
-    #value         = ATTINY85;
-    #!manufacturer = "Microchip";
-
-    1 : nRESET<;
-    2 : GPIO[0]>;
-    3 : GPIO[1]>;
-    4 : GND< &TYPE=POWER;
-    5 : SDA<> &TYPE=OPENDRAIN;
-    6 : SCL<> &TYPE=OPENDRAIN;
-    7 : MISO>;
-    8 : VCC< &TYPE=POWER;
-};
+// ---- LEDs -------------------------------------------------------------------
+// KiCad's LED footprints put the cathode on pad 1, so the pin map does too.
 
 part LED-0603 {
     @~footprint = LED-0603;
     #value      = green;
     @!type      = led;
     #~current   = 5mA;
+    #vf         = 2V4;
 
-    1 : A;
-    2 : K;
+    1 : K;
+    2 : A;
 };
 
-part CONN-USB-C {
-    @~footprint = USB-C-16;
-    #value      = USB-C;
+part LED-BICOLOUR {
+    @~footprint = LED-KPA-3010;
+    #value      = "red/green";
+    @!type      = led;
+    #~mpn       = "KPA-3010SURKCGKC";
 
-    // A boardconnector, so the compiler knows something plugs into it, and
-    // '@mate' says what. Weak, so a call site may fit a different lead.
+    1 : A[0];    // red anode
+    2 : A[1];    // green anode
+    3 : K;       // common cathode
+};
+
+// ---- switches and test points ---------------------------------------------
+
+part SW-DIP-2 {
+    @~footprint = DIP-2-SMD;
+    #value      = "DIP x2";
+    @!type      = switch;
+    #~mpn       = "219-2LPST";
+
+    // Two independent poles: pads 1 and 4 face each other across the body,
+    // as do 2 and 3. Each pole's two contacts are interchangeable.
+    1 : A1 &CASUAL;
+    2 : A2 &CASUAL;
+    3 : B2 &CASUAL;
+    4 : B1 &CASUAL;
+};
+
+// ---- connectors -------------------------------------------------------------
+// A header's positions carry no roles: what each one means is bound on the
+// board, where a reader can see it.
+
+part HDR-1x04 {
+    @~footprint = HDR-1x04;
+    #value      = "1x4 2.54mm";
     @!type      = boardconnector;
-    @~mate      = usb-c-1m;
-
-    1 : VBUS> &TYPE=POWER #SUPPLY=500mA;
-    2 : GND< &TYPE=POWER;
-    3 : CC1<> &SWAP=cc;
-    4 : CC2<> &SWAP=cc;
-};
-
-// --- the lead ---------------------------------------------------------------
-//
-// A loom is a separate thing to build. It links on its own, with its own
-// netlist and its own bill of materials, and 'manta link --assembly' writes
-// those beside the board's without ever merging them.
-part USB-C-PLUG {
-    @type  = cableconnector;
-
-    // What it plugs into. The compiler checks the pins line up.
-    @mates = CONN-USB-C;
+    @~mate      = i2c-lead;
 
     [1:4] : P[1:4]<>;
 };
 
-part CRIMP-USB-C {
+part HDR-1x05 {
+    @~footprint = HDR-1x05;
+    #value      = "1x5 2.54mm";
+    @!type      = boardconnector;
+    @~mate      = swd-lead;
+
+    [1:5] : P[1:5]<>;
+};
+
+part CONN-USB-C {
+    @~footprint = USB-C-7;
+    #value      = USB-C;
+    @!type      = boardconnector;
+    @~mate      = usb-c-1m;
+
+    1     : VBUS>      &TYPE=POWER #SUPPLY=500mA;
+    2     : GND<       &TYPE=POWER;
+    3     : CC1<>      &SWAP=cc;
+    4     : CC2<>      &SWAP=cc;
+    [5:6] : USB.[+,-]<>;
+    7     : SHIELD;
+};
+
+// ---- cable parts ------------------------------------------------------------
+// Plugs, crimps and wires need no footprint: they are on the loom's BOM,
+// never on the board.
+
+part USB-C-PLUG {
+    @type  = cableconnector;
+    @mates = CONN-USB-C;
+    #~mpn  = "USB-C-PLUG-7";
+
+    [1:7] : P[1:7]<>;
+};
+
+part SWD-PLUG {
+    @type  = cableconnector;
+    @mates = HDR-1x05;
+    // The pod's ribbon is crimped mirrored, so position 1 meets header pin 5.
+    @map   = [[1:5, 5:1]];
+    #~mpn  = "DF3-5S-2C";
+
+    [1:5] : P[1:5]<>;
+};
+
+part HDR-1x04-PLUG {
+    @type  = cableconnector;
+    @mates = HDR-1x04;
+    #~mpn  = "DF3-4S-2C";
+
+    [1:4] : P[1:4]<>;
+};
+
+part SWD-POD-PLUG {
+    @type = cableconnector;
+    #~mpn = "DF3-5S-2C";
+
+    [1:5] : P[1:5]<>;
+};
+
+part CRIMP-24AWG {
     @type = crimp;
     #mpn  = "AMP-1734592-1";
 
@@ -136,7 +224,7 @@ part CRIMP-USB-C {
 
 part WIRE-24AWG-RED {
     @type       = wire;
-    #csa        = 205000um2;  // 0.205mm2, AWG24
+    #csa        = 205000um2;   // AWG24
     #strands    = 7;
     #colour     = red;
     #insulation = PVC;
@@ -146,9 +234,44 @@ part WIRE-24AWG-RED {
     2 : B &CASUAL;
 };
 
-cable usb-c-1m {
-    #length = 1m;
-    {P1~USB-C-PLUG}.P[1:4]
-        = [[.{X%[1:4]~CRIMP-USB-C}. = .{W%[1:4]~WIRE-24AWG-RED}. = .{X%[5:8]~CRIMP-USB-C}.]]
-        = P[1:4].{P2~USB-C-PLUG};
+part WIRE-26AWG-GREY {
+    @type       = wire;
+    #csa        = 129000um2;   // AWG26
+    #strands    = 7;
+    #colour     = grey;
+    #insulation = PVC;
+    #mpn        = "3251-GY-100";
+
+    1 : A &CASUAL;
+    2 : B &CASUAL;
 };
+
+---
+
+# Passives and connectors
+
+Commodity parts, specified by value, package and tolerance; any pin-compatible
+manufacturer's part is a substitute. The resistor figures below are Yageo's
+RC0603 series specification (V.4, 2009), which the MPNs name.
+
+## Resistors, RC0603
+
+| Parameter | Value |
+|---|---|
+| Power rating | 100 mW at 70 °C, derated linearly to 0 at 155 °C |
+| Maximum working voltage | 50 V |
+| Maximum overload voltage | 100 V |
+| Temperature coefficient | ±100 ppm/°C |
+| Operating temperature | −55 to +155 °C |
+| Package | 1.60 × 0.80 × 0.45 mm, two end terminations |
+
+## Capacitors
+
+Multilayer ceramic, class II dielectric as stated on each part. A class II
+capacitor loses capacitance under DC bias; the 25 V and 50 V ratings here are
+chosen so that at 5 V and below the loss is small.
+
+## Headers, 2.54 mm
+
+Single-row through-hole pin headers. Pins are numbered from the position with
+the square pad. Rated 3 A per contact, 250 V.

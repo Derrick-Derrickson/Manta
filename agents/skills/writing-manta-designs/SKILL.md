@@ -1,193 +1,154 @@
 ---
 name: writing-manta-designs
-description: Write or modify a manta schematic — boards, blocks, chains, harnesses, nets and electrical constraints. Use when asked to describe a circuit in manta, add a subcircuit to an existing design, or fix diagnostics a manta build reported. Covers the connection operators, replication, fields, directives and the checks that will judge the result.
+description: Write or modify a manta schematic — a board, a block, a cable, the nets and constraints between parts. Use when asked to describe a circuit in manta, add a subcircuit, or fix diagnostics from a manta build. Covers the house style, the connection operators, and the checks that judge the result.
 ---
 
 # Writing manta designs
 
-Manta describes one board: its components, their interconnections, and the
-electrical constraints on those interconnections. A design is a set of named
-declarations; order never matters and a name may be used before it is declared.
+A design is a set of named declarations describing one board. Order never
+matters; a name may be used before it is declared. The compiler is the oracle:
+a design is finished when this is silent, and not before.
+
+```sh
+manta fmt --check src/*.manta
+manta compile -o build/ src/*.manta
+manta check --top <block> -L build/ --rules <project>.mantaRules -Werror
+```
 
 ## Work in this order
 
-1. **Read `docs/spec.md`** for anything you are unsure of. It is the authority.
-2. **Write the parts first**, or find them. Most errors in a design trace back
-   to a part whose pins are typed wrongly. See the `writing-manta-parts` skill.
-3. **Write the board**, following the shape in `examples/blinky/board.manta`.
-4. **Build it, and read what the compiler says.** Not optional:
+1. **Parts first.** Find or write every part (`writing-manta-parts` skill).
+   Most board errors are a part with a wrong pin number, arrow or `&TYPE`.
+2. **Board second**, following `examples/blinky/board.manta` and the style
+   below. One `--- TITLE` section per functional group.
+3. **Build, read every diagnostic, fix the cause.** `references/diagnostics.md`
+   says what each code means and what fixes it. Never silence a check with
+   `-Wno-` or `--no-erc` to make a build pass.
 
-```sh
-manta compile -o build/ src/*.manta
-manta check --top <block> -L build/ -Werror
-```
+## House style
 
-A design is finished when that is silent. `examples/blinky` is a complete board
-that achieves it; copy its structure.
-
-## The five connection operators
-
-This is where most mistakes are made, so learn them properly.
+**Passive networks are chains.** Write a passive network as one statement
+that reads from source to load, with shunts continued past by `==`:
 
 ```
-A = B                        both names are one net
-A = .{R1~res}. = B           A and B are different nets, joined through R1
-X = .{C1~cap: .=GND} == Y    C1 dead-ends, so '==' continues on the node; X and Y are one net
-A ^ B                        placed in one statement, not connected at all
-A[0:3] =* B                  gather: four wires shorted onto one
-A *= B[0:7]                  broadcast: one net to every element
+VIN = .{R1~R-10kR-0603}. = .{C1~C-100nF-0603: .=GND} == EN;
+3V3 = .{C2~C-10uF-0805: .=GND} == .{C3~C-100nF-0603: .=GND};
 ```
 
-**The connector states whether the chain moved, and it has to be telling the
-truth.** `=` is the plain join: it advances through the far side of the
-element before it, so that element must have one — a net, a passthrough
-device (`.{R}.`, `A{L}B`), a `+N`/`|N` group. Between two bare names there is
-nothing to advance through, so `A = B` puts both names on one net — that is
-also how a net gets a second name.
+Not one statement per component, and not a binding per resistor pin.
 
-`==` continues **on the near side**, and is legal exactly when the element
-before it has no far side — a shunt whose other pin is bound inside its `{}`,
-a device attached by one pin, a `*N` group. Both mismatches are **E-49**, so
-every `=` and `==` you write is forced, never stylistic. The buck idiom reads
-attach, stay, stay, advance:
+**A passive that belongs to an IC pin is written at the pin**, as a chain in
+the binding: `.EN = .{R5~R-100kR-0603}. = VIN;` or `.FB = .{R3~R-51kR-0603}. = 5V;`.
 
-```
-SW = K.{D2~dio: .A=GND;} == .{C3~cap: .=BST;} == A.{L1~ind}.B = .{C4~cap: .=GND} == 5V;
-```
+**Small pass-through devices sit in chains** with named terminals: a diode
+`A.{D1~D-SS34}.K`, a FET `S.{Q1~FET}.D`, a ferrite `.{FB1~FERRITE}.`, an LED,
+a regulator with one input and one output `VIN.{U1~LDO: .GND=GND;}.VOUT`.
 
-The diode and the boot cap hang on the SW node, the chain leaves through the
-inductor, the decoupling cap attaches on the far node, and the final `==`
-names it. Nothing here can short L1, because `==` never joins across an
-element.
-
-A deliberate short is written as a **multi-pin terminal**, never as a chain
-trick: `..{R1~res}` takes both casual pins onto one node, `[A,K]{D1~dio}`
-does the same by name, and `[1,2]{J5~conn}.[3,4]` parallels connector pins two
-per side. W-02 stays quiet about a bridge spelled this way and fires on one
-that merely happens across separate statements.
+**A large IC is a binding block, never a chain element.** Anything with more
+than about six pins — an MCU, an ADC, a driver, a transceiver — is written
+standing alone, every pin bound in the part's declaration order, unused pins
+bound to `?`:
 
 ```
-VIN = .{R1~res}. = .{C1~cap: .=GND} == EN;
-```
-
-`R1`'s far pin, `C1`'s exposed pin and `EN` are one node. `VIN` is not.
-
-## Ground, and rails
-
-Ground is declared, never inferred. A design that declares none is **E-24**:
-
-```
-GND &TYPE=GROUND;
-```
-
-A rail needs a source. A net with `&TYPE=POWER` consumers and no `&TYPE=POWER`
-supply is **E-27** — so the regulator part must declare its output `POWER>`.
-That one annotation satisfies the check for every net it feeds.
-
-## Every net needs two references
-
-A net written exactly once is **E-26**, because a real net is written at least
-once at each end. A single reference is almost always a typo — including a
-mistyped harness member, which would otherwise silently create a new net.
-
-When a single reference is deliberate, say so:
-
-```
-TP1 = U2.MISO &STUB;
-```
-
-Ports, globals and harness type declarations are exempt: they are connected from
-outside the block.
-
-## Directives are per statement
-
-A directive at the end of a statement covers **every net in that chain** — every
-copy a replication made, and every segment across `^`. It does not reach through
-a `:` binding or into a part.
-
-```
-SW = SW-NODE = S.{Q1~fet: .G=nEN}.D = SWITCHED &CURRENT=3A;
-```
-
-`SW`, `SW-NODE` and `SWITCHED` carry the current limit. `nEN` does not. To
-exclude part of a chain, split it into its own statement — the statement is the
-scope unit, so reflowing across lines changes nothing.
-
-## Blocks
-
-A block is a reusable subcircuit. Its interface is the set of nets carrying a
-direction arrow, and the arrow is mandatory — a port without one is **E-32**.
-
-```
-block rc-filter {
-    #~r-value = 10;              // weak: a call site may override
-    >IN;
-    OUT>;
-    .IN = .{R1~R-$"r-value"$kR-0603}. = .{C1~C-100nF: .=GND} == OUT;
+{U1~CH32V203C8T6:
+    .VDD  = 3V3;
+    .VSS  = GND;
+    .PA9  = LEFT-TX;
+    .PA10 = LEFT-RX;
+    .PC13 = ?;
 };
 ```
 
-Instantiate it exactly like a part. A block instantiated twice with different
-parameters produces two elaborations from one source:
+Do not write `3V3 = VDD.{U1~MCU: ...}` for such a part: the chain form hides
+the supply among forty bindings and makes the IC look like a series element.
+
+**A connector is a binding block too**, one line per position, so what each
+position carries is read in one place. Put `&EDGE` first in the list.
+
+**Comments explain the design, never the language.** Say why this value,
+why this topology, what the firmware assumes, what the datasheet demands.
+Never cite a spec section, explain what `==` means, or narrate edit history
+("was 10k, corrected to 200k"). If a construct needs a comment to be
+understood, rewrite the construct.
+
+**Name nets for what they carry** (`BUCK-FB`, `USB-VBUS`, `LED-DRIVE[0:1]`),
+not for where they go. Hand-assign designators on a small board; leave `?`
+and run `manta annotate` on a large one.
+
+## The connectors
+
+The connector states whether the chain moved, and it has to tell the truth:
 
 ```
->SIG-A = {BLK1~rc-filter: #r-value=10; }.OUT = FILTERED-A>;
->SIG-B = {BLK2~rc-filter: #r-value=47; }.OUT = FILTERED-B>;
+A = B                          both names on one net
+A = .{R1~R}. = B               A and B are different nets, joined through R1
+X = .{C1~C: .=GND} == Y        C1 dead-ends, so '==' stays on the node; X and Y are one net
+A[0:3] = [[.{R?~R}.]] =* SUM   gather: four wires onto one net
+VREF *= BIAS[0:7]              broadcast: one net to every element
+A ^ B                          in one statement, not connected at all
 ```
 
-A `--- TITLE` line inside a block body names a render section: purely
-presentational, no effect on connectivity or checks. `manta render <netlist>`
-draws the schematic as clickable HTML, with each section as a titled room.
-
-## Cables
-
-A loom is not on the board, so it is not in the board's block. A `cable` is its
-own declaration and its own deliverable: it links on its own and produces its own
-netlist and BOM, with the wires and crimps as real line items.
+`=` advances through the far side of the element before it, so that element
+must have one: a net, `.{R}.`, `A.{D}.K`, a `+N`/`|N` group. `==` continues on
+the near side and is legal only after an element with no far side: a shunt
+whose other pin is bound inside its braces, a device attached by one pin, a
+`*N` group. Either mismatch is **E-49**. The buck idiom reads attach, stay,
+stay, advance:
 
 ```
-cable jumper-8way {
-    {J1~JST-8-PLUG}.P[1:8]
-        = [[ .{C%[1:8]~JST-8-CRIMP}. = .{W%[1:8]~WIRE-22AWG}.
-           = .{C%[9:16]~JST-8-CRIMP}. ]]
-        = P[1:8].{J2~JST-8-PLUG};
-};
+SW = K.{D2~D-SS34: .A=GND;} == .{C3~C-100nF-0603: .=BUCK-BST;} == A.{L1~L-4u7H}.B
+   = .{C4~C-10uF-0805: .=GND} == 5V;
 ```
 
-A cable body is a chain, exactly as a block's is, which is why replication and
-ranged designators keep eight conductors to one statement. It may hold only a
-cable connector, a wire or a crimp — anything else is **E-44**.
+A deliberate short is a multi-pin terminal, never a chain trick: `..{R1~R}`
+takes both casual pins onto one node, `[A,K].{D1~D}` does it by name, and
+`VIN = [1,2].{J5~CONN}.[3,4] = GND` parallels connector pins two per side.
+W-02 is quiet about a short spelled this way and fires on one that happens
+across separate statements.
 
-The board says which loom plugs in with `@mate`, the loom says what it plugs into
-with `@mates`, and the linker checks that the two fit. When the far end plugs
-back into another connector on this same board — a card that daisy-chains into a
-copy of itself — each conductor is followed through the loom and judged as though
-the two had been wired directly, because once the lead is fitted they have been.
+## Ground, rails, references
 
-One consequence to expect: a net driven only from the *next* card reports E-02 on
-this one, since ERC sees a board and the driver is not on it. Put `&STUB` on the
-uplink nets or carry `-Wno-E-02`.
+- `GND &TYPE=GROUND;` is mandatory (**E-24**). Several grounds are allowed;
+  tie them with a chain: `AGND = .{FB1~FERRITE}. = GND;`.
+- A rail with `POWER<` consumers needs one `POWER>` source (**E-27**, two is
+  **E-28**). The source is a regulator output or a connector's supply pin,
+  declared in the part. A rail that has no such pin — it arrives through an
+  inductor, a diode-OR, or whichever connector has a supply plugged in — is
+  declared on the board: `5V &TYPE=POWER;`. Never leave a rail or a supply
+  pin untyped to dodge the check.
+- Every net is written at least twice (**E-26**). A deliberate single
+  reference is a stub: `TP1 = U2.MISO &STUB;`. Ports, globals and harness
+  declarations are exempt.
+- A `&TYPE=POWER<` pin wants a capacitor within two nodes (**W-04**). Put the
+  decoupling on the rail in the same section as the consumer.
 
-## Substitution
+## Directives
 
-`$…$` is evaluated at link, against the fields in force where the block was
-instantiated. Arithmetic is integers and booleans only.
-
-**A hyphen inside `$…$` is always subtraction.** A field name containing one
-must be quoted, and forgetting is the most common substitution mistake:
+A directive at the end of a statement covers every net in that chain — every
+replicated copy, every `^` segment — and nothing inside a `:` binding or a
+part. Split a statement to narrow the scope. Strength: `&~` weak, `&` normal,
+`&!` locked; equal strength with different values is **E-12**.
 
 ```
-$"r-value"$        the field r-value
-$r - value$        the field r, minus the field value
+5V &CLASS=power &CURRENT=3A;
+USB-DP = MCU-DP &IMP=90RD;
+BUCK-BST &RENDER=WIRE;
+{J1~CONN-USB-C: &EDGE=LEFT; .VBUS = VBUS; .GND = GND; };
 ```
 
-Units go outside the delimiters: `$100 * 2$R` is 200 ohms.
+## Blocks, cables, substitution
 
-## Before you say it works
+A block's interface is its arrowed nets (`>IN`, `OUT>`, `<>i2c`); a port with
+no arrow is **E-32**. Rails enter by global import (`>>GND`), never as ports.
+Instantiate a block like a part; a weak `#~param` in the block is overridden
+at the call site and read back with `$"param"$` — quote the name, because a
+bare hyphen inside `$…$` is subtraction.
 
-Run the checklist in `references/checklist.md`. When a diagnostic fires and you
-do not recognise it, look it up in `references/diagnostics.md` — every code,
-what it means, and what actually fixes it.
+A `cable` is its own top with its own netlist and BOM. It holds only cable
+connectors, wires and crimps (**E-44**). The board's connector names the loom
+with `@mate`; the loom's plug names the connector with `@mates`; `@map` says
+how the pins line up when it is not one to one.
 
-For patterns that come up repeatedly — decoupling, pull-ups, differential pairs,
-replicated channels, delay matching — see `references/idioms.md`.
+Patterns for all of the above, written in the house style, are in
+`references/idioms.md`. Run `references/checklist.md` before saying a design
+is done.

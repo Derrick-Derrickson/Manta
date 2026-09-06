@@ -1,0 +1,29 @@
+// The two looms that plug into blinky. Each is its own deliverable with its
+// own netlist and BOM; 'manta link --assembly' on the board writes them
+// beside the board's outputs without merging them.
+
+// USB-C to USB-C, one metre, all seven positions straight through.
+cable usb-c-1m {
+    #length = 1m;
+    {P1~USB-C-PLUG}.P[1:7]
+        = [[.{X%[1:7]~CRIMP-24AWG}. = .{W%[1:7]~WIRE-24AWG-RED}. = .{X%[8:14]~CRIMP-24AWG}.]]
+        = P[1:7].{P2~USB-C-PLUG};
+};
+
+// Debug lead to the programming pod. The board-end plug is crimped mirrored,
+// which its part records with '@map'; the pod end is not on this board and
+// names no mate.
+cable swd-lead {
+    #length = 150mm;
+    {P1~SWD-PLUG}.P[1:5]
+        = [[.{X%[1:5]~CRIMP-24AWG}. = .{W%[1:5]~WIRE-26AWG-GREY}. = .{X%[6:10]~CRIMP-24AWG}.]]
+        = P[1:5].{P2~SWD-POD-PLUG};
+};
+
+// I2C lead to a sensor board, straight through.
+cable i2c-lead {
+    #length = 100mm;
+    {P1~HDR-1x04-PLUG}.P[1:4]
+        = [[.{X%[1:4]~CRIMP-24AWG}. = .{W%[1:4]~WIRE-26AWG-GREY}. = .{X%[5:8]~CRIMP-24AWG}.]]
+        = P[1:4].{P2~HDR-1x04-PLUG};
+};

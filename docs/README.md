@@ -28,6 +28,6 @@ The entries worth knowing before writing any design:
 - **C1** — a *capacitor* has no definition in the language, yet two warnings need
   one. `@type = capacitor` is the convention adopted.
 - **C2** — what counts as "driven" for E-02, and why a pull-up does.
-- **D4** — W-06 is off by default, and why.
+- **D4** — no warning is off by default, and why W-06 went.
 - **D5** — un-annotated designators are an error at link, and the bootstrap that
   makes annotation possible anyway.

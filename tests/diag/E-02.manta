@@ -1,3 +1,7 @@
+// A net that is nothing but an input pin: nobody drives it.
+part rcv { @~footprint = F; 1 : IN<; 2 : G< &TYPE=POWER; };
 block b {
-    VCC- = GND &TYPE=GROUND;
+    GND &TYPE=GROUND;
+    {U1~rcv: .IN = FLOATING; .G = GND;};
+    FLOATING = ALIAS;
 };

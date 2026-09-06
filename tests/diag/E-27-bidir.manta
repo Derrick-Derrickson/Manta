@@ -1,0 +1,8 @@
+// A 'POWER<>' pin consumes and never sources: alone on a net that is not a
+// declared rail, it is unpowered.
+part p { @~footprint = F; 1 : V<> &TYPE=POWER; 2 : B &CASUAL; };
+block b {
+    GND &TYPE=GROUND;
+    RAIL = V.{U1~p}.B = GND;
+    RAIL = RAIL2;
+};

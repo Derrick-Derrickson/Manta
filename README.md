@@ -1,6 +1,6 @@
 # manta
 
-A compiler for the Manta Schematic Definition Language, specification revision 1.6.
+A compiler for the Manta Schematic Definition Language, specification revision 2.0.
 
 Manta is a plain-text language for describing electronic schematics: the
 components on one printed circuit board, their interconnections, the electrical
@@ -123,8 +123,8 @@ From then on the flag is not needed, and its absence is what proves every
 instance has a designator.
 
 `manta <command> --help` documents each command's options. Every diagnostic can
-be enabled, silenced or re-graded by code or by mnemonic: `-Wno-W-03` and
-`-Wno-cap-in-series` are the same instruction.
+be enabled, silenced or re-graded by code or by mnemonic: `-Wno-W-04` and
+`-Wno-undecoupled-supply` are the same instruction.
 
 ## How it fits together
 

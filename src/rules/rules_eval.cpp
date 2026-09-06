@@ -190,6 +190,7 @@ RuleValue RuleEvaluator::evalMember(const RuleValue& base, SymbolId name, RuleSc
             const Net& n = design_->nets[base.index];
             if (field == "name") return RuleValue::ofText(n.name);
             if (field == "ground") return RuleValue::ofBoolean(n.ground);
+            if (field == "power") return RuleValue::ofBoolean(n.power);
             if (field == "global") return RuleValue::ofBoolean(n.global);
             if (field == "direction") return RuleValue::ofText(std::string(directionName(n.direction)));
             if (field == "pins") {

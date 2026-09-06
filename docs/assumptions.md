@@ -97,11 +97,10 @@ the two readings are never confusable on sight.
 
 ## C. Rules whose inputs the specification does not define
 
-### C1. What counts as a capacitor — W-03 and W-04
+### C1. What counts as a capacitor — W-04
 
-Two warnings depend on recognising a capacitor:
+One warning depends on recognising a capacitor:
 
-- **W-03** — a capacitor is in series with two non-ground nets.
 - **W-04** — a `&TYPE=POWER<` pin has no capacitor on its net within two nodes.
 
 Nothing in the language marks a part as capacitive; parts are opaque.
@@ -112,9 +111,10 @@ Nothing in the language marks a part as capacitive; parts are opaque.
    specification itself establishes when it writes `@!type = resistor`; or
 2. it is two-terminal and carries a `#value` dimensioned in farads.
 
-Both warnings are individually suppressible (`-Wno-W-03`, `-Wno-cap-in-series`).
-Neither ever fires on a part manta cannot classify, so a design adopting no
-convention loses two warnings rather than gaining false ones.
+The warning is suppressible (`-Wno-W-04`, `-Wno-undecoupled-supply`). It
+never fires on a part manta cannot classify, so a design adopting no
+convention loses a warning rather than gaining false ones. (W-03, which shared
+this definition, was removed in 2.0; see the changelog.)
 
 ### C2. What counts as "driven", for E-02
 
@@ -326,17 +326,12 @@ integer-only, and a decimal used as an operand there is E-41.
 E-03, E-16, E-19, E-35 and W-05 appear nowhere in the specification. They are
 reserved in the diagnostic table and never emitted.
 
-### D4. W-06 is off by default
+### D4. No warning is off by default
 
-The common options list `-W<name>` as "Enable warning `<name>`", which only means
-something if some warnings begin disabled. **W-06** — a `~`-weak field never
-overridden anywhere in the design — is the one that needs it. A part library
-declares `@~footprint` weakly on purpose, so on the specification's own part
-examples this would fire on every part and drown the findings that matter.
-
-It is enabled with `-WW-06` or `-Wweak-never-overridden`, and answers a real
-question when asked: which suggestions did nobody take? Every other warning is
-on by default.
+Revision 2.0 removed W-06, the one warning that started disabled: a weak field
+nobody overrode is a default doing its job, not a finding. Every warning is now
+on by default, and `-W<name>` exists only to re-enable one that `-Wno-<name>`
+silenced earlier on the command line.
 
 ### D5. Un-annotated designators are an error at link
 

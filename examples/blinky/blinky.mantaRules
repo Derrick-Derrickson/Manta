@@ -58,8 +58,8 @@ rules power-budget {
 // ---------------------------------------------------------------------------
 // Library policy
 //
-// A part rule runs at compile as well as at link, so a library is checked
-// before it ever reaches a board.
+// A part rule runs over every part declaration the link sees, so a library
+// is checked whether or not the board instantiates all of it.
 // ---------------------------------------------------------------------------
 rules library-policy {
     check every-part-has-a-footprint for part {

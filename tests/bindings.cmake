@@ -122,7 +122,7 @@ block w01-top {
 ")
 run_manta(compile -o "${WORK}/w01/" "${DIR}/parts.manta" "${WORK}/w01.manta")
 execute_process(COMMAND "${MANTA}" link --top w01-top -L "${WORK}/w01"
-                        -Wno-E-01 -Wno-E-02 -Wno-E-26 -Wno-W-03
+                        -Wno-E-01 -Wno-E-02 -Wno-E-26
                         -o "${WORK}/w01.mantaNets"
                 ERROR_VARIABLE w01_err RESULT_VARIABLE w01_code)
 if(NOT w01_code EQUAL 0)

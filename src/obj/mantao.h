@@ -33,7 +33,7 @@ namespace manta {
 // inside a block body; 1.4 lets a binding carry a whole chain rather than only
 // a net name; 1.5 adds the '&RAIL' net directive and the '&EDGE' instance
 // directive. Each changes what a .manta file may contain.
-inline constexpr std::string_view kLanguageVersion = "1.6";
+inline constexpr std::string_view kLanguageVersion = "2.0";
 
 // True when an object's revision is no newer than the toolchain's, so the
 // toolchain knows every construct it might contain.

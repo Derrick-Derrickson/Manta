@@ -101,9 +101,9 @@ void Parser::recoverToDeclEnd() {
 
 void Parser::checkTrailingDash(const Token& t) {
     if (t.has(WordFlags::TrailingDash)) {
-        // Spec 2.3: "It shall not be the last character." Spec 16.1 files this
-        // under E-02 alongside the unrelated no-driver rule.
-        diags_.report(DiagId::E02, span(t),
+        // Spec 2.3: "It shall not be the last character." A lexical rule, so a
+        // syntax error; before 2.0 it shared E-02 with the no-driver rule.
+        diags_.report(DiagId::Syntax, span(t),
                       std::format("identifier '{}' ends in '-'", text(t)));
     }
 }

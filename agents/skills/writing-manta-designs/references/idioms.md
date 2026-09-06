@@ -1,212 +1,204 @@
 # Idioms
 
-Patterns that come up on every board, written the way manta wants them.
+Patterns that come up on every board, written in the house style: passive
+networks as chains, large ICs as binding blocks, comments about the circuit.
 
 ## Decoupling
 
-A shunt has no exit terminal, so `==` continues the chain past it. That is what
-makes a run of capacitors read naturally:
+A shunt has no far side, so `==` continues past it. One rail, one chain:
 
 ```
-3V3 = .{C1~C-10uF-0805: .=GND}
-   == .{C2~C-100nF-0603: .=GND}
-   == .{C3~C-100nF-0603: .=GND};
+3V3 = .{C1~C-10uF-0805: .=GND} == .{C2~C-100nF-0603: .=GND} == .{C3~C-100nF-0603: .=GND};
 ```
 
-Several identical caps on one node are a multiplicity group. `*N` asserts only
-that N copies hang off the current node; each copy's other terminals are settled
-by its own bindings:
+Several identical caps on one node are a multiplicity group, annotated with
+a range designator; `*N` hangs copies off the node and each copy's far pin is
+settled by its own binding, per copy if they differ:
 
 ```
-3V3 = ({C?~C-100nF-0603: .=GND}.)*4;
+3V3 = ({C%[4:6]~C-100nF-0603: .=GND}.)*3;
+3V3 = ({C%[7:8]~C-100nF-0603: .=%[GND,AGND]}.)*2;
 ```
 
-And when the far ends differ, supply them per copy:
+## Pull-ups, pull-downs, RC at a pin
 
 ```
-({C?~C-10uF-0805: .=%[GND,AGND,GND]}.)*3
+3V3 = .{R3~R-10kR-0603}. = nRESET = .{C4~C-100nF-0603: .=GND};
+BOOT0 = .{R9~R-10kR-0603}. = GND;
 ```
 
-## Pull-ups and pull-downs
+The resistor passes through, the cap dead-ends. E-02 never fires on a pulled
+net: a passive pin counts as driving it.
+
+## A network that belongs to an IC pin
+
+Write it in the pin's binding, so the reader finds it at the pin:
 
 ```
-3V3 = .{R1~R-10kR-0603}. = nRESET;
+{U2~MP1584EN-LF-Z:
+    .VIN  = VPOS = .{C1~C-10uF-0805: .=GND} == .{C6~C-100nF-0603: .=GND};
+    .EN   = .{R5~R-100kR-0603}. = VPOS;
+    .FB   = .{R3~R-51kR-0603: .=5V;} == .{R4~R-10kR-0603: .=GND;};
+    .COMP = .{R17~R-100kR-0603}. = .{C2~C-470pF-0603}. = GND;
+    .FREQ = .{R6~R-200kR-0603}. = GND;
+    .BST  = .{C3~C-100nF-0603}. = SW;
+    .SW   = SW = K.{D2~D-SS34: .A=GND;} == A.{L1~L-4u7H}.B = .{C4~C-10uF-0805: .=GND} == 5V;
+    .GND  = GND;
+    .EP   = GND;
+};
 ```
 
-`=` joins on both sides: the rail to one pin of the resistor, and the
-resistor's far pin to `nRESET`.
+A bare pin binding is only for a pin whose network lives elsewhere. A rail
+that only reaches an IC through an inductor has no `POWER>` pin on it, so the
+board declares it: `5V &TYPE=POWER &CLASS=logic-5v;`.
 
-Do not expect E-02 on the pulled net: a passive pin counts as driving it, which
-is what stops the rule firing on every pull-up ever written.
-
-## Series-parallel
+## Dividers and level shifting
 
 ```
-(.{L?~ind}.)+2          two in series along the chain
-(A.{D?~dio}.K)|2          two in parallel: entries common, exits common
+VBUS = .{R1~R-100kR-0603}. = VBUS-SENSE = .{R2~R-47kR-0603}. = GND;
+WS2812-Y = .{R8~R-330R-0603}. = WS2812-DATA;
 ```
 
-`+N` and `|N` pass the chain through the group. `*N` does not — it hangs copies
-off one node.
+## LEDs
+
+Series resistor then diode, anode to cathode, in one chain:
+
+```
+LED-DRIVE = .{R1~R-1kR-0603}. = A.{D1~LED-0603}.K = GND;
+```
+
+A common-anode RGB is one part with three chains rooted at its cathodes:
+
+```
+5V = A-COM.{D4~RGB-LED-CA:
+    .K-R = .{R10~R-560R-0603}. = RGB-R-GPIO;
+    .K-G = .{R11~R-300R-0603}. = RGB-G-GPIO;
+    .K-B = .{R12~R-300R-0603}. = RGB-B-GPIO;
+};
+```
+
+## Crystal
+
+```
+XTAL-IN = .{Y1~CRYSTAL-8MHZ}. = XTAL-OUT;
+XTAL-IN = .{C11~C-33pF-0603: .=GND};
+XTAL-OUT = .{C12~C-33pF-0603: .=GND};
+```
+
+## A large IC
+
+Every pin, in the part's declaration order, unused pins `= ?`. Pins that
+feed a series element are bound to a named net and chained from it
+elsewhere, because a net must be written twice:
+
+```
+{U1~CH32V203C8T6:
+    .VBAT  = 3V3;
+    .PA8   = WS2812-GPIO;    // TIM1_CH1 drives the strip through U7
+    .PA9   = LEFT-TX;        // USART1
+    .PC13  = ?;
+    .SWDIO = SWDIO;
+};
+```
+
+## A connector
+
+```
+{J1~CONN-USB-C: &EDGE=LEFT; .VBUS = VBUS; .GND = GND; .CC1 = CC1; .CC2 = CC2; .DP = USB-DP; .DM = USB-DM; };
+CC1 = .{R13~R-5k1R-0603}. = GND;
+CC2 = .{R14~R-5k1R-0603}. = GND;
+```
+
+Paralleled positions are a multi-pin terminal: `VPOS = [1,2].{J2~CONN-6P}.[5,6] = GND;`.
+
+## Series, parallel, hanging
+
+```
+(.{R?~R-100kR-0603}.)+2          two in series along the chain
+(A.{D?~D-SS34}.K)|2               two in parallel: entries common, exits common
+({C?~C-100nF-0603: .=GND}.)*4    four hanging off the node
+```
+
+`+N` and `|N` pass the chain through; `*N` does not.
 
 ## Replicated channels
 
-`[[ ]]` makes one copy per element of the array flowing through it. The count
-follows from the unit's arity and the connection width, so it is never written:
+`[[ ]]` makes one copy per element of the bus flowing through it; a scalar
+binding broadcasts, `%` gives each copy its own:
 
 ```
->SIG[0:3] = [[ I.{U?~AMP012: PWR=3V3; GND=GND}.O ]] = OUT[0:3]>;
+LED-DRIVE[0:1] = [[{BLK%[1:2]~indicator: #series-r = 1;}.DRIVE]];
+>SIG[0:3] = [[ I.{U?~AMP: .EN=%AMP-EN[0:3]; .PWR=3V3; .GND=GND; }.O ]] = OUT[0:3]>;
+LED-DRIVE[0:3] = [4[ A[0:1].{D%[1:2]~LED-BICOLOUR}.K ]2] = LED-K[0:1];
 ```
 
-Four copies. Each amplifier gets its own signal because the bus is indexed; all
-four share `3V3` and `GND` because a scalar broadcasts.
+State the widths, as in the last line, when the unit is not one-in one-out.
 
-To give each copy something different, use `%`:
-
-```
-[[ I.{U?~AMP012: EN=%AMP-EN[0:3]; PWR=3V3}.O ]]
-```
-
-Where the unit is not one-in one-out, state the widths and let the compiler
-check them:
+## Differential pairs and buses
 
 ```
-[4[ I.{U?~splitter}.O[0:1] ]8]     // 1-in 2-out, 4 copies, 8 out
-```
-
-## Differential pairs
-
-`diff` is built in, with members `+` and `-` in that order:
-
-```
-USB &HARNESS=diff;
-<>USB.+ = .{R1~R-50R-0603}. = MCU-USB.+;
-<>USB.- = .{R2~R-50R-0603}. = MCU-USB.-;
-```
-
-An impedance on a pair takes the `D` suffix — `&IMP=90RD`. Single-ended is
-**E-14**.
-
-Better, put the constraint on the harness type so every instance inherits it:
-
-```
-harness usb2 {
-    D &HARNESS=diff;
-    &!IMP     = 90RD;
-    &MAXDELAY = 600ps;
-};
-
-usb-host &HARNESS=usb2;
-usb-dev  &HARNESS=usb2;
-```
-
-## Buses
-
-A harness need not be declared. Writing `i2c.SDA` implies one, and further
-members accrue as used — which is why a mistyped member is caught by E-26
-rather than silently becoming a new net.
-
-```
+USB &HARNESS=usb2;                 // the type carries &!IMP=90RD and &MAXDELAY
+USB = MCU-USB;                     // whole-harness assignment, member by member
 i2c &HARNESS=i2c-bus;
-<>i2c;
 3V3 = .{R4~R-10kR-0603}. = i2c.SDA;
+3V3 = .{R5~R-10kR-0603}. = i2c.SCL;
 ```
 
-Assigning a whole harness assigns members pairwise by name:
+A harness need not be declared: `swd.IO` and `swd.CLK` written twice each
+imply one, and a mistyped member is caught by E-26.
+
+## Test points and stubs
 
 ```
-USB = MCU-USB;
+TP1 = U2.MISO &STUB;                // a net referenced once, on purpose
+3V3 = .{TP2~TESTPOINT};             // a real pad, on the board, no BOM line
 ```
 
-## Delay matching
-
-A group with a reference and destinations. Tolerance is a **time**, never a
-length:
+## Not fitted, second source, unbound
 
 ```
-match ddr-addr {
-    @src       = U1;
-    @dest      = [U5, U6, U7];
-    @tolerance = 5ps;
-};
-
-ADDR[0:15] &MATCH=ddr-addr;
-DDR-CLK    &MATCH={ddr-addr: @!offset=10ps};
+{!R20~R-0R-0603: .A = BOOT0; .B = 3V3; };      // placed, not fitted
+.{R7~R-10kR-0603: #!mpn = "ERJ-3EKF1002V"; }.  // second source at the call site
+{U5~ISO7741: .GNDB = ?; }                       // deliberately floating
 ```
 
-A scalar tolerance is a star topology — every destination within that figure of
-the source. A list gives each its own budget, which is how a flyby chain is
-written: `@tolerance = (5ps)*3`.
+## Multi-unit packages and `^`
 
-## Constraints on many nets
+One designator, several statements; bindings once, on the declaring one:
 
 ```
-netclass power {
-    &CURRENT  = 3A;
-    &!VOLTAGE = 60V;
-};
-
-3V3 &CLASS=power;
-12V &CLASS=power &CURRENT=8A;      // per-net wins at equal strength
+SIG-A = INA.{U3~LM324: .V-POS=3V3; .V-NEG=GND; }.OUTA = OUT-A;
+SIG-B = INB.{U3}.OUTB = OUT-B;
 ```
 
-## Not-fitted parts
+`^` places two things in one statement without joining them, for a group
+whose internal relationship is not electrical: `1.{J3~HDR-2} ^ {J4~HDR-2}.1`.
 
-```
-{!R1~R-0R-0603};                   // sugar for @fitted=FALSE
-{!BLK1~audio-stage}.OUT;            // cascades to every part within
-```
-
-DNP affects BOM and ERC only. The netlist is unchanged: the footprint is placed,
-the pads exist, the copper is routed. Nets downstream of an unfitted series part
-are treated as intentionally open, so E-02 is suppressed across that boundary.
-
-`@fitted` and `@bom` are independent:
-
-```
-@fitted=FALSE; @bom=TRUE;      // DNP resistor: on the BOM, flagged, quantity zero
-@fitted=TRUE;  @bom=FALSE;     // printed antenna: exists, nothing purchased
-```
-
-## Multi-unit packages
-
-One designator, several statements. Bindings are declared once, on the statement
-that declares the instance; later references inherit them:
-
-```
-SIG-A-IN = INA.{U20~LM324: .v-pos=3V3; .v-neg=GND; }.OUTA = SIG-A-OUT;
-SIG-B-IN = INB.{U20}.OUTB = SIG-B-OUT;
-```
-
-This is the case where the designator must be author-assigned rather than `?`,
-since `{U20}` needs `U20` to exist.
-
-## Things that are not connections
-
-`^` places elements in one statement without connecting them. Use it for a
-physically associated group whose internal relationship is not expressed here —
-a mated connector pair, for instance:
-
-```
-PANEL-OUT = 1.{J1~conn-4} ^ {J2~conn-4}.1 = PANEL-RETURN;
-```
-
-Where a connection *is* intended, use `==`.
-
-## Parameterised subcircuits
-
-Declare the parameter weakly so a call site may override it, and quote the name
-inside the substitution if it contains a hyphen:
+## Parameterised blocks
 
 ```
 block indicator {
     #~series-r = 1;
     >DRIVE;
-    DRIVE = .{R1~R-$"series-r"$kR-0603}. = LED-A;
-    LED-A = A.{D1~LED-0603}.K = GND;
+    >>GND;
+    DRIVE = .{R1~R-$"series-r"$kR-0603}. = A.{D1~LED-0603}.K = GND;
 };
 ```
 
-A designator inside a block is annotated once in its own scope, however many
-times the block is instantiated. Export flattens the path, so these become
-`BLK1_R1` and `BLK2_R1`.
+A designator inside a block is annotated once in that scope; export flattens
+the path to `BLK1_R1`, `BLK2_R1`.
+
+## A cable
+
+```
+cable usb-c-1m {
+    #length = 1m;
+    {P1~USB-C-PLUG}.P[1:4]
+        = [[.{X%[1:4]~CRIMP}. = .{W%[1:4]~WIRE-24AWG}. = .{X%[5:8]~CRIMP}.]]
+        = P[1:4].{P2~USB-C-PLUG};
+};
+```
+
+A net whose only driver is on the next board of a daisy chain is driven
+through the connector, so the connector's positions are declared `<>`: a
+bidirectional pin counts as a driver, and E-02 stays quiet without a flag.

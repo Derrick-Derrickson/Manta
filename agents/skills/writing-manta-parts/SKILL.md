@@ -1,244 +1,142 @@
 ---
 name: writing-manta-parts
-description: Author a manta part or part library — pin maps, pin types, default nets, casual pins, swap groups and BOM fields. Use when adding a component to a library, converting a datasheet into a part, or diagnosing a board error that traces back to a mis-declared part.
+description: Author a manta part file — pin map, pin types, casual pins, swap groups, BOM fields, and the datasheet excerpt that lives after the end-of-content marker. Use when adding a component to a library, converting a datasheet into a part, or diagnosing a board error that traces back to a mis-declared part.
 ---
 
 # Writing manta parts
 
-A part maps a package's physical pins to named pins and declares its fields.
-It is where most avoidable board errors originate, because a part's annotations
-are what every check on every net using it depends on.
+A part maps a package's pads to named pins and declares its fields. Every
+check on every net reads those declarations, so a wrong part breaks every
+board that uses it. One part per file; the file is the declaration, then
+`---`, then the datasheet excerpt.
 
 ```
 part LDO-3V3 {
-    @~footprint = SOT-23-5;
-    #value      = AP2112K-3.3;
-    @!type      = regulator;
-    #~mpn       = "AP2112K-3.3TRG1";
+    @~footprint    = SOT-23-5;
+    #value         = AP2112K-3.3;
+    @!type         = regulator;
+    #~mpn          = "AP2112K-3.3TRG1";
+    #!manufacturer = "Diodes Incorporated";
 
-    1: VIN<  &TYPE=POWER;
-    2: GND<  &TYPE=POWER &~NET=GND;
-    3: EN<;
-    4: NC    &TYPE=NC;
-    5: VOUT> &TYPE=POWER;
+    1 : VIN<  &TYPE=POWER;
+    2 : GND<  &TYPE=POWER;
+    3 : EN<   #VIH=1V4 #VIL=0V4;
+    4 : NC    &TYPE=NC;
+    5 : VOUT> &TYPE=POWER #SUPPLY=600mA;
 };
+
+---
+
+# AP2112K-3.3
+...
 ```
 
-Each line is `physical = logical`, with the direction arrow attached to the
-logical name and directives after it. A part exports all its pins; there is no
-separate export declaration.
+## Ten rules
 
-## Get the pin types right
+1. **Pin numbers are the footprint's pad numbers.** Check the footprint, not
+   only the datasheet: KiCad's diode and LED footprints put the cathode on
+   pad 1, a tactile switch with four pads may have only two pad numbers, and
+   an exposed pad is a numbered pin. A pin the footprint does not have
+   connects nothing.
+2. **Pin names are the datasheet's names.** `PA9`, not `USART1-TX`; `SW`,
+   not `OUT`. A pin's alternate functions go in a comment on that line.
+   Names cannot end in `-`, so `V-` becomes `V-NEG`.
+3. **Declare every pin**, including `NC`, thermal pads and duplicates. Use
+   ranges for runs: `[3:11] : GPIO[1:9]<>;`.
+4. **Arrow and `&TYPE` are both required on a supply pin.** `VIN< &TYPE=POWER`
+   consumes, `VOUT> &TYPE=POWER` provides, `VBAT<> &TYPE=POWER` consumes and
+   may also feed out. A `POWER` pin with no arrow is invisible to the supply
+   checks. Type every supply pin; a rail with no sourcing pin is the board's
+   problem, solved there with `&TYPE=POWER` on the net.
+5. **Arrows on signals, none on passives.** `>` drives, `<` listens, `<>` can
+   do either (a GPIO, a bus pin). A resistor's pins carry no arrow. `<>` on a
+   pin that only ever listens hides a missing driver.
+6. **`&TYPE=OPENDRAIN`** on I²C and other wired-AND pins. **`&TYPE=NC`** where
+   the datasheet forbids connection.
+7. **`&CASUAL` only on interchangeable pins**: both ends of a resistor,
+   capacitor, inductor, ferrite, crystal. Never a diode, LED, or transistor.
+   It is scoped per line, so two elements in one package stay separate.
+8. **No nets in a part** (`&NET` is **E-50**), no design values (`#DRAW` on a
+   header belongs at the instance), no project names anywhere in the file. A
+   part must be reusable by an unrelated board unchanged.
+9. **Fields.** `@~footprint` is a package name (`R-0603`, `SOT-23-5`), never a
+   library path; the project's `.fpmap` translates it. `#value`, `@!type`
+   (`resistor`, `capacitor`, `diode`, `led`, `mcu`, `regulator`, `connector`
+   …), `#~mpn`, `#!manufacturer`, and `#tolerance`, `#voltage`, `#power`
+   where they apply. `capacitor` is what W-04 recognises.
+10. **Pin `#` fields carry the worst-case datasheet figures** a project's
+    rules read: `#VOH #VOL #VIH #VIL` on logic pins, `#SUPPLY` on a source
+    pin, `#DRAW` on a consumer pin with a fixed draw, `&~PINDELAY` where the
+    datasheet gives pad-to-die delay. Typical-column numbers pass boards that
+    fail.
 
-This is the part that matters. Every net-level check reads them.
+## Swap groups, harness members, connectors
 
-**`&TYPE=POWER` with `>`** on a regulator output, a connector's VBUS, a battery
-terminal. One such pin is what satisfies E-27 for every net it feeds. Forget it
-and the board reports "unpowered net" no matter what the board does.
-
-**`&TYPE=POWER` with `<`** on a supply input. Brings three checks with it and
-needs no annotation in any design that uses the part: no source is E-27, two
-sources is E-28, a source with no consumers is W-09, and a supply pin with no
-nearby capacitor is W-04.
-
-**`&TYPE=OPENDRAIN`** on an I²C or similar bus pin. Says many drivers are
-permitted, so it is exempt from the multiple-driver rule and never counts as an
-input waiting for a driver.
-
-**`&TYPE=NC`** where the datasheet forbids connection. Connecting it is E-25.
-It weakly implies `&STUB`, so it will not trip the single-reference rule.
-
-**No `&TYPE` and no arrow** is `PASSIVE`, which claims nothing and is skipped by
-drive checks. That is right for a resistor or a capacitor and wrong for anything
-with a direction.
-
-**No `&TYPE` but an arrow** is `SIGNAL`. A pin that can release a bus is `<>`;
-there is no separate tri-state type, and E-01 fires only on multiple `>` pins.
-
-## Default nets
-
-`&NET` names the net a pin joins when nothing binds it. Declare it **weakly**,
-so a call site can override:
-
-```
-1: VCC< &TYPE=POWER &~NET=3V3;
-2: GND< &TYPE=POWER &~NET=GND;
-```
-
-```
-{U1~cool-mcu};                  VCC→3V3, GND→GND
-{U2~cool-mcu: .VCC=1V8; };       VCC→1V8, GND→GND
-```
-
-This removes an enormous amount of noise from a board. Supply and ground pins
-should nearly always have one.
-
-Note that `&NET=3V3` names the *rail called 3V3*, not the quantity 3.3 volts —
-the directive's type decides which reading the word takes.
-
-## Casual pins
-
-`&CASUAL` grants two things: the pin may be chosen by a `.` terminal, and it
-joins a weak implicit swap group.
-
-Mark both pins of a genuinely symmetric part — a resistor, a capacitor, an
-inductor, a ferrite. Do **not** mark a diode's or a transistor's, which is what
-E-23 protects against.
+`&SWAP=name` names a permutable index; every array tagged with it permutes
+together, which is how a ganged swap is expressed:
 
 ```
-part R-10kR-0603 {
-    @~footprint = R-0603;
-    #value      = 10kR;
-    @!type      = resistor;
-    1: A &CASUAL;
-    2: B &CASUAL;
-};
+[1:4] : IN[1:4]<  &SWAP=ch;
+[5:8] : OUT[1:4]> &SWAP=ch;
 ```
 
-The implicit group is scoped per declaration line, so two independent elements
-in one package do not become mutually swappable:
+A harness member list states the mapping where it is read, and its length
+equals the pin range: `[12:13] : USB.[-,+]<>;`.
+
+A connector says what it is with `@type`: `boardconnector` (something plugs
+in; may carry a weak `@~mate`), `cableconnector` (it plugs into something;
+carries `@mates` and optionally `@map`), `wire` (pins are its cores; carries
+`#csa` as an area), `crimp`. Wires, crimps and cable connectors need no
+footprint. A bare header's pins are `P[1:6]<>` with no roles: which position
+is ground is the board's decision.
+
+Mark a part `static` only when it is private to one file; a static library
+part is invisible to the board (E-31).
+
+## The datasheet excerpt
+
+Everything after `---` is documentation, reproduced byte for byte by every
+tool. It is what a designer reads instead of opening the PDF, so it holds
+only facts from the datasheet, each traceable to it. Write these sections,
+in this order, and omit a section only when the datasheet has nothing for it:
 
 ```
-part dual-resistor {
-    [1:2]: A[1:2] &CASUAL;      // one group
-    [3:4]: B[1:2] &CASUAL;      // a different one
-};
+# <part number>
+**Source:** <manufacturer>, <document title>, <revision, date>. <package>.
+## Pins            | Pin | Name | Function |  — every pad, one line each
+## Absolute maximum ratings
+## Recommended operating conditions
+## Electrical characteristics      the rows a designer sizes against, worst case
+## Application     the external components the datasheet requires, its formulas
+## Package         body size, pitch, pad numbering and polarity mark
 ```
 
-## Swap groups
+Rules for the prose:
 
-`&SWAP` names a permutable *index*, not a set of pins. Every array tagged with
-the same index permutes together, which is what makes a ganged swap
-expressible:
-
-```
-part buffer4 {
-    [1:4]: IN[1:4]<  &SWAP=ch;
-    [5:8]: OUT[1:4]> &SWAP=ch;
-};
-```
-
-Exchanging channels 2 and 3 permutes `IN` and `OUT` identically. Differing
-directions are expected here and do not freeze the group; differing *directives*
-do, and give W-08.
-
-## Arrays and harness members
-
-A contiguous run of physical pins maps to an array, and the widths must match:
-
-```
-[3:11]: GPIO[1:9]<>;        nine pins, nine signals
-```
-
-Range order is significant and defines wire order. A harness member list is
-written out so the mapping is stated where it is read, and its length must equal
-the pin range width:
-
-```
-[12:13]: USB.[+,-]<>;
-[20:22]: i2c.[SDA,SCL,ALERT]<>;
-```
-
-Pin names follow the ordinary identifier rules and may additionally be an
-integer. They may **not** end in a hyphen — a part needing a negative supply
-should name it `v-neg`, not `V-`.
-
-## Fields, and what they are for
-
-```
-@~footprint = R-0603;        weak: a call site may substitute a package
-#value      = 10kR;
-#tolerance  = ±1%;
-#power      = 100mW;
-@!type      = resistor;      locked: never overridden
-#~mpn       = "RC0603FR-0710KL";
-#~cost      = 0.002;
-#~supplier  = digikey;
-```
-
-`@footprint` is required for any fitted part; without it, E-20.
-
-`#` is an open namespace carried to the BOM untouched. Declaring `#mpn` weakly
-lets a second source be substituted at a call site without editing the part.
-
-Two conventions the checker relies on. `@type = capacitor` is how W-03 and W-04
-recognise a capacitor — the language has no notion of one otherwise. And
-`@!type` locked is a good default for a part's identity, which is not something
-a call site should change.
-
-## Linkage
-
-Mark a part `static` only when it is genuinely private to one file. Internal
-linkage makes it invisible to every other object, which is exactly what you do
-not want for a shared library, and the failure looks like E-31 "referenced but
-never declared" from the board.
-
-Two libraries may each declare a `static part house-resistor-0603` without
-conflict; two libraries declaring the same name externally is E-30.
+- **Only what the datasheet says.** Cite the table or section for each
+  block. Write "not stated" rather than a figure from memory or from a
+  similar part. Never present a family-typical number as this part's.
+- **Worst-case columns, with the condition** they are specified at.
+- **No history, no corrections narrative, no project references.** The
+  excerpt describes the part as the datasheet does today. Anything about a
+  board that uses it belongs in that board's own comments.
+- **Application notes are the datasheet's**, not the author's design
+  advice: what must be placed close, what value the reference circuit uses,
+  what the sizing formula is.
+- **Keep it to what a designer needs**: usually 40 to 150 lines. A pinout
+  and a maximum-ratings table for a resistor; a full electrical table and
+  the application section for a regulator or an MCU.
 
 ## Check it
 
-A part library on its own does not link — there is no top-level block. Check it
-by writing a design that uses every part, which is what `examples/blinky` does:
+A part library on its own does not link. Compile it alone to catch syntax
+and local errors, then check it inside a design that instantiates every
+part, under `-Werror`:
 
 ```sh
-manta compile -o build/ parts.manta board.manta
+manta compile -o build/ lib/*.manta
 manta check --top <block> -L build/ -Werror
 ```
 
-## Connectors, wires and crimps
-
-`@type` is what tells the compiler a part is more than a lump on a board.
-
-```manta
-part BACKPLANE-OUT {
-    @type       = boardconnector;   // something plugs into it
-    @~mate      = jumper-8way;      // and this is what
-    @~footprint = "Connector_JST:JST_PH_S8B-PH-K_1x08_P2.00mm_Horizontal";
-
-    1: VPOS< &TYPE=POWER;
-    2: GNDP< &TYPE=POWER &~NET=GND;
-};
-
-part JST-8-PLUG {
-    @type  = cableconnector;        // it plugs into something
-    @mates = BACKPLANE-OUT;         // and this is what
-
-    [1:8]: P[1:8]<>;
-};
-```
-
-`@~mate` weak, so a call site may fit a different lead:
-
-```manta
-.{J3~BACKPLANE-OUT: @mate = short-jumper; }.
-```
-
-A wire and a crimp are ordinary parts. They need no footprint — E-20 does not
-apply to them — and everything about a wire beyond its `@type` is a `#` field,
-so a project's rules can check whatever it cares about:
-
-```manta
-part WIRE-22AWG-RED {
-    @type       = wire;
-    #csa        = 1mm2;        // an area, so a rule can compare it to a current
-    #strands    = 7;
-    #colour     = red;
-    #insulation = PVC;
-    #mpn        = "3257-RD-100";
-
-    1: A &CASUAL;
-    2: B &CASUAL;
-};
-```
-
-A multicore wire is the same thing with member pins, using the syntax parts
-already have for `USB.[+,-]`:
-
-```manta
-part CABLE-2P-SHIELDED {
-    @type = wire;
-    [1:3]: A.[WHITE,BLUE,SHIELD];
-    [4:6]: B.[WHITE,BLUE,SHIELD];
-};
-```
+Then open the footprint the `.fpmap` names and confirm every pin number is a
+pad on it. The compiler cannot see a footprint; this step is yours.

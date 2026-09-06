@@ -248,10 +248,16 @@ int runLink(const Options& opts) {
     // loom is a separate thing to build, with its own bill of materials, and a
     // KiCad netlist has nowhere to put a wire anyway.
     if (opts.assembly) {
+        // Beside the board's netlist, not in the working directory: '-o' names
+        // where the build's outputs go, and the cable's belong with them.
+        const std::string outDir = std::filesystem::path(netlistPath).parent_path().string();
+        const auto beside = [&](const std::string& name) {
+            return outDir.empty() ? name : (std::filesystem::path(outDir) / name).string();
+        };
         for (const MatedCable& m : mates.mated()) {
             std::string cableNetlist;
             writeNetlist(m.design, cableNetlist);
-            std::string path = m.cableName + ".mantaNets";
+            std::string path = beside(m.cableName + ".mantaNets");
             if (!writeFileBinary(path, cableNetlist, error)) {
                 diags.report(DiagId::Io, Span{}, std::format("{}: {}", path, error));
                 continue;
@@ -259,7 +265,7 @@ int runLink(const Options& opts) {
             if (!opts.bomPath.empty()) {
                 std::string cableBom;
                 writeBom(m.design, cableBom);
-                std::string bomPath = m.cableName + ".bom.csv";
+                std::string bomPath = beside(m.cableName + ".bom.csv");
                 if (!writeFileBinary(bomPath, cableBom, error)) {
                     diags.report(DiagId::Io, Span{}, std::format("{}: {}", bomPath, error));
                 }

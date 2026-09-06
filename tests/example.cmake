@@ -128,7 +128,7 @@ else()
 endif()
 
 # The netlist records the two 'indicator' instances as block records with their
-# ports resolved (revision 1.3), and U1's 'NC = ?' pin -- which sits on no net
+# ports resolved (revision 1.3), and U1's '.NC = ?' pin -- which sits on no net
 # and so appears nowhere in the nets -- survives in U1's declared pin list.
 file(READ "${WORK}/blinky.mantaNets" blinky_nets)
 string(REGEX MATCHALL "\"block\": \"indicator\"" indicators "${blinky_nets}")
@@ -175,12 +175,12 @@ function(assert_same_net netsvar ref_a pin_a ref_b pin_b)
     message(FATAL_ERROR "${ref_a}.${pin_a} and ${ref_b}.${pin_b} do not share a net")
 endfunction()
 
-# The LEDs are actually driven: "LED-DRIVE[0:1] = [[{BLK%[1:2]~indicator}DRIVE]]"
-# must put U2's GPIO pin and the indicator's series resistor on ONE net, per
-# channel. This is the cross-boundary membership no netlist ever had while the
-# terminal-style port binding united nothing.
-assert_same_net(blinky_nets U2 2 BLK1_R1 1)
-assert_same_net(blinky_nets U2 3 BLK2_R1 1)
+# The LEDs are actually driven: "LED-DRIVE[0:1] = [[{BLK%[1:2]~indicator}.DRIVE]]"
+# must put U2's GPIO pin (PA3 is pin 9, PA4 pin 10) and the indicator's series
+# resistor on ONE net, per channel. This is the cross-boundary membership no
+# netlist ever had while the terminal-style port binding united nothing.
+assert_same_net(blinky_nets U2 9 BLK1_R1 1)
+assert_same_net(blinky_nets U2 10 BLK2_R1 1)
 
 # No two nets may share a name: KiCad and friends merge nets BY NAME on import,
 # so a duplicate would short the two LED channels on the real board.
@@ -223,15 +223,19 @@ endforeach()
 if(NOT gnd_count EQUAL 1)
     message(FATAL_ERROR "expected exactly one net named GND, got ${gnd_count}")
 endif()
-assert_same_net(blinky_nets J1 2 BLK1_D1 2)
-assert_same_net(blinky_nets J1 2 BLK2_D1 2)
+assert_same_net(blinky_nets J1 2 BLK1_D1 1)
+assert_same_net(blinky_nets J1 2 BLK2_D1 1)
+
+# The mirrored debug lead: '@map = [[1:5, 5:1]]' on the plug, so header pin 1
+# (3V3) is met by the loom's conductor 5. The board's own netlist is unchanged
+# by the map; the check is that the mating passed under -Werror above.
 
 # --- render: the two 'indicator' copies share one page -----------------------
 # The schematic is blinky's top page plus ONE page for the 'indicator'
 # definition: BLK1 and BLK2 draw as green sheet symbols on the top page, both
 # linking to that single page, which holds the R-LED chain once under its
 # block-local net spellings.
-run_manta(render -o "${WORK}/blinky.html" "${WORK}/blinky.mantaNets")
+run_manta(render -Werror -o "${WORK}/blinky.html" "${WORK}/blinky.mantaNets")
 file(READ "${WORK}/blinky.html" blinky_html)
 
 foreach(page "id=\"page-blinky\"" "id=\"page-indicator\"")
@@ -283,7 +287,8 @@ if(NOT blinky_html MATCHES ">instances: BLK1, BLK2<")
 endif()
 
 # The '--- TITLE' markers in board.manta become titled rooms on the top page.
-foreach(room "USB-C POWER IN" "3V3 REGULATOR" "MCU" "I2C" "INDICATORS")
+foreach(room "USB-C POWER IN" "3V3 REGULATOR" "VBUS SENSE" "MCU" "I2C" "CONFIG"
+             "INDICATORS" "DEBUG")
     if(NOT blinky_html MATCHES "class=\"roomtitle\"[^>]*>${room}<")
         message(FATAL_ERROR "no room titled '${room}' on the rendered page")
     endif()
@@ -316,9 +321,11 @@ execute_process(COMMAND "${MANTA}" link --top blinky -L "${WORK}/build" --rules 
 if(NOT asm_code EQUAL 0)
     message(FATAL_ERROR "--assembly failed on blinky")
 endif()
-if(NOT EXISTS "${WORK}/usb-c-1m.mantaNets")
-    message(FATAL_ERROR "--assembly wrote no netlist for the mated lead")
-endif()
+foreach(lead usb-c-1m swd-lead i2c-lead)
+    if(NOT EXISTS "${WORK}/${lead}.mantaNets")
+        message(FATAL_ERROR "--assembly wrote no netlist for the mated lead ${lead}")
+    endif()
+endforeach()
 file(SHA256 "${WORK}/blinky.mantaNets" f)
 file(SHA256 "${WORK}/blinky3.mantaNets" g)
 if(NOT f STREQUAL g)
