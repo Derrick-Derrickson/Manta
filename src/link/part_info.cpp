@@ -196,6 +196,8 @@ PartInfo buildPartInfo(const Item* part, std::uint32_t objectIndex, StringIntern
         auto count = static_cast<std::size_t>(
             (line->physLo <= line->physHi ? line->physHi - line->physLo
                                           : line->physLo - line->physHi) + 1);
+        // A named pad (revision 2.0) is always exactly one pin.
+        if (valid(line->physName)) count = 1;
 
         std::size_t firstPin = info.pins.size();
 
@@ -203,7 +205,8 @@ PartInfo buildPartInfo(const Item* part, std::uint32_t objectIndex, StringIntern
             std::int64_t physical = line->physLo + static_cast<std::int64_t>(k) * step;
 
             ComponentPin pin;
-            pin.physical = std::to_string(physical);
+            pin.physical = valid(line->physName) ? std::string(interner.text(line->physName))
+                                                 : std::to_string(physical);
             pin.base = line->logical.symbol;
             pin.direction = line->arrow.dir;
             pin.type = defaultType(line->arrow.dir);

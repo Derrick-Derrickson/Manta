@@ -61,13 +61,15 @@ minimal, so it doubles as a tour:
 | A second source at the call site | `#!mpn` on `R8` |
 | Pin fields for the project rules | `#VOH #VOL #VIH #VIL`, `#SUPPLY`, `#DRAW` |
 | Harness types, `diff`, harness-carried directives | `usb2`, `i2c-bus`, `USB &HARNESS=usb2` |
-| Harness member list in a part, whole-harness binding, implied harness | `USB.[+,-]`, `.USB = USB`, `swd.IO` |
+| Named pads, on a part and in a map | `A6 : DP-A<>`, `MP : MOUNT`, `@map = [[1,A4], …]` |
+| Multi-pin terminals on a reference | `VBUS = [VBUS-A9,VBUS-B4,VBUS-B9].{J1}` |
+| Harness member list in a part, whole-harness binding, implied harness | `I2C.[SDA,SCL]` on the Qwiic connector, `.I2C = i2c`, `swd.IO` |
 | Delay matching with a member override | `match usb-pair`, `@!tolerance` |
 | Net directives at three strengths | `&!VOLTAGE`, `&~LAYER`, `&SHIELD`, `&PEAK`, `&CLASS`, `&RAIL`, `&RENDER`, `&STUB` |
 | Pin directives | `&SWAP=cc`, `&~PINDELAY`, `&TYPE=NC`, `&CASUAL` |
 | Instance directive | `&EDGE` on every connector |
 | Render sections | the `--- TITLE` rooms |
-| Connectors that say what plugs in, with a mirrored map | `@~mate`, `@mates`, `@map = [[1:5, 5:1]]` |
+| Connectors that say what plugs in, with mirrored and named maps | `@~mate`, `@mates`, `@map = [[1:5, 5:1]]`, `[[1:4, 1:4]]` |
 | Cables with wires and crimps, and a wire's cross-section | `leads.manta`, `#csa` |
 | Project rules over `@type` and `#` fields | `blinky.mantaRules` |
 

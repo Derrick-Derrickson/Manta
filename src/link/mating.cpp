@@ -162,8 +162,7 @@ MateChecker::PinPairing MateChecker::pairPins(const Component& near, const Compo
                                               std::string_view farName) {
     PinPairing out;
 
-    auto findPhysical = [](const Component& c, std::int64_t number) -> std::int32_t {
-        std::string want = std::to_string(number);
+    auto findPhysical = [](const Component& c, const std::string& want) -> std::int32_t {
         for (std::uint32_t i = 0; i < c.pins.size(); ++i) {
             if (c.pins[i].physical == want) return static_cast<std::int32_t>(i);
         }
@@ -172,7 +171,7 @@ MateChecker::PinPairing MateChecker::pairPins(const Component& near, const Compo
 
     // The map may be written on either side; a connector pair needs only one of
     // them to say how it is wired.
-    const std::vector<std::pair<std::int64_t, std::int64_t>>* map = nullptr;
+    const std::vector<std::pair<std::string, std::string>>* map = nullptr;
     bool reversed = false;
     if (!far.pinMap.empty()) {
         map = &far.pinMap;
@@ -183,8 +182,8 @@ MateChecker::PinPairing MateChecker::pairPins(const Component& near, const Compo
 
     if (map) {
         for (const auto& [a, b] : *map) {
-            std::int64_t nearPin = reversed ? b : a;
-            std::int64_t farPin = reversed ? a : b;
+            const std::string& nearPin = reversed ? b : a;
+            const std::string& farPin = reversed ? a : b;
             std::int32_t ni = findPhysical(near, nearPin);
             std::int32_t fi = findPhysical(far, farPin);
             if (ni < 0 || fi < 0) {
@@ -213,7 +212,7 @@ MateChecker::PinPairing MateChecker::pairPins(const Component& near, const Compo
         return out;
     }
     for (std::uint32_t i = 0; i < near.pins.size(); ++i) {
-        std::int32_t fi = findPhysical(far, std::atoll(near.pins[i].physical.c_str()));
+        std::int32_t fi = findPhysical(far, near.pins[i].physical);
         if (fi < 0) {
             diags_.report(DiagId::E46, at,
                           std::format("'{}' has pin {} and '{}' does not; give the mating an "

@@ -73,7 +73,8 @@ rules logic-levels {
     #VIH : voltage;      // input threshold, high
 
     check drive-high for net.driver -> net.receiver {
-        when    driver.direction == out & receiver.direction == in;
+        when    (driver.direction == out) | (driver.direction == bidir);
+        when    (receiver.direction == in) | (receiver.direction == bidir);
         when    has(driver.VOH) & has(receiver.VIH);
         require driver.VOH >= receiver.VIH;
         error   "{driver} drives {net} to {driver.VOH},"
@@ -168,7 +169,10 @@ silently producing watts.
 | a component | `designator`, `part`, `name`, `footprint`, `fitted`, `bom`, `type`, `mate`, `pins`, and its `#` fields |
 
 A bare word that is not a binding and not a property stands for itself, which is
-what makes `direction == out` work with no enumeration to declare.
+what makes `direction == out` work with no enumeration to declare. The closed
+sets are: `direction` is `in`, `out`, `bidir` or `none`; `type` is `passive`,
+`signal`, `power`, `opendrain`, `nc` or `ground`; a net's `direction` is the
+same set, and `ground`, `power`, `global`, `fitted` and `bom` are booleans.
 
 ### 3.7 Messages
 
@@ -213,7 +217,7 @@ linear in practice. Writing the cheap, one-sided guards first costs nothing and
 helps:
 
 ```
-when driver.direction == out & receiver.direction == in;   // hoisted
+when (driver.direction == out) | (driver.direction == bidir);   // hoisted
 when has(driver.VOH) & has(receiver.VIH);                  // hoisted
 require driver.VOH >= receiver.VIH;                        // per pair
 ```

@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.0.0-rc1 — 2026-09-06
+## 2.0.0-rc2 — 2026-09-07
 
 ### Why 2.0
 
@@ -27,6 +27,35 @@ break. From 2.0 on, a minor revision is additive again.
   `&NET=?` at an instance — the deliberate float — and pin references are
   untouched. Migration is mechanical: move each `&~NET=<name>` from the
   declaration to a binding at every instance that relied on it.
+
+### Two silent defects, fixed
+
+- **A whole-harness binding joined nothing.** `{J1~CONN-USB-C: .USB = MCU-USB;}`
+  on a pin declared `[5:6] : USB.[+,-]<>` widened the identifier to a bus,
+  `MCU-USB[0]` and `MCU-USB[1]`, and left every pin on its own net. No check
+  noticed, and the blinky example's USB data pair was not connected from its
+  receptacle to its ESD array. The binding now joins each member pin to the
+  member net of its own name (§12.1), and binding a member-list pin to
+  anything but a harness identifier is **E-38**. Found by an agent reading
+  the netlist it had just produced.
+- **Harness types were never applied.** A `harness` declaration parsed and
+  linked, and its directives and member types reached no net at all; the
+  idioms promised `&!IMP=90RD` on a `usb2` pair and the netlist carried
+  nothing. A type's directives now reach every member net of every
+  identifier assigned the type, declared or implied, and a member's own
+  directives reach its net, both applied as a net class is (§12.5). A type
+  no object declares is **E-31**.
+
+### Named pads
+
+- **A pad may be named, not only numbered** (§4.5). `A6 : DP-A<>;` declares
+  the pad a USB-C receptacle's footprint calls A6; `MP : MOUNT;` a mechanical
+  pad; a name that does not lex as an identifier is quoted. A named pad is one
+  pin; ranges stay numeric. `@map` accepts pad names on either side (§12A.2),
+  so a seven-conductor plug maps onto a sixteen-contact receptacle by name.
+  Until now every connector or BGA with lettered pads could only be modelled
+  as a placeholder header, which the blinky example did; it now declares the
+  real receptacle and its KiCad footprint resolves every pad.
 
 ### Specification
 

@@ -145,13 +145,20 @@ part SW-DIP-2 {
 // A header's positions carry no roles: what each one means is bound on the
 // board, where a reader can see it.
 
-part HDR-1x04 {
-    @~footprint = HDR-1x04;
-    #value      = "1x4 2.54mm";
+// Qwiic fixes the roles of its four positions by standard, so this connector
+// carries them, and its I2C pair is a harness member list bound as a whole.
+// The two mechanical pads share one name on the footprint.
+part CONN-QWIIC {
+    @~footprint = QWIIC-SH-4;
+    #value      = Qwiic;
     @!type      = boardconnector;
     @~mate      = i2c-lead;
+    #~mpn       = "SM04B-SRSS-TB";
 
-    [1:4] : P[1:4]<>;
+    1     : GND<  &TYPE=POWER;
+    2     : 3V3<  &TYPE=POWER;
+    [3:4] : I2C.[SDA,SCL]<> &TYPE=OPENDRAIN;
+    MP    : MOUNT;
 };
 
 part HDR-1x05 {
@@ -163,27 +170,46 @@ part HDR-1x05 {
     [1:5] : P[1:5]<>;
 };
 
+// A USB 2.0 Type-C receptacle, pads named as the footprint names them. VBUS,
+// GND, D+ and D- each appear on both rows so the plug works either way up;
+// one VBUS pad is the declared source and the other three are the same
+// conductor, joined on the board.
 part CONN-USB-C {
-    @~footprint = USB-C-7;
-    #value      = USB-C;
+    @~footprint = USB-C-HRO;
+    #value      = "USB-C 2.0";
     @!type      = boardconnector;
     @~mate      = usb-c-1m;
+    #~mpn       = "TYPE-C-31-M-12";
 
-    1     : VBUS>      &TYPE=POWER #SUPPLY=500mA;
-    2     : GND<       &TYPE=POWER;
-    3     : CC1<>      &SWAP=cc;
-    4     : CC2<>      &SWAP=cc;
-    [5:6] : USB.[+,-]<>;
-    7     : SHIELD;
+    A1  : GND-A1<   &TYPE=POWER;
+    A4  : VBUS>     &TYPE=POWER #SUPPLY=500mA;
+    A5  : CC1<>     &SWAP=cc;
+    A6  : DP-A<>;
+    A7  : DM-A<>;
+    A8  : SBU1;
+    A9  : VBUS-A9;
+    A12 : GND-A12<  &TYPE=POWER;
+    B1  : GND-B1<   &TYPE=POWER;
+    B4  : VBUS-B4;
+    B5  : CC2<>     &SWAP=cc;
+    B6  : DP-B<>;
+    B7  : DM-B<>;
+    B8  : SBU2;
+    B9  : VBUS-B9;
+    B12 : GND-B12<  &TYPE=POWER;
+    S1  : SHIELD;
 };
 
 // ---- cable parts ------------------------------------------------------------
 // Plugs, crimps and wires need no footprint: they are on the loom's BOM,
 // never on the board.
 
+// A USB 2.0 cable carries seven conductors; the plug's positions meet the
+// receptacle's pads by name.
 part USB-C-PLUG {
     @type  = cableconnector;
     @mates = CONN-USB-C;
+    @map   = [[1,A4],[2,A1],[3,A5],[4,B5],[5,A6],[6,A7],[7,S1]];
     #~mpn  = "USB-C-PLUG-7";
 
     [1:7] : P[1:7]<>;
@@ -199,10 +225,13 @@ part SWD-PLUG {
     [1:5] : P[1:5]<>;
 };
 
-part HDR-1x04-PLUG {
+// The Qwiic plug's four positions meet the receptacle's four contacts; the
+// mechanical pad is not a contact, so the map says which four.
+part QWIIC-PLUG {
     @type  = cableconnector;
-    @mates = HDR-1x04;
-    #~mpn  = "DF3-4S-2C";
+    @mates = CONN-QWIIC;
+    @map   = [[1:4, 1:4]];
+    #~mpn  = "SHR-04V-S";
 
     [1:4] : P[1:4]<>;
 };
@@ -275,3 +304,26 @@ chosen so that at 5 V and below the loss is small.
 
 Single-row through-hole pin headers. Pins are numbered from the position with
 the square pad. Rated 3 A per contact, 250 V.
+
+## LEDs
+
+| Part | Colour | Vf typ at 5 mA | Vf max at 20 mA | If max | Vr max |
+|---|---|---|---|---|---|
+| LED-0603 | green, 570 nm | 2.0 V | 2.4 V | 20 mA | 5 V |
+| LED-BICOLOUR, KPA-3010SURKCGKC | red 624 nm / green 570 nm | 1.95 V / 2.1 V | 2.5 V / 2.5 V | 20 mA per die | 5 V |
+
+Kingbright KPA-3010 series, ver. 26A: two dies with a common cathode on the
+middle pad; pin 1 red anode, pin 2 green anode, pin 3 cathode.
+
+## USB-C receptacle
+
+HRO TYPE-C-31-M-12, 16-contact USB 2.0 receptacle with a through-hole shell.
+Pads are named as USB Type-C names its contacts: A1/A12/B1/B12 ground, A4/A9/
+B4/B9 VBUS, A5/B5 CC, A6/B6 D+, A7/B7 D-, A8/B8 SBU, and S1 the shell. Rated
+3 A on VBUS in total, 0.25 A per signal contact.
+
+## Qwiic connector
+
+JST SM04B-SRSS-TB, 1.00 mm pitch, four contacts plus two mechanical pads. The
+Qwiic standard fixes the order: 1 GND, 2 3V3, 3 SDA, 4 SCL. Rated 1 A per
+contact, 50 V.

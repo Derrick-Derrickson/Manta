@@ -17,25 +17,32 @@ namespace {
 // range: [[2,3],[3,2]] swaps two pins, [[1:20],[20:1]] reverses twenty. A range
 // pairs element-wise with its opposite, and may descend -- which is exactly what
 // a reversed ribbon is -- so the order of the endpoints carries meaning.
-void expandPinMap(const Value* v, std::vector<std::pair<std::int64_t, std::int64_t>>& out,
-                  Span at, DiagEngine& diags) {
+void expandPinMap(const Value* v, std::vector<std::pair<std::string, std::string>>& out,
+                  Span at, DiagEngine& diags, const StringInterner& interner) {
     if (!v || v->kind != ValueKind::List) {
         diags.report(DiagId::E46, at,
                      std::string("'@map' takes a list of pairs, as in '[[2,3],[3,2]]'"));
         return;
     }
-    auto sides = [](const Value* side, std::vector<std::int64_t>& into) {
+    // A side is a pin number, a numbered range, or (revision 2.0) a pad name
+    // such as 'A6'. All three become the pad's text, which is how a component
+    // pin records its physical position.
+    auto sides = [&](const Value* side, std::vector<std::string>& into) {
         if (!side) return false;
         if (side->kind == ValueKind::Integer) {
-            into.push_back(side->num.mantissa);
+            into.push_back(std::to_string(side->num.mantissa));
             return true;
         }
         if (side->kind == ValueKind::Range) {
             std::int64_t step = side->rangeLo <= side->rangeHi ? 1 : -1;
             for (std::int64_t n = side->rangeLo;; n += step) {
-                into.push_back(n);
+                into.push_back(std::to_string(n));
                 if (n == side->rangeHi) break;
             }
+            return true;
+        }
+        if (side->kind == ValueKind::Identifier && side->text != SymbolId::kInvalid) {
+            into.push_back(std::string(interner.text(side->text)));
             return true;
         }
         return false;
@@ -47,10 +54,10 @@ void expandPinMap(const Value* v, std::vector<std::pair<std::int64_t, std::int64
                          std::string("each '@map' entry is a pair, as in '[2,3]'"));
             continue;
         }
-        std::vector<std::int64_t> from, to;
+        std::vector<std::string> from, to;
         if (!sides(pair->list[0], from) || !sides(pair->list[1], to)) {
             diags.report(DiagId::E46, pair->span,
-                         std::string("a '@map' pin is a whole number or a range"));
+                         std::string("a '@map' pin is a number, a range or a pad name"));
             continue;
         }
         if (from.size() != to.size()) {
@@ -660,8 +667,8 @@ std::uint32_t Elaborator::instantiatePart(const Instance* inst, const PartInfo& 
     }
     FieldKey mapKey{interner_.intern("map"), FieldNamespace::System};
     if (const FieldSlot* s = env.lookup(mapKey); s && s->value) {
-        expandPinMap(subst_.resolveValue(s->value, env, arena_), c.pinMap, s->declaredAt,
-                     diags_);
+        expandPinMap(subst_.resolveValue(s->value, env, arena_), c.pinMap, s->declaredAt, diags_,
+                     interner_);
     }
 
     // User fields travel to the BOM untouched (spec 9.1).
@@ -920,6 +927,36 @@ void Elaborator::applyBindings(const Instance* inst, std::uint32_t componentInde
         }
 
         if (!b->net) continue;
+
+        // Spec 12.1: "Assigning a whole harness assigns every member pairwise
+        // by name." A pin declared with a member list -- "[5:6] : USB.[+,-]"
+        // -- bound to a bare harness identifier joins each member pin to the
+        // member net of the same name, 'USB.+' to 'MCU-USB.+'. Before 2.0 the
+        // identifier was widened to a bus, 'MCU-USB[0]', which joined nothing.
+        bool memberPins = !targets.empty();
+        for (std::uint32_t i : targets) {
+            if (!valid(component.pins[i].member)) memberPins = false;
+        }
+        if (memberPins) {
+            const NetExpr* n = b->net;
+            if (n->path.size() != 1 || n->range.present || n->hasMemberList ||
+                n->hasPerCopyList) {
+                diags_.report(DiagId::E38, b->span,
+                              std::format("pin '{}' carries a member list, so it is bound to "
+                                          "a harness identifier, not to a net or a bus",
+                                          interner_.text(pinName)));
+                continue;
+            }
+            std::string base = netDisplayName(n, scope);
+            for (std::uint32_t i : targets) {
+                SymbolId full = interner_.intern(
+                    base + "." + std::string(interner_.text(component.pins[i].member)));
+                std::uint32_t node = netNode(scope, full, 0, false, n->span);
+                unite(component.pins[i].node, node);
+                component.pins[i].connected = true;
+            }
+            continue;
+        }
 
         std::vector<std::uint32_t> dummy;  // bindings are outside the directive scope
         ElemValue net = evalNet(b->net, scope, static_cast<std::int64_t>(targets.size()), dummy);
@@ -1613,8 +1650,17 @@ void Elaborator::applyStatementDirectives(const Stmt* stmt, std::span<const std:
             }
             scope.harnessTypes.set(ident, d->value->text);
             // Spec 12.4: a 'diff' harness carries two members, '+' and '-'. An
-            // '&IMP' applied to one shall carry the 'D' suffix.
-            if (interner_.text(d->value->text) == "diff") diffHarnesses_.insert(ident);
+            // '&IMP' applied to one shall carry the 'D' suffix. A type whose
+            // member is a 'diff' is a pair too, for that check.
+            if (interner_.text(d->value->text) == "diff") {
+                diffHarnesses_.insert(ident);
+            } else if (const HarnessType* t = harnessTypes_.find(d->value->text)) {
+                if (t->diff) diffHarnesses_.insert(ident);
+                harnessUses_.push_back(HarnessUse{scope.id, ident, d->value->text, d->span});
+            } else {
+                // Spec 4.1: "A name referenced but never declared is error E-31."
+                diags_.report(DiagId::E31, d->span, interner_.text(d->value->text));
+            }
             for (std::uint32_t n : nodes) {
                 pendingDirectives_.push_back(PendingDirective{
                     n, "HARNESS", std::string(interner_.text(d->value->text)), d->strength,
@@ -1824,6 +1870,8 @@ void Elaborator::elaborateBlock(const Item* block, Scope& scope) {
                         if (d.kind == BodyKind::Directive) ds.push_back(d.directive);
                     }
                     netclasses_.set(e.item->name.symbol, std::move(ds));
+                } else if (e.item->kind == ItemKind::Harness) {
+                    registerHarnessType(e.item);
                 }
                 break;
             default:
@@ -1838,6 +1886,7 @@ void Elaborator::elaborateBlock(const Item* block, Scope& scope) {
 
 void Elaborator::collectNetclasses() {
     for (const auto& [key, decl] : symbols_.all()) {
+        if (decl.item->kind == ItemKind::Harness) registerHarnessType(decl.item);
         if (decl.item->kind != ItemKind::Netclass) continue;
         std::vector<const Directive*> ds;
         for (const BodyEntry& e : decl.item->body) {
@@ -1845,6 +1894,29 @@ void Elaborator::collectNetclasses() {
         }
         netclasses_.set(decl.item->name.symbol, std::move(ds));
     }
+}
+
+// Spec 12.1: "The harness keyword defines a type." Its members and their
+// directives, the directives the type carries, and whether any member is
+// itself a 'diff' pair (spec 12.4), which makes an identifier of this type a
+// pair for E-14's purposes.
+void Elaborator::registerHarnessType(const Item* item) {
+    HarnessType t;
+    for (const BodyEntry& d : item->body) {
+        if (d.kind == BodyKind::Directive) {
+            t.directives.push_back(d.directive);
+        } else if (d.kind == BodyKind::Member) {
+            t.members.push_back(d.member);
+            for (const Directive* md : d.member->directives) {
+                if (valid(md->name.symbol) && md->value &&
+                    interner_.text(md->name.symbol) == "HARNESS" && valid(md->value->text) &&
+                    interner_.text(md->value->text) == "diff") {
+                    t.diff = true;
+                }
+            }
+        }
+    }
+    harnessTypes_.set(item->name.symbol, std::move(t));
 }
 
 void Elaborator::collectMatchGroups(Design& design) {
@@ -2027,6 +2099,8 @@ void Elaborator::buildNets(Design& design) {
         }
     };
 
+    applyHarnessTypes();
+
     for (const PendingDirective& d : pendingDirectives_) {
         std::uint32_t* slot = rootToNet.find(uf_.find(d.node));
         if (!slot) continue;
@@ -2070,6 +2144,41 @@ void Elaborator::buildNets(Design& design) {
     design.components = std::move(components_);
     design.shorted = shorted_;
     design.unannotatedBlocks = std::move(unannotatedBlocks_);
+}
+
+// Spec 12.5: "A harness type may carry directives, which apply to every
+// identifier assigned that type", and spec 12.1's member declarations carry
+// theirs. The nets that exist are the identifier's members, 'USB.+' and the
+// like, whether the type declared them or a statement implied them (spec
+// 12.3), so the directives land on every net spelled '<ident>.<member>' in the
+// scope of the assignment. They are applied as a net class is: a directive
+// written on the net itself wins at equal strength.
+void Elaborator::applyHarnessTypes() {
+    for (const HarnessUse& use : harnessUses_) {
+        const HarnessType* type = harnessTypes_.find(use.type);
+        if (!type) continue;
+        std::string prefix = std::string(interner_.text(use.ident)) + ".";
+        for (const auto& [key, node] : netNodes_) {
+            if (key.scope != use.scope || key.indexed) continue;
+            std::string_view name = interner_.text(key.name);
+            if (!name.starts_with(prefix)) continue;
+            std::string_view member = name.substr(prefix.size());
+
+            auto push = [&](const Directive* d) {
+                if (!valid(d->name.symbol) || !d->value) return;
+                std::string_view dn = interner_.text(d->name.symbol);
+                if (dn == "HARNESS") return;  // a member's own type, not a constraint
+                pendingDirectives_.push_back(PendingDirective{
+                    node, std::string(dn), renderValue(d->value, interner_), d->strength,
+                    d->span, true});
+            };
+            for (const Directive* d : type->directives) push(d);
+            for (const MemberDecl* m : type->members) {
+                if (!valid(m->name.symbol) || interner_.text(m->name.symbol) != member) continue;
+                for (const Directive* d : m->directives) push(d);
+            }
+        }
+    }
 }
 
 void Elaborator::collectBlockInstances(Design& design) {

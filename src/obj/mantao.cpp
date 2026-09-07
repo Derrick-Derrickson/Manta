@@ -516,6 +516,9 @@ private:
         w_.field("lo", p->physLo);
         w_.field("hi", p->physHi);
         w_.field("physRange", p->physIsRange);
+        if (p->physName != SymbolId::kInvalid) {
+            w_.field("phys", std::string(in_.text(p->physName)));
+        }
         name("logical", p->logical);
         if (p->hasMemberList) writeNames("members", p->memberList);
         writeRange("range", p->logicalRange);
@@ -1279,6 +1282,7 @@ private:
         p->physLo = o->integer("lo");
         p->physHi = o->integer("hi");
         p->physIsRange = o->boolean_("physRange");
+        if (o->find("phys")) p->physName = in_.intern(o->str("phys"));
         p->logical = readName(o->find("logical"));
         if (const JsonValue* m = o->arr("members")) {
             p->memberList = readNames(m);

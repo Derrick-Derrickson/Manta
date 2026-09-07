@@ -12,7 +12,12 @@
 > binding at the instance (`.GND = GND;`). `&NET=?` at an instance — the
 > deliberate float — is untouched. Sources written for 1.6 move each
 > `&~NET=<name>` from the declaration to a binding at every instance that
-> relied on it.
+> relied on it. A pad may be named rather than numbered (§4.5), so a
+> connector or a BGA declares the pads its footprint has, and a `@map` may
+> name them (§12A.2). A net declared `&TYPE=POWER` is a supply rail (§5.3).
+> Two defects are corrected: a whole-harness binding onto a member-list pin
+> now joins member to member (§12.1), and a harness type's directives now
+> reach its member nets (§12.5); neither did before, silently.
 >
 > **1.6 makes the connector state whether the chain moved.** `=` is the
 > plain join everywhere — two bare net names included, which retires E-22 —
@@ -559,13 +564,28 @@ A part maps a package's physical pins to named pins and declares the part's fiel
 ```ebnf
 part_def = [ linkage ] "part" identifier "{" { field_decl | pin_map } "}" ";" ;
 pin_map  = pin_spec ":" identifier [ arrow ] { directive | field_decl } ";" ;
-pin_spec = integer | "[" integer ":" integer "]" ;
+pin_spec = integer | identifier | string | "[" integer ":" integer "]" ;
 ```
 
 Each pin line is `physical: logical`, with the direction arrow attached to the logical
 name and directives following it. The colon is a *mapping*, not an assignment or a join —
 `=` assigns values and connects nets, and a pin declaration does neither. Ranges are
 bracketed on both sides and shall be of equal width.
+
+The physical side is the pad as the footprint names it. Most packages number their pads,
+and a numbered run maps to an array; a pad may instead carry a name — `A6` on a USB-C
+receptacle, `AB12` on a BGA, `MP` for a mechanical pad, `EP` for an exposed one — and a
+named pad is always a single pin. A name that does not lex as an identifier is quoted.
+
+```
+part CONN-USB-C {
+    A4  : VBUS>  &TYPE=POWER;
+    A6  : DP-A<>;
+    B6  : DP-B<>;
+    S1  : SHIELD;
+    MP  : MOUNT;
+};
+```
 
 ```
 part cool-mcu {
@@ -1843,11 +1863,17 @@ I2C-SDA = i2c.SDA;
 I2C-SCL = i2c.SCL;
 ```
 
-Assigning a whole harness assigns every member pairwise by name.
+Assigning a whole harness assigns every member pairwise by name, and so does binding a
+pin declared with a member list (§12.2) to a harness identifier: each member pin joins
+the member net of its own name.
 
 ```
-USB = MCU-USB;                  // equivalent to member-by-member assignment
+USB = MCU-USB;                      // equivalent to member-by-member assignment
+{J1~CONN-USB-C: .USB = MCU-USB; }   // J1's USB.+ joins MCU-USB.+, USB.- joins MCU-USB.-
 ```
+
+A member-list pin is bound to a harness identifier and to nothing else; binding it to a
+bus or a plain net is error **E-38**.
 
 ### 12.2 Member lists
 
@@ -1896,8 +1922,12 @@ error **E-14**.
 
 ### 12.5 Harness-carried directives
 
-A harness type may carry directives, which apply to every identifier assigned that type.
-This is the preferred way to constrain a repeated interface.
+A harness type may carry directives, which apply to every member net of every identifier
+assigned that type — the members the type declares and the members that accrue by use
+(§12.3) alike — and a member declaration's own directives apply to that member's net. They
+are applied as a net class is: a directive written on the member net itself wins at equal
+strength. This is the preferred way to constrain a repeated interface. Assigning a type
+that no object declares is error **E-31**; `diff` is built in.
 
 ```
 harness usb2 {
@@ -1963,13 +1993,14 @@ part BACKPLANE-OUT { @type = boardconnector; @~mate = jumper-8way; };
 .{J3~BACKPLANE-OUT: @mate = short-jumper; }.
 ```
 
-A `@map` is a list of pairs. Each element is a pin number or a range, and a range
-pairs element-wise with its opposite — descending included, which is how a
+A `@map` is a list of pairs. Each element is a pin number, a pad name or a range, and
+a range pairs element-wise with its opposite — descending included, which is how a
 reversed ribbon is written.
 
 ```
-@map = [[2,3],[3,2],[7,8],[8,7]];    // a null modem
-@map = [[1:20, 20:1]];                // a reversed ribbon
+@map = [[2,3],[3,2],[7,8],[8,7]];              // a null modem
+@map = [[1:20, 20:1]];                          // a reversed ribbon
+@map = [[1,A4],[2,A1],[5,A6],[6,A7],[7,S1]];    // a plug onto named pads
 ```
 
 ### 12A.3 What is checked
@@ -2773,7 +2804,7 @@ cable_def       = [ linkage ] "cable" identifier "{" { item | statement } "}" ";
 linkage         = "static" ;
 
 pin_map         = pin_spec ":" pin_name [ arrow ] { directive | field_decl } ";" ;
-pin_spec        = integer | "[" integer ":" integer "]" ;
+pin_spec        = integer | identifier | string | "[" integer ":" integer "]" ;
 pin_name        = identifier [ "[" range "]" ]
                 | identifier "." "[" identifier { "," identifier } "]" ;
 member_decl     = identifier [ arrow ] { directive } ";" ;

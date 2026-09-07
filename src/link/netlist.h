@@ -87,7 +87,7 @@ struct Component {
     // correspondence, already expanded from its ranges, empty meaning 1:1.
     std::string mate;
     std::vector<std::string> mates;
-    std::vector<std::pair<std::int64_t, std::int64_t>> pinMap;
+    std::vector<std::pair<std::string, std::string>> pinMap;  // '@map' pairs, as pad names
     std::vector<std::pair<std::string, std::string>> fields;  // user fields, source order
     // Schematic sheet section, for 'manta render'. Empty until assigned.
     std::string section;

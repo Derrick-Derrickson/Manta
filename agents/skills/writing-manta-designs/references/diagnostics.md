@@ -68,9 +68,10 @@ and the design decides where they connect. Move the connection to a binding
 at every instance (`.GND = GND;`). `.PIN = ?` at an instance is untouched.
 
 **E-31 — a name is referenced but never declared**
-A part, block, netclass, match group or pin that does not exist. Check spelling,
-and check the object is actually on the link line — a `static` declaration has
-internal linkage and is invisible to other objects.
+A part, block, netclass, harness type, match group or pin that does not
+exist. An array pin is `.P[3]`, not `.P3`. Check spelling, and check the
+object is actually on the link line — a `static` declaration has internal
+linkage and is invisible to other objects.
 
 ---
 
@@ -204,8 +205,9 @@ manta link --top board -L build/ -o build/board.mantaNets
 ## Warnings
 
 **W-01 — a part has pins in no chain and no binding**
-Catches an unused section of a multi-unit package. Often correct to leave, but
-worth a look.
+Every pin is bound or deliberately unbound: write `.PIN = ?;` for each pin
+the design leaves unconnected. Under `-Werror` this is an error like any
+other warning.
 
 **W-02 — both pads of a two-terminal device land on one net**
 Fires only on a bridge that *happens* — two pads reaching one net through

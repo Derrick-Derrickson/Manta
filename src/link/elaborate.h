@@ -299,6 +299,27 @@ private:
     // Netclass name -> its directives (spec 11.9).
     FlatMap<SymbolId, std::vector<const Directive*>> netclasses_;
 
+    // Harness types (spec 12.1, 12.5): the members a type declares, each with
+    // its directives, and the directives the type itself carries. An
+    // assignment '&HARNESS=type' on an identifier is recorded, and once every
+    // statement has run, the type's directives are applied to the member nets
+    // that exist under that identifier -- declared or implied (spec 12.3).
+    struct HarnessType {
+        std::vector<const MemberDecl*> members;
+        std::vector<const Directive*> directives;
+        bool diff = false;  // a member is itself a 'diff' pair
+    };
+    FlatMap<SymbolId, HarnessType> harnessTypes_;
+    struct HarnessUse {
+        std::uint32_t scope = 0;
+        SymbolId ident = SymbolId::kInvalid;
+        SymbolId type = SymbolId::kInvalid;
+        Span at;
+    };
+    std::vector<HarnessUse> harnessUses_;
+    void applyHarnessTypes();
+    void registerHarnessType(const Item* item);
+
     // Identifiers assigned the built-in 'diff' type (spec 12.4), so that a
     // single-ended '&IMP' on one can be caught as E-14.
     FlatSet<SymbolId> diffHarnesses_;

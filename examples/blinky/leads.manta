@@ -20,10 +20,10 @@ cable swd-lead {
         = P[1:5].{P2~SWD-POD-PLUG};
 };
 
-// I2C lead to a sensor board, straight through.
+// Qwiic lead to a sensor board, straight through.
 cable i2c-lead {
     #length = 100mm;
-    {P1~HDR-1x04-PLUG}.P[1:4]
+    {P1~QWIIC-PLUG}.P[1:4]
         = [[.{X%[1:4]~CRIMP-24AWG}. = .{W%[1:4]~WIRE-26AWG-GREY}. = .{X%[5:8]~CRIMP-24AWG}.]]
-        = P[1:4].{P2~HDR-1x04-PLUG};
+        = P[1:4].{P2~QWIIC-PLUG};
 };

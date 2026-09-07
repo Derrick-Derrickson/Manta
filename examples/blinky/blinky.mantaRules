@@ -20,7 +20,8 @@ rules logic-levels {
     #VIL : voltage;      // input threshold, low
 
     check drive-high for net.driver -> net.receiver {
-        when    driver.direction == out & receiver.direction == in;
+        when    (driver.direction == out) | (driver.direction == bidir);
+        when    (receiver.direction == in) | (receiver.direction == bidir);
         when    has(driver.VOH) & has(receiver.VIH);
         require driver.VOH >= receiver.VIH;
         error   "{driver} drives {net} to {driver.VOH},"
@@ -28,7 +29,8 @@ rules logic-levels {
     };
 
     check pull-low for net.driver -> net.receiver {
-        when    driver.direction == out & receiver.direction == in;
+        when    (driver.direction == out) | (driver.direction == bidir);
+        when    (receiver.direction == in) | (receiver.direction == bidir);
         when    has(driver.VOL) & has(receiver.VIL);
         require driver.VOL <= receiver.VIL;
         error   "{driver} pulls {net} down to {driver.VOL},"

@@ -383,6 +383,7 @@
         "lo": { "type": "integer" },
         "hi": { "type": "integer" },
         "physRange": { "type": "boolean" },
+        "phys": { "type": "string", "description": "A named pad (revision 2.0). Present only when the pin_spec was not a number or range; lo/hi are then unused." },
         "logical": { "$ref": "#/$defs/name" },
         "members": {
           "type": "array",

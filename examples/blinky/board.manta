@@ -49,15 +49,25 @@ block blinky {
 
     // Rd on each CC line tells the host this is a sink; 5.1k is the value
     // the USB-C specification names, one per line so the host can tell
-    // which way up the plug is. The shell is bonded at the enclosure, not
-    // on the board, so its pad is left alone on purpose.
+    // which way up the plug is. Both rows' D+ and D- pads go to the one
+    // pair, and the three extra VBUS and GND pads are the same conductors,
+    // joined below. The shell is bonded at the enclosure, not on the board,
+    // so its pad is left alone on purpose.
     {J1~CONN-USB-C: &EDGE=LEFT;
-        .VBUS = VBUS;
-        .GND  = GND;
-        .CC1  = CC1;
-        .CC2  = CC2;
-        .USB  = USB;
+        .GND-A1 = GND;
+        .VBUS   = VBUS;
+        .CC1    = CC1;
+        .DP-A   = USB.+;
+        .DM-A   = USB.-;
+        .SBU1   = ?;
+        .GND-B1 = GND;
+        .CC2    = CC2;
+        .DP-B   = USB.+;
+        .DM-B   = USB.-;
+        .SBU2   = ?;
     };
+    VBUS = [VBUS-A9,VBUS-B4,VBUS-B9].{J1};
+    GND  = [GND-A12,GND-B12].{J1};
     CC1 = .{R1~R-5k1R-0603}. = GND;
     CC2 = .{R2~R-5k1R-0603}. = GND;
     USB-SHIELD = J1.SHIELD &STUB;
@@ -132,15 +142,16 @@ block blinky {
 
     --- I2C
 
-    // Open drain, held up by its pull-ups, brought to a Qwiic-style header.
+    // Open drain, held up by its pull-ups, brought to a Qwiic connector,
+    // whose I2C pair is bound as a whole. The shell pads are grounded.
     i2c &HARNESS=i2c-bus;
     3V3 = .{R13~R-10kR-0603}. = i2c.SDA;
     3V3 = .{R14~R-10kR-0603}. = i2c.SCL;
-    {J2~HDR-1x04: &EDGE=RIGHT;
-        .P[1] = GND;
-        .P[2] = 3V3;
-        .P[3] = i2c.SDA;
-        .P[4] = i2c.SCL;
+    {J2~CONN-QWIIC: &EDGE=RIGHT;
+        .GND   = GND;
+        .3V3   = 3V3;
+        .I2C   = i2c;
+        .MOUNT = GND;
     };
 
     --- CONFIG

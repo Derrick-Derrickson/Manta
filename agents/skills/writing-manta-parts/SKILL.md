@@ -7,8 +7,10 @@ description: Author a manta part file — pin map, pin types, casual pins, swap 
 
 A part maps a package's pads to named pins and declares its fields. Every
 check on every net reads those declarations, so a wrong part breaks every
-board that uses it. One part per file; the file is the declaration, then
-`---`, then the datasheet excerpt.
+board that uses it. One part per file, the declaration then `---` then the
+datasheet excerpt, for anything with a datasheet of its own; commodity
+passives that share a family specification may share one file and one
+excerpt, as blinky's do.
 
 ```
 part LDO-3V3 {
@@ -33,16 +35,24 @@ part LDO-3V3 {
 
 ## Ten rules
 
-1. **Pin numbers are the footprint's pad numbers.** Check the footprint, not
+1. **Pin numbers are the footprint's pad names.** Check the footprint, not
    only the datasheet: KiCad's diode and LED footprints put the cathode on
    pad 1, a tactile switch with four pads may have only two pad numbers, and
-   an exposed pad is a numbered pin. A pin the footprint does not have
-   connects nothing.
-2. **Pin names are the datasheet's names.** `PA9`, not `USART1-TX`; `SW`,
-   not `OUT`. A pin's alternate functions go in a comment on that line.
-   Names cannot end in `-`, so `V-` becomes `V-NEG`.
-3. **Declare every pin**, including `NC`, thermal pads and duplicates. Use
-   ranges for runs: `[3:11] : GPIO[1:9]<>;`.
+   an exposed pad is a pad. A pad may be lettered: `A6 : DP-A<>;` on a USB-C
+   receptacle, `MP : MOUNT;` for a mechanical pad, `EP : EP<;` for an exposed
+   one; a numbered run is a range, `[3:11] : GPIO[1:9]<>;`. A pin the
+   footprint does not have connects nothing, and a pad the part does not
+   declare is not placed.
+2. **Pin names are the datasheet's names**, respelled only where the
+   language forces it: `PA9`, not `USART1-TX`; `SW`, not `OUT`. A name is
+   letters, digits, `_` and `-`, not ending in `-`. So `D+`/`D-` become
+   `DP`/`DM`, `CTS#` becomes `nCTS`, `SHD/SD2` becomes `SHD-SD2`, `V-`
+   becomes `V-NEG`, and the excerpt says so. Two pads with one datasheet
+   name get the pad appended: `GND-A1`, `GND-B12`, `VBUS-A4`. Alternate
+   functions go in a comment on the line.
+3. **Declare every pad**, including `NC`, thermal and mechanical pads.
+   A part with a member-list pin, `[5:6] : USB.[+,-]<>;`, is bound as a
+   whole on the board (`.USB = MCU-USB;`).
 4. **Arrow and `&TYPE` are both required on a supply pin.** `VIN< &TYPE=POWER`
    consumes, `VOUT> &TYPE=POWER` provides, `VBAT<> &TYPE=POWER` consumes and
    may also feed out. A `POWER` pin with no arrow is invisible to the supply
@@ -58,7 +68,10 @@ part LDO-3V3 {
    It is scoped per line, so two elements in one package stay separate.
 8. **No nets in a part** (`&NET` is **E-50**), no design values (`#DRAW` on a
    header belongs at the instance), no project names anywhere in the file. A
-   part must be reusable by an unrelated board unchanged.
+   part must be reusable by an unrelated board unchanged. Where a part
+   declares a weak default the board must be able to override, the board
+   writes a *stronger* one: `@~mate` in the part, `@mate` at the instance;
+   two weak declarations that differ are **E-12**.
 9. **Fields.** `@~footprint` is a package name (`R-0603`, `SOT-23-5`), never a
    library path; the project's `.fpmap` translates it. `#value`, `@!type`
    (`resistor`, `capacitor`, `diode`, `led`, `mcu`, `regulator`, `connector`

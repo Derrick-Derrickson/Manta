@@ -400,6 +400,10 @@ struct PinMap {
     std::int64_t physLo = 0;
     std::int64_t physHi = 0;  // equal to physLo for a single pin
     bool physIsRange = false;
+    // Revision 2.0: a single pad may be named rather than numbered -- 'A6' on
+    // a USB-C receptacle, 'AB12' on a BGA, 'MP' for a mechanical pad. Set for
+    // a non-integer pin_spec; physLo/physHi are then unused.
+    SymbolId physName = SymbolId::kInvalid;
     Span physSpan;
 
     Name logical;

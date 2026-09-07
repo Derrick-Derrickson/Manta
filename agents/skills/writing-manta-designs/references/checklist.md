@@ -68,3 +68,6 @@ can make.
 - `$a-b$` for a field named `a-b`. That is subtraction. Quote it.
 - `static` on a library part. It is invisible to the board (E-31).
 - Leaving `?` designators on a finished board. E-UNANNOTATED.
+- A stale `build/` directory. `-L build/` links every object in it, deleted
+  sources included, so a part-domain rule reports parts you removed. Start
+  from an empty `build/` when a diagnostic names something that is gone.

@@ -1465,7 +1465,9 @@ PinMap* Parser::parsePinMap() {
     p->span = here();
     p->physSpan = here();
 
-    // pin_spec = integer | "[" integer ":" integer "]"
+    // pin_spec = integer | identifier | string | "[" integer ":" integer "]"
+    // A range is numbered; a single pad may carry the name its footprint gives
+    // it (revision 2.0).
     if (accept(TokenKind::LBracket)) {
         p->physIsRange = true;
         if (at(TokenKind::Word) && cur().has(WordFlags::Integer)) {
@@ -1485,8 +1487,13 @@ PinMap* Parser::parsePinMap() {
     } else if (at(TokenKind::Word) && cur().has(WordFlags::Integer)) {
         p->physLo = p->physHi = integerOf(cur());
         advance();
+    } else if (at(TokenKind::Word)) {
+        p->physName = intern(text(advance()));
+    } else if (at(TokenKind::String)) {
+        std::string_view raw = text(advance());
+        p->physName = intern(raw.size() >= 2 ? raw.substr(1, raw.size() - 2) : raw);
     } else {
-        error(here(), "expected a physical pin number or range");
+        error(here(), "expected a physical pin number, pad name or range");
     }
     p->physSpan = p->physSpan.merge(toks_.at(pos_ - 1).span(file_.id()));
 

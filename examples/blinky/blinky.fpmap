@@ -17,13 +17,11 @@ SOT-23-5        Package_TO_SOT_SMD:SOT-23-5
 SOT-23-6        Package_TO_SOT_SMD:SOT-23-6
 TSSOP-20        Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm
 DIP-2-SMD       Button_Switch_SMD:SW_DIP_SPSTx02_Slide_6.7x6.64mm_W8.61mm_P2.54mm_LowProfile
-HDR-1x04        Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical
 HDR-1x05        Connector_PinHeader_2.54mm:PinHeader_1x05_P2.54mm_Vertical
 TP-PAD          TestPoint:TestPoint_Pad_D1.5mm
 
-# A footprint's pads have to be the pins the part declares. A real USB-C
-# receptacle has pads named A1, B12 and so on, and manta pin numbers are
-# integers, so CONN-USB-C declares seven numbered positions and maps to a
-# seven-pin header. A board with a genuine receptacle would declare its pad
-# numbering in the part, which is a question about the part, not about export.
-USB-C-7         Connector_PinHeader_2.54mm:PinHeader_1x07_P2.54mm_Vertical
+# A footprint's pads have to be the pins the part declares, by name. The
+# receptacle's pads are A1..B12 and S1 and the part declares exactly those;
+# the Qwiic connector's two mechanical pads are both called MP.
+USB-C-HRO       Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12
+QWIIC-SH-4      Connector_JST:JST_SH_SM04B-SRSS-TB_1x04-1MP_P1.00mm_Horizontal

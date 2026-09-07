@@ -104,12 +104,14 @@ elsewhere, because a net must be written twice:
 ## A connector
 
 ```
-{J1~CONN-USB-C: &EDGE=LEFT; .VBUS = VBUS; .GND = GND; .CC1 = CC1; .CC2 = CC2; .DP = USB-DP; .DM = USB-DM; };
+{J1~CONN-USB-C: &EDGE=LEFT; .GND-A1 = GND; .VBUS = VBUS; .CC1 = CC1; .DP-A = USB.+; .DM-A = USB.-; };
+VBUS = [VBUS-A9,VBUS-B4,VBUS-B9].{J1};      // the receptacle's other VBUS pads, one conductor
 CC1 = .{R13~R-5k1R-0603}. = GND;
-CC2 = .{R14~R-5k1R-0603}. = GND;
+{J2~CONN-QWIIC: &EDGE=RIGHT; .GND = GND; .3V3 = 3V3; .I2C = i2c; };   // a member-list pin, bound whole
 ```
 
-Paralleled positions are a multi-pin terminal: `VPOS = [1,2].{J2~CONN-6P}.[5,6] = GND;`.
+Paralleled positions are a multi-pin terminal, on the declaration or on a
+later reference: `VPOS = [1,2].{J2~CONN-6P}.[5,6] = GND;`.
 
 ## Series, parallel, hanging
 

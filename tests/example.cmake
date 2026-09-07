@@ -223,8 +223,44 @@ endforeach()
 if(NOT gnd_count EQUAL 1)
     message(FATAL_ERROR "expected exactly one net named GND, got ${gnd_count}")
 endif()
-assert_same_net(blinky_nets J1 2 BLK1_D1 1)
-assert_same_net(blinky_nets J1 2 BLK2_D1 1)
+assert_same_net(blinky_nets J1 A1 BLK1_D1 1)
+assert_same_net(blinky_nets J1 A1 BLK2_D1 1)
+
+# Named pads (revision 2.0): the receptacle declares its pads as the footprint
+# names them. Its extra VBUS and GND pads join through multi-pin terminals on a
+# reference, and both rows' D+ reach the ESD array's line 1.
+assert_same_net(blinky_nets J1 A4 J1 B9)
+assert_same_net(blinky_nets J1 A1 J1 B12)
+assert_same_net(blinky_nets J1 A6 U3 1)
+assert_same_net(blinky_nets J1 B6 U3 1)
+assert_same_net(blinky_nets J1 A7 U3 3)
+
+# A whole-harness binding onto a member-list pin joins member to member (spec
+# 12.1): the Qwiic connector's I2C pair lands on the MCU's I2C pins. Before
+# 2.0 the identifier was widened to a bus and joined nothing.
+assert_same_net(blinky_nets J2 3 U2 2)
+assert_same_net(blinky_nets J2 4 U2 3)
+
+# A harness type's directives reach the member nets (spec 12.5): 'usb2' puts
+# its impedance on 'USB.+', and 'i2c-bus' its open-drain type on 'i2c.SDA'.
+function(assert_net_directive netsvar netname key value)
+    string(JSON net_count LENGTH "${${netsvar}}" nets)
+    math(EXPR net_last "${net_count} - 1")
+    foreach(i RANGE ${net_last})
+        string(JSON name GET "${${netsvar}}" nets ${i} name)
+        if(name STREQUAL netname)
+            string(JSON got ERROR_VARIABLE err GET "${${netsvar}}" nets ${i} directives ${key})
+            if(NOT got STREQUAL value)
+                message(FATAL_ERROR "net ${netname}: ${key} is '${got}', expected '${value}'")
+            endif()
+            return()
+        endif()
+    endforeach()
+    message(FATAL_ERROR "no net named ${netname}")
+endfunction()
+assert_net_directive(blinky_nets "USB.+" IMP 90RD)
+assert_net_directive(blinky_nets "MCU-USB.-" MAXDELAY 600ps)
+assert_net_directive(blinky_nets "i2c.SDA" TYPE OPENDRAIN)
 
 # The mirrored debug lead: '@map = [[1:5, 5:1]]' on the plug, so header pin 1
 # (3V3) is met by the loom's conductor 5. The board's own netlist is unchanged

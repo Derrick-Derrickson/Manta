@@ -63,7 +63,13 @@ Do not write `3V3 = VDD.{U1~MCU: ...}` for such a part: the chain form hides
 the supply among forty bindings and makes the IC look like a series element.
 
 **A connector is a binding block too**, one line per position, so what each
-position carries is read in one place. Put `&EDGE` first in the list.
+position carries is read in one place. Put `&EDGE` first in the list. An
+array pin is bound by index, `.P[3] = SDA;`, never `.P3`; a member-list pin
+is bound as a whole, `.USB = MCU-USB;`.
+
+**A device with every pin bound stands bare**: `{U1~part: ...};`. The
+leading-dot form `.{U1~part: ...}.` is a chain terminal and needs a casual
+pin left unbound for the dot to take.
 
 **Comments explain the design, never the language.** Say why this value,
 why this topology, what the firmware assumes, what the datasheet demands.
@@ -113,9 +119,9 @@ across separate statements.
 - A rail with `POWER<` consumers needs one `POWER>` source (**E-27**, two is
   **E-28**). The source is a regulator output or a connector's supply pin,
   declared in the part. A rail that has no such pin — it arrives through an
-  inductor, a diode-OR, or whichever connector has a supply plugged in — is
-  declared on the board: `5V &TYPE=POWER;`. Never leave a rail or a supply
-  pin untyped to dodge the check.
+  inductor, a diode-OR, a resistor, or whichever connector has a supply
+  plugged in — is declared on the board: `5V &TYPE=POWER;`. That is the
+  fix for any E-27; never untype the pin or the part to dodge the check.
 - Every net is written at least twice (**E-26**). A deliberate single
   reference is a stub: `TP1 = U2.MISO &STUB;`. Ports, globals and harness
   declarations are exempt.

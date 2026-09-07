@@ -42,7 +42,8 @@ rules logic-levels {
     #VIH : voltage;
 
     check drive-high for net.driver -> net.receiver {
-        when    driver.direction == out & receiver.direction == in;
+        when    (driver.direction == out) | (driver.direction == bidir);
+        when    (receiver.direction == in) | (receiver.direction == bidir);
         when    has(driver.VOH) & has(receiver.VIH);
         require driver.VOH >= receiver.VIH;
         error   "{driver} drives {net} to {driver.VOH},"
@@ -52,7 +53,12 @@ rules logic-levels {
 ```
 
 `when` decides whether the check applies. `require` is what must then be true.
-The message says what went wrong with the actual numbers in it.
+The message says what went wrong with the actual numbers in it. Include
+`bidir` on both sides: a GPIO, a bus pin and a connector position are all
+`<>`, so a guard that only accepts `out` and `in` examines nothing on a real
+board. The closed sets are `direction` = `in out bidir none` and `type` =
+`passive signal power opendrain nc ground`; a pin is never paired with
+itself.
 
 ## Four things that will bite you
 
