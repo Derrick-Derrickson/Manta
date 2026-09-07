@@ -19,9 +19,9 @@ part USBLC6-2SC6 {
 
 # USBLC6-2SC6
 
-**Source:** STMicroelectronics, USBLC6-2 datasheet, DS5029. SOT-23-6L
-package. Two-line low-capacitance ESD protection for USB 2.0 data lines,
-with a diode to VBUS and a central TVS.
+**Source:** STMicroelectronics, USBLC6-2 datasheet, Doc ID 11265 Rev 5,
+October 2011. SOT-23-6L package. Two-line low-capacitance ESD protection for
+USB 2.0 data lines, with a diode to VBUS and a central TVS.
 
 ## Pins
 
@@ -38,20 +38,20 @@ with a diode to VBUS and a central TVS.
 
 | Parameter | Value |
 |---|---|
-| Peak pulse power, 8/20 µs | 150 W |
-| ESD, IEC 61000-4-2 contact / air | ±8 kV / ±15 kV |
-| ESD, MIL-STD-883 human body model | 25 kV |
-| Operating junction temperature | −55 to +125 °C |
+| Peak pulse voltage, IEC 61000-4-2 air discharge | 15 kV |
+| Peak pulse voltage, IEC 61000-4-2 contact discharge | 15 kV |
+| Peak pulse voltage, MIL-STD-883 human body model | 25 kV |
+| Operating junction temperature | −40 to +125 °C |
 
 ## Electrical characteristics (TA = 25 °C)
 
 | Parameter | Condition | Min | Typ | Max | Unit |
 |---|---|---|---|---|---|
 | Stand-off voltage, VRM | | | | 5.25 | V |
-| Breakdown voltage, VBR | IR = 1 mA | 6.1 | | | V |
-| Leakage current | VRM = 5.25 V | | | 150 | nA |
-| Line capacitance | VR = 0, f = 1 MHz | | 2.5 | 3.5 | pF |
-| Capacitance matching, I/O1 to I/O2 | | | | 0.05 | pF |
+| Breakdown voltage, VBR | IR = 1 mA | 6 | | | V |
+| Leakage current | VRM = 5.25 V | | 10 | 150 | nA |
+| Line capacitance, I/O to GND | VR = 1.65 V, f = 1 MHz | | 2.5 | 3.5 | pF |
+| Capacitance matching, I/O to I/O | VR = 1.65 V | | | 0.04 | pF |
 | Clamping voltage | IPP = 5 A, 8/20 µs | | | 17 | V |
 
 ## Application

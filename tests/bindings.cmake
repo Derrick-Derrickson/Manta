@@ -103,6 +103,34 @@ assert_net_pins(bound_net "U1.FB" U1.3 R1.2 R2.2)
 assert_net_pins(bound_net "R4.A" R4.1 C3.2)
 
 # ---------------------------------------------------------------------------
+# Member-list pins: bound whole, or one member at a time (spec 12.1, rev 2.0)
+# ---------------------------------------------------------------------------
+file(WRITE "${WORK}/member.manta" "
+part BRIDGE { @~footprint = X; [1:2] : UD.[+,-]<>; 3 : G< &TYPE=POWER; };
+part ESD2   { @~footprint = X; 1 : A1<>; 2 : B1<>; 3 : G< &TYPE=POWER; };
+harness pair { &HARNESS=diff; &!IMP=90RD; };
+block member-top {
+    GND &TYPE=GROUND;
+    LINK &HARNESS=pair;
+    {U1~BRIDGE: .UD = LINK; .G = GND;};
+    {U2~ESD2: .A1 = LINK.+; .B1 = LINK.-; .G = GND;};
+    {U3~BRIDGE: .UD.+ = LINK.+; .UD.- = LINK.-; .G = GND;};
+};
+")
+run_manta(compile -o "${WORK}/member/" "${WORK}/member.manta")
+run_manta(link --top member-top -L "${WORK}/member" -o "${WORK}/member.mantaNets")
+file(READ "${WORK}/member.mantaNets" member_net)
+# The whole-pin binding and the per-member bindings land on the same two nets.
+assert_net_pins(member_net "LINK.+" U1.1 U2.1 U3.1)
+assert_net_pins(member_net "LINK.-" U1.2 U2.2 U3.2)
+# ...and the type's directive reaches both members.
+string(REGEX MATCHALL "\"IMP\": \"90RD\"" imps "${member_net}")
+list(LENGTH imps imp_count)
+if(NOT imp_count EQUAL 2)
+    message(FATAL_ERROR "expected '&!IMP=90RD' on both members of LINK, found ${imp_count}")
+endif()
+
+# ---------------------------------------------------------------------------
 # W-01 counts a chain-bound pin as bound
 # ---------------------------------------------------------------------------
 # Spec 16.2: "A declared part has pins appearing in no chain and no binding."

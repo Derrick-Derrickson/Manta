@@ -139,7 +139,7 @@ State the widths, as in the last line, when the unit is not one-in one-out.
 ## Differential pairs and buses
 
 ```
-USB &HARNESS=usb2;                 // the type carries &!IMP=90RD and &MAXDELAY
+USB &HARNESS=usb2;                 // a pair type: USB.+ and USB.- carry its &!IMP and &MAXDELAY
 USB = MCU-USB;                     // whole-harness assignment, member by member
 i2c &HARNESS=i2c-bus;
 3V3 = .{R4~R-10kR-0603}. = i2c.SDA;

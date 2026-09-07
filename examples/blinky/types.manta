@@ -9,7 +9,7 @@ harness i2c-bus {
 // USB 2.0 full speed: a 90 ohm differential pair, matched within the
 // tolerance the USB specification allows for a device-side trace.
 harness usb2 {
-    D &HARNESS=diff;
+    &HARNESS=diff;             // this type is a pair: members '+' and '-'
     &!IMP     = 90RD;
     &MAXDELAY = 600ps;
 };

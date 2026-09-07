@@ -55,6 +55,16 @@ rules power-budget {
         error   "net {net} draws {sum(pins.DRAW)}"
                 " against {sum(pins.SUPPLY)} available";
     };
+
+    // A rail with no sourcing pin -- one that arrives through an inductor
+    // or a diode-OR -- states its rating as '&CURRENT' on the net or its
+    // class, and its consumers are summed against that.
+    check rail-rating for net {
+        when    has(net.CURRENT);
+        require sum(pins.DRAW) <= net.CURRENT;
+        error   "net {net} draws {sum(pins.DRAW)}"
+                " against a rail rated {net.CURRENT}";
+    };
 };
 
 // ---------------------------------------------------------------------------

@@ -847,6 +847,20 @@ void Elaborator::applyBindings(const Instance* inst, std::uint32_t componentInde
                 }
                 if (k == hi) break;
             }
+        } else if (b->hasPinMember) {
+            // Spec 12.1: one member of a member-list pin, ".USB.+ = X".
+            SymbolId member = resolve(b->pinMember, scope);
+            for (std::uint32_t i = 0; i < component.pins.size(); ++i) {
+                if (component.pins[i].base == pinName && component.pins[i].member == member) {
+                    targets.push_back(i);
+                }
+            }
+            if (targets.empty()) {
+                diags_.report(DiagId::E31, b->pin.span,
+                              std::format("{}.{}", interner_.text(pinName),
+                                          valid(member) ? interner_.text(member) : "?"));
+                continue;
+            }
         } else {
             for (std::uint32_t i = 0; i < component.pins.size(); ++i) {
                 if (component.pins[i].base == pinName) targets.push_back(i);
@@ -933,7 +947,7 @@ void Elaborator::applyBindings(const Instance* inst, std::uint32_t componentInde
         // -- bound to a bare harness identifier joins each member pin to the
         // member net of the same name, 'USB.+' to 'MCU-USB.+'. Before 2.0 the
         // identifier was widened to a bus, 'MCU-USB[0]', which joined nothing.
-        bool memberPins = !targets.empty();
+        bool memberPins = !targets.empty() && !b->hasPinMember;
         for (std::uint32_t i : targets) {
             if (!valid(component.pins[i].member)) memberPins = false;
         }
@@ -1905,6 +1919,13 @@ void Elaborator::registerHarnessType(const Item* item) {
     for (const BodyEntry& d : item->body) {
         if (d.kind == BodyKind::Directive) {
             t.directives.push_back(d.directive);
+            // "harness usb2 { &HARNESS=diff; ... }": the type is a pair.
+            const Directive* td = d.directive;
+            if (valid(td->name.symbol) && td->value &&
+                interner_.text(td->name.symbol) == "HARNESS" && valid(td->value->text) &&
+                interner_.text(td->value->text) == "diff") {
+                t.diff = true;
+            }
         } else if (d.kind == BodyKind::Member) {
             t.members.push_back(d.member);
             for (const Directive* md : d.member->directives) {
@@ -2221,7 +2242,9 @@ void Elaborator::collectBlockInstances(Design& design) {
             if (key.scope != pb.scope) continue;
             std::int32_t net = netOf(node);
             if (net < 0) continue;
-            instance.localNets.emplace_back(*spelling.find(node), net);
+            const std::string* name = spelling.find(node);
+            if (!name) continue;  // every named node is in the map; this is what the compiler cannot see
+            instance.localNets.emplace_back(*name, net);
         }
         std::sort(instance.localNets.begin(), instance.localNets.end());
 
@@ -2263,8 +2286,9 @@ Design Elaborator::run(SymbolId topName, Span at) {
     collectMatchGroups(design);
 
     for (const Component& c : design.components) {
-        design.elaborationMap.emplace_back(flattenPath(c.path),
-                                           c.designator.empty() ? c.identity : c.designator);
+        std::pair<std::string, std::string> entry{
+            flattenPath(c.path), c.designator.empty() ? c.identity : c.designator};
+        design.elaborationMap.push_back(std::move(entry));
     }
 
     return design;

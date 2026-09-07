@@ -65,7 +65,8 @@ the supply among forty bindings and makes the IC look like a series element.
 **A connector is a binding block too**, one line per position, so what each
 position carries is read in one place. Put `&EDGE` first in the list. An
 array pin is bound by index, `.P[3] = SDA;`, never `.P3`; a member-list pin
-is bound as a whole, `.USB = MCU-USB;`.
+is bound as a whole, `.USB = MCU-USB;`, or one member at a time,
+`.USB.+ = MCU-USB.+;`.
 
 **A device with every pin bound stands bare**: `{U1~part: ...};`. The
 leading-dot form `.{U1~part: ...}.` is a chain terminal and needs a casual

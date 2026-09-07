@@ -83,6 +83,7 @@ block instances each carry their own `R1` and `D1` — a designator is annotated
 in the scope where it is written, and export flattens the path to `BLK1_R1`
 and `BLK2_R1`.
 
-The datasheet excerpts in the part files were written for the example and
-should be checked against the manufacturers' documents before the parts are
-reused on a real board.
+The datasheet excerpts for the LDO, MCU, ESD array, LEDs and USB-C
+receptacle were checked against the manufacturers' documents, which each
+Source line names. The passives, headers, DIP switch and Qwiic connector
+carry family figures and say so.

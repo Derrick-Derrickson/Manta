@@ -1872,8 +1872,9 @@ USB = MCU-USB;                      // equivalent to member-by-member assignment
 {J1~CONN-USB-C: .USB = MCU-USB; }   // J1's USB.+ joins MCU-USB.+, USB.- joins MCU-USB.-
 ```
 
-A member-list pin is bound to a harness identifier and to nothing else; binding it to a
-bus or a plain net is error **E-38**.
+A member-list pin is bound whole to a harness identifier, or one member at a time with the
+member named after the pin — `.USB.+ = LINK.+;` — and to nothing else; binding the whole
+pin to a bus or a plain net is error **E-38**.
 
 ### 12.2 Member lists
 
@@ -1926,17 +1927,18 @@ A harness type may carry directives, which apply to every member net of every id
 assigned that type — the members the type declares and the members that accrue by use
 (§12.3) alike — and a member declaration's own directives apply to that member's net. They
 are applied as a net class is: a directive written on the member net itself wins at equal
-strength. This is the preferred way to constrain a repeated interface. Assigning a type
-that no object declares is error **E-31**; `diff` is built in.
+strength. This is the preferred way to constrain a repeated interface. A type that is itself a pair
+says so with `&HARNESS=diff` in its body, and its identifiers carry the members `+` and
+`-`. Assigning a type that no object declares is error **E-31**; `diff` is built in.
 
 ```
 harness usb2 {
-    D &HARNESS=diff;
+    &HARNESS=diff;             // this type is a pair: members '+' and '-'
     &!IMP     = 90RD;
     &MAXDELAY = 600ps;
 };
 
-usb-host &HARNESS=usb2;         // inherits 90RD and 600ps
+usb-host &HARNESS=usb2;         // usb-host.+ and usb-host.- carry 90RD and 600ps
 usb-dev  &HARNESS=usb2;
 ```
 
@@ -2844,7 +2846,7 @@ exit_terminal   = "." { "." }
                       | identifier [ "[" range "]" ] ) ;
 binding         = "." pin_ref [ connector segment | "=" "?" ] { directive | field_decl }
                 | field_decl | directive ;
-pin_ref         = [ identifier [ "[" range "]" ] ] ;
+pin_ref         = [ identifier [ "[" range "]" ] [ "." identifier ] ] ;
 
 net_expr        = [ arrow ] net_name [ arrow ] ;
 net_name        = identifier { "." identifier } [ "[" range "]" ]
@@ -2958,7 +2960,7 @@ harness i2c-bus {
 };
 
 harness usb2 {
-    D &HARNESS=diff;
+    &HARNESS=diff;             // this type is a pair: members '+' and '-'
     &!IMP     = 90RD;
     &MAXDELAY = 600ps;
 };

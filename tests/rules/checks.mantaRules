@@ -35,6 +35,15 @@ rules power-budget {
         error   "net {net} draws {sum(pins.DRAW)} against {sum(pins.SUPPLY)} available";
     };
 
+    // A rail with no sourcing pin -- it arrives through an inductor or a
+    // connector -- carries its rating as '&CURRENT' on the net or its class,
+    // and the budget is read off the net, not summed over pins.
+    check rail-rating for net {
+        when    has(net.CURRENT);
+        require sum(pins.DRAW) <= net.CURRENT;
+        error   "net {net} draws {sum(pins.DRAW)} against a rail rated {net.CURRENT}";
+    };
+
     // Only input pins count toward the draw, which is what the filter is for.
     check input-draw for net {
         when    any(pins.SUPPLY);

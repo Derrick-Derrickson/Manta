@@ -16,7 +16,7 @@ part LDO-3V3 {
 
 # AP2112K-3.3
 
-**Source:** Diodes Incorporated, AP2112 datasheet, document DS31563.
+**Source:** Diodes Incorporated, AP2112 datasheet, document DS39724 Rev. 2, June 2017.
 SOT-25 (SOT-23-5) package, fixed 3.3 V output, 600 mA CMOS LDO with enable.
 
 ## Pins
@@ -33,9 +33,7 @@ SOT-25 (SOT-23-5) package, fixed 3.3 V output, 600 mA CMOS LDO with enable.
 
 | Parameter | Value |
 |---|---|
-| VIN | −0.3 to 7 V |
-| EN | −0.3 to VIN + 0.3 V |
-| Output current | internally limited |
+| VIN (VCC) | 6.5 V |
 | Junction temperature | 150 °C |
 | Storage temperature | −65 to +150 °C |
 
@@ -50,21 +48,22 @@ SOT-25 (SOT-23-5) package, fixed 3.3 V output, 600 mA CMOS LDO with enable.
 
 | Parameter | Condition | Min | Typ | Max | Unit |
 |---|---|---|---|---|---|
-| Output voltage accuracy | IOUT = 1 mA | −1.5 | | +1.5 | % |
+| Output voltage accuracy | VIN = 4.3 V, 1 mA ≤ IOUT ≤ 30 mA | −1.5 | | +1.5 | % |
 | Output current | | 600 | | | mA |
-| Dropout voltage | IOUT = 600 mA | | 250 | | mV |
-| Quiescent current | IOUT = 0, EN high | | 55 | | µA |
+| Dropout voltage | IOUT = 600 mA | | 250 | 400 | mV |
+| Quiescent current | IOUT = 0, EN high | | 55 | 80 | µA |
 | Shutdown current | EN low | | 0.01 | 1 | µA |
-| EN input high | | 1.4 | | | V |
+| EN input high | | 1.5 | | | V |
 | EN input low | | | | 0.4 | V |
 
 ## Application
 
-Stable with a 1 µF ceramic capacitor on the output; the datasheet's typical
-application uses 1 µF at VIN and 1 µF at VOUT, placed close to the pins. EN
-may be tied to VIN for always-on operation.
+Stable with a 1.0 µF ceramic capacitor at VIN and 1.0 µF at VOUT, per the
+typical application circuit; X7R or X5R dielectric is recommended if ceramic
+capacitors are used for CIN/COUT (Note 4). Tantalum and aluminum electrolytic
+capacitors are also listed as compatible COUT types.
 
 ## Package
 
-SOT-25, 2.9 × 1.6 mm body, 0.95 mm pitch. Pin 1 is at the marked corner;
+SOT-25, 3.0 × 1.6 mm body, 0.95 mm pitch. Pin 1 is at the marked corner;
 pins 1–3 on one side, 4–5 on the other.

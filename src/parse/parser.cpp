@@ -1016,6 +1016,20 @@ Binding* Parser::parseBinding() {
     if (at(TokenKind::Word)) {
         b->pin = parseName(true);
         if (at(TokenKind::LBracket)) b->pinRange = parseRange();
+        // Revision 2.0: ".USB.+ = X;" binds one member of a member-list pin.
+        // '+' and '-' are member names (spec 12.4), as in a net path.
+        if (at(TokenKind::Dot) &&
+            (ahead(1).kind == TokenKind::Word || ahead(1).kind == TokenKind::Plus ||
+             ahead(1).kind == TokenKind::Minus)) {
+            advance();  // '.'
+            Name m;
+            m.span = here();
+            if (at(TokenKind::Plus)) { advance(); m.symbol = intern("+"); }
+            else if (at(TokenKind::Minus)) { advance(); m.symbol = intern("-"); }
+            else m = parseName(true);
+            b->pinMember = m;
+            b->hasPinMember = true;
+        }
     } else {
         b->pinIsDot = true;
     }

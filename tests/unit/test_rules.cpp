@@ -123,6 +123,15 @@ TEST_CASE("current budget: a rail that cannot supply what hangs off it") {
     CHECK_FALSE(good->fired("current-budget"));
 }
 
+TEST_CASE("rail rating: a declared rail's '&CURRENT' is the budget its consumers are summed against") {
+    auto bad = check(fixture("violations.manta"), fixture("checks.mantaRules"));
+    CHECK(bad->fired("rail-rating"));
+    CHECK(bad->report.find("100mA") != std::string::npos);
+
+    auto good = check(fixture("clean.manta"), fixture("checks.mantaRules"));
+    CHECK_FALSE(good->fired("rail-rating"));
+}
+
 TEST_CASE("a correct design provokes no rule at all") {
     // The other half of the argument: the checks above prove each rule fires
     // when it should, and this proves none fires when it should not.
@@ -130,6 +139,7 @@ TEST_CASE("a correct design provokes no rule at all") {
     CHECK_FALSE(good->fired("drive-high"));
     CHECK_FALSE(good->fired("pull-low"));
     CHECK_FALSE(good->fired("current-budget"));
+    CHECK_FALSE(good->fired("rail-rating"));
     CHECK_FALSE(good->fired("input-draw"));
     CHECK_FALSE(good->fired("needs-footprint"));
     CHECK_FALSE(good->fired("pin-count"));

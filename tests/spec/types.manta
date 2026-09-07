@@ -5,7 +5,7 @@ harness i2c-bus {
 };
 
 harness usb2 {
-    D &HARNESS=diff;
+    &HARNESS=diff;             // this type is a pair: members '+' and '-'
     &!IMP     = 90RD;
     &MAXDELAY = 600ps;
 };

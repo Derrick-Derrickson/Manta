@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.0.0-rc2 — 2026-09-07
+## 2.0.0 — 2026-09-07
 
 ### Why 2.0
 
@@ -45,6 +45,11 @@ break. From 2.0 on, a minor revision is additive again.
   identifier assigned the type, declared or implied, and a member's own
   directives reach its net, both applied as a net class is (§12.5). A type
   no object declares is **E-31**.
+
+- **One member of a member-list pin may be bound alone**: `.USB.+ = LINK.+;`
+  (§7.4). A type that is itself a pair says so with `&HARNESS=diff` in its
+  body, which is how `usb2` is now spelled; the old `D &HARNESS=diff` member
+  form still parses and still marks the type a pair.
 
 ### Named pads
 

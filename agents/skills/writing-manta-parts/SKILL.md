@@ -76,7 +76,14 @@ part LDO-3V3 {
    library path; the project's `.fpmap` translates it. `#value`, `@!type`
    (`resistor`, `capacitor`, `diode`, `led`, `mcu`, `regulator`, `connector`
    …), `#~mpn`, `#!manufacturer`, and `#tolerance`, `#voltage`, `#power`
-   where they apply. `capacitor` is what W-04 recognises.
+   where they apply. Only `capacitor` is read by a check (W-04). The
+   renderer draws a symbol for `resistor`, `capacitor`, `electrolytic`,
+   `inductor`, `ferrite`, `diode`, `zener`, `tvs`, `led`, `crystal`,
+   `nmos`, `pmos`, `npn`, `pnp`, `opamp`, `switch`, `fuse` and `testpoint`;
+   anything else, `mcu` or `sensor` or `esd`, is a box, and is fine.
+   `#SUPPLY` goes on the one pin declared `POWER>`, never on every
+   paralleled contact of a connector; a rail with no such pin states its
+   rating on the board with `&CURRENT`.
 10. **Pin `#` fields carry the worst-case datasheet figures** a project's
     rules read: `#VOH #VOL #VIH #VIL` on logic pins, `#SUPPLY` on a source
     pin, `#DRAW` on a consumer pin with a fixed draw, `&~PINDELAY` where the

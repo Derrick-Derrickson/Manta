@@ -118,11 +118,10 @@ part LED-BICOLOUR {
     @~footprint = LED-KPA-3010;
     #value      = "red/green";
     @!type      = led;
-    #~mpn       = "KPA-3010SURKCGKC";
+    #~mpn       = "KPBA-3010SURKCGKC";
 
-    1 : A[0];    // red anode
-    2 : A[1];    // green anode
-    3 : K;       // common cathode
+    1     : K;         // common cathode
+    [2:3] : A[0:1];    // red, green anodes
 };
 
 // ---- switches and test points ---------------------------------------------
@@ -307,23 +306,32 @@ the square pad. Rated 3 A per contact, 250 V.
 
 ## LEDs
 
-| Part | Colour | Vf typ at 5 mA | Vf max at 20 mA | If max | Vr max |
+| Part | Colour | Vf typ at 20 mA | Vf max at 20 mA | If max | Vr max |
 |---|---|---|---|---|---|
 | LED-0603 | green, 570 nm | 2.0 V | 2.4 V | 20 mA | 5 V |
-| LED-BICOLOUR, KPA-3010SURKCGKC | red 624 nm / green 570 nm | 1.95 V / 2.1 V | 2.5 V / 2.5 V | 20 mA per die | 5 V |
+| LED-BICOLOUR, KPBA-3010SURKCGKC | red 630 nm / green 570 nm | 1.95 V / 2.1 V | 2.5 V / 2.5 V | 30 mA per die | 5 V |
 
-Kingbright KPA-3010 series, ver. 26A: two dies with a common cathode on the
-middle pad; pin 1 red anode, pin 2 green anode, pin 3 cathode.
+Kingbright KPBA-3010SURKCGKC, Spec No. DSAB6256/1203000840, Rev. V.24A,
+dated 01/12/2022 (dominant wavelength IF = 20 mA): two dies with a common
+cathode; pin 1 common cathode, pin 2 red anode, pin 3 green anode.
 
 ## USB-C receptacle
+
+**Source:** HRO Electronics Co., Ltd, TYPE-C-31-M-12 product drawing, drawn
+2020-12-08 (no document/revision number issued).
 
 HRO TYPE-C-31-M-12, 16-contact USB 2.0 receptacle with a through-hole shell.
 Pads are named as USB Type-C names its contacts: A1/A12/B1/B12 ground, A4/A9/
 B4/B9 VBUS, A5/B5 CC, A6/B6 D+, A7/B7 D-, A8/B8 SBU, and S1 the shell. Rated
-3 A on VBUS in total, 0.25 A per signal contact.
+5 A, 20 V; insulation resistance 100 MΩ min; dielectric withstand 100 V AC
+for 1 minute; 10,000 mating cycles; operating temperature −30 °C to +80 °C.
 
 ## Qwiic connector
 
+**Source:** JST, SR/SZ connector series catalog page (SM04B-SRSS-TB is the
+4-circuit, top-entry, SMT shrouded header); no document/revision number
+stated in the sourced page.
+
 JST SM04B-SRSS-TB, 1.00 mm pitch, four contacts plus two mechanical pads. The
-Qwiic standard fixes the order: 1 GND, 2 3V3, 3 SDA, 4 SCL. Rated 1 A per
+Qwiic standard fixes the order: 1 GND, 2 3V3, 3 SDA, 4 SCL. Rated 0.7 A per
 contact, 50 V.

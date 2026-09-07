@@ -13,7 +13,8 @@ manta export --format kicad --footprint-map <project>.fpmap -Werror \
              -o build/<block>.net build/<block>.mantaNets
 ```
 
-Silent means done. Anything else means not done.
+Silent means done. Anything else means not done. `manta fmt --diff` shows
+what the formatter would change, if you want to see the depth rule at work.
 
 ## If it is not silent
 

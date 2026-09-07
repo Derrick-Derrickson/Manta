@@ -279,6 +279,10 @@ struct Binding {
     bool pinIsDot = false;
     Name pin;
     Range pinRange;
+    // Revision 2.0: one member of a member-list pin, ".USB.+ = X;". Set when
+    // a '.' and a member name follow the pin name.
+    Name pinMember;
+    bool hasPinMember = false;
     // The connector written after the pin. Only '=' was legal before revision
     // 1.4; a binding may now open with any of spec 6's connectors.
     Connector connector = Connector::Advance;

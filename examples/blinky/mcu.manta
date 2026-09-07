@@ -26,7 +26,8 @@ part MCU-STM32F042 {
 
 # STM32F042F6P6
 
-**Source:** STMicroelectronics, STM32F042x4/x6 datasheet, DS10696 rev 6.
+**Source:** STMicroelectronics, STM32F042x4/STM32F042x6 datasheet, DocID025832
+Rev 5, January 2017.
 TSSOP-20 package, 32 KB flash, 6 KB SRAM, Arm Cortex-M0 at 48 MHz, USB 2.0
 full-speed device with crystal-less clock recovery.
 
@@ -34,17 +35,17 @@ full-speed device with crystal-less clock recovery.
 
 | Pin | Name | Function |
 |---|---|---|
-| 1 | BOOT0 | Boot mode select, sampled at reset |
+| 1 | PB8-BOOT0 | GPIO; I2C1_SCL, CEC, TIM16_CH1, TSC_SYNC, CAN_RX alternates; boot mode select sampled at reset |
 | 2 | PF0-OSC_IN | GPIO; I2C1_SDA (AF1); HSE crystal input |
 | 3 | PF1-OSC_OUT | GPIO; I2C1_SCL (AF1); HSE crystal output |
 | 4 | NRST | Reset, active low, internal pull-up |
-| 5 | VDDA | Analog supply for ADC, reset block and oscillators |
-| 6–13 | PA0–PA7 | GPIO; ADC_IN0–ADC_IN7; timers, SPI1, USART1/2 alternates |
-| 14 | PB1 | GPIO; ADC_IN9; TIM3_CH4, TIM14_CH1 |
-| 15 | VSS | Ground |
-| 16 | VDD | Digital supply |
-| 17 | PA9 | GPIO; USART1_TX, I2C1_SCL (AF4); USB_DM when PA11_PA12_RMP is set |
-| 18 | PA10 | GPIO; USART1_RX, I2C1_SDA (AF4); USB_DP when PA11_PA12_RMP is set |
+| 5 | VDDA | Analog power supply |
+| 6–13 | PA0–PA7 | GPIO; ADC_IN0–ADC_IN7; timers, SPI1, USART2 alternates |
+| 14 | PB1 | GPIO; ADC_IN9; TIM3_CH4, TIM14_CH1, TIM1_CH3N alternates |
+| 15 | VSS | Ground (also VSSA pad on this package) |
+| 16 | VDD | Digital supply (also VDDIO2 pad on this package) |
+| 17 | PA9 [PA11] | GPIO; USART1_TX (AF1), I2C1_SCL (AF4); becomes PA11 (CAN_RX, I2C1_SCL, USB_DM) when PA11_PA12_RMP is set |
+| 18 | PA10 [PA12] | GPIO; USART1_RX (AF1), I2C1_SDA (AF4); becomes PA12 (CAN_TX, I2C1_SDA, USB_DP) when PA11_PA12_RMP is set |
 | 19 | PA13 | SWDIO after reset; GPIO |
 | 20 | PA14 | SWCLK after reset; GPIO |
 
@@ -56,21 +57,29 @@ brought to PA9 and PA10 by the SYSCFG_CFGR1 PA11_PA12_RMP bit.
 | Parameter | Min | Max | Unit |
 |---|---|---|---|
 | VDD, VDDA | −0.3 | 4.0 | V |
-| Input voltage on 5 V tolerant pins | −0.3 | VDD + 4.0 (≤ 5.5) | V |
-| Input voltage on other pins | −0.3 | VDD + 0.3 | V |
+| Input voltage on 5 V tolerant (FT/FTf) pins | VSS − 0.3 | VDDIOx + 4.0 | V |
+| Input voltage on TTa pins and any other pin | VSS − 0.3 | 4.0 | V |
 | Output current sunk or sourced, any pin | | 25 | mA |
 | Total current through VDD or VSS | | 120 | mA |
 | Storage temperature | −65 | +150 | °C |
 | ESD, human body model | | 2 | kV |
 
+On the TSSOP-20 package VDDIOx is bonded to VDD (no separate VDDIO2 pad), so
+the 5 V-tolerant limit above is VDD + 4.0 V; this is only valid with the
+internal pull-up/pull-down disabled, otherwise the limit is 4 V.
+
 ## Recommended operating conditions
 
 | Parameter | Min | Typ | Max | Unit |
 |---|---|---|---|---|
-| VDD | 2.0 | 3.3 | 3.6 | V |
-| VDDA (must be ≥ VDD) | 2.0 | 3.3 | 3.6 | V |
+| VDD | 2.0 | | 3.6 | V |
+| VDDA, ADC not used (must be ≥ VDD) | VDD | | 3.6 | V |
+| VDDA, ADC used | 2.4 | | 3.6 | V |
 | Ambient temperature, suffix 6 | −40 | | +85 | °C |
-| HCLK | | | 48 | MHz |
+| HCLK | 0 | | 48 | MHz |
+
+The datasheet's operating-conditions table gives Min/Max only; no Typ column
+is stated.
 
 ## Electrical characteristics (VDD = 3.3 V, TA = 25 °C, unless noted)
 
@@ -81,26 +90,32 @@ brought to PA9 and PA10 by the SYSCFG_CFGR1 PA11_PA12_RMP bit.
 | VOL | IOL = 8 mA | | | 0.4 | V |
 | VOH | IOH = 8 mA | VDD − 0.4 | | | V |
 | Weak pull-up / pull-down | | 25 | 40 | 55 | kΩ |
-| Run current, 48 MHz from HSI48 | peripherals off | | 10 | | mA |
-| Stop current | | | 4 | | µA |
-| POR / PDR threshold | rising / falling | 1.80 | 1.88 | 1.96 | V |
-| HSI48 accuracy | with CRS locked to USB SOF | | ±0.2 | | % |
+| Run current, 48 MHz from HSI48, code from Flash | all peripherals disabled | | 12.7 | 14.4 | mA |
+| Stop current | regulator in low-power mode, VDD = 3.3 V | | 3.4 | 6.5 | µA |
+| POR / PDR threshold | falling edge | 1.80 | 1.88 | 1.96 | V |
+| HSI48 accuracy, factory-calibrated (no CRS) | TA = 25 °C | −2.8 | | +2.9 | % |
 | ADC resolution | | | 12 | | bit |
 | ADC input range | | 0 | | VDDA | V |
 
+The datasheet does not give a numeric HSI48 accuracy figure for CRS locked to
+USB start-of-frame; only the free-running, factory-calibrated accuracy above
+is stated (Table 40).
+
 ## Application
 
-- One 100 nF ceramic at VDD and one at VDDA, close to the pins; the reference
-  design adds 4.7 µF bulk on VDD.
-- NRST has an internal pull-up; the reference design adds 100 nF to ground
-  at the pin.
-- BOOT0 is read at reset: low boots user flash, high boots the system
-  bootloader (USART, I2C, USB DFU). Hold it with a resistor, never floating.
+- Power supply scheme (Figure 13): VDD/VSS decoupled with 2× 100 nF + 1×
+  4.7 µF; VDDA/VSSA decoupled with 10 nF + 1 µF. Capacitors placed as close
+  as possible to, or below, the pins.
+- NRST has an internal pull-up resistor; an external capacitor may be added
+  to protect against parasitic resets (Figure 25). The datasheet does not
+  give a value for that capacitor.
+- BOOT0 (PB8-BOOT0) is read at reset: low boots user flash, high boots the
+  system bootloader. Hold it with a resistor, never floating.
 - USB needs no crystal: HSI48 with the clock recovery system trimmed from
   USB start-of-frame meets the USB tolerance. The pull-up on D+ is internal.
 - Unused I/O may be left unconnected if configured as analog by firmware.
 
 ## Package
 
-TSSOP-20, 4.4 × 6.5 mm body, 0.65 mm pitch. Pin 1 is at the marked corner
+TSSOP-20, 6.5 × 4.4 mm body, 0.65 mm pitch. Pin 1 is at the marked corner
 and numbering runs counter-clockwise, 1–10 down one side, 11–20 up the other.

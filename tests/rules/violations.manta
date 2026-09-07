@@ -31,4 +31,8 @@ block b {
     // 2V4 will not clear a 3V5 threshold.
     SIG = Q.{U2~DRV-3V3: .VCC = 3V3; .GND = GND;};
     SIG = D.{U3~RX-5V: .VCC = 3V3; .GND = GND;};
+
+    // A declared rail rated below what hangs off it: 200mA against 100mA.
+    5V &TYPE=POWER &CURRENT=100mA;
+    5V = VCC.{U4~RX-5V: .D = SIG; .GND = GND;};
 };

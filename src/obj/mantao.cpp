@@ -385,6 +385,7 @@ private:
                         if (b->pinIsDot) w_.field("dot", true);
                         else name("pin", b->pin);
                         writeRange("range", b->pinRange);
+                        if (b->hasPinMember) name("member", b->pinMember);
                         if (b->unbind) w_.field("unbind", true);
                         // Revision 1.4. Both keys are written only when they
                         // carry something: a binding that says what every
@@ -1124,6 +1125,10 @@ private:
                         binding->pinIsDot = b->boolean_("dot");
                         if (!binding->pinIsDot) binding->pin = readName(b->find("pin"));
                         binding->pinRange = readRange(b->find("range"));
+                        if (b->find("member")) {
+                            binding->pinMember = readName(b->find("member"));
+                            binding->hasPinMember = true;
+                        }
                         binding->unbind = b->boolean_("unbind");
                         // Absent in every object written before revision 1.4,
                         // and absent from the common case since, so the default

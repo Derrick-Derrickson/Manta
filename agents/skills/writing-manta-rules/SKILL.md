@@ -34,6 +34,13 @@ part LDO-3V3 {
 Take the figures from the datasheet's *worst case*, not its typical column. A
 rule checking typical numbers passes boards that fail.
 
+A budget has two shapes. A rail with a sourcing pin sums `#DRAW` against that
+pin's `#SUPPLY`. A rail with none — it arrives through an inductor, a diode-OR
+or a connector — carries `&CURRENT` on the net or its class, and the rule
+reads it off the net: `when has(net.CURRENT); require sum(pins.DRAW) <=
+net.CURRENT;`. Write both, as blinky does, or a declared rail is never
+checked at all.
+
 ## The shape of a check
 
 ```
