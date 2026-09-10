@@ -11,7 +11,8 @@ jobs.
 | `skills/extending-the-compiler/` | Changing this C++ codebase. |
 
 Each skill is a `SKILL.md` that fits in working memory, plus `references/` files
-loaded only when the task needs them.
+loaded only when the task needs them. `how_to_read_manta.md` is the short
+version for a model that only has to read a design, not write one.
 
 ## Using them
 
