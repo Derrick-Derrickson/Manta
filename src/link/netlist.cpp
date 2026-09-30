@@ -69,12 +69,18 @@ namespace {
 // An un-annotated design "shall compile, link and check completely" (spec 13.1),
 // so a component with no designator falls back to the identity derived from its
 // instance path.
-std::string componentName(const Component& c) {
-    if (c.path.size() > 1) return flattenPath(c.path);
-    return c.designator.empty() ? c.identity : c.designator;
-}
+std::string componentName(const Component& c) { return flatDesignator(c); }
 
 }  // namespace
+
+std::string flatDesignator(const Component& c, std::string_view overrideFormat) {
+    if (c.path.size() > 1) {
+        if (!overrideFormat.empty()) return applyFlatFormat(overrideFormat, c.path);
+        if (!c.flatFormat.empty()) return applyFlatFormat(c.flatFormat, c.path);
+        return flattenPath(c.path);
+    }
+    return c.designator.empty() ? c.identity : c.designator;
+}
 
 void writeNetlist(const Design& design, std::string& out) {
     JsonWriter w(out, /*pretty=*/true);
@@ -104,6 +110,10 @@ void writeNetlist(const Design& design, std::string& out) {
         // Emitted only when '&EDGE' was written, so a design that never uses
         // the directive serialises to exactly the bytes 1.4 wrote.
         if (!c.edge.empty()) w.field("edge", c.edge);
+        // The '@FLATFORMAT' in force (spec 13.4), so an exporter reading this
+        // netlist flattens the path exactly as the netlist itself did. Emitted
+        // only when the source declared one.
+        if (!c.flatFormat.empty() && c.path.size() > 1) w.field("flatFormat", c.flatFormat);
         w.key("fields");
         w.beginObject();
         for (const auto& [name, value] : c.fields) w.field(name, value);

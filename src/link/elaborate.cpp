@@ -561,6 +561,7 @@ std::uint32_t Elaborator::instantiatePart(const Instance* inst, const PartInfo& 
     c.span = inst->span;
     c.pins = part.pins;
     c.section = scope.activeSection;
+    c.flatFormat = scope.flatFormat;
 
     SymbolId partName = resolve(inst->partOrBlock, scope);
     c.part = partName;
@@ -688,9 +689,7 @@ std::uint32_t Elaborator::instantiatePart(const Instance* inst, const PartInfo& 
     // spec 13.4 -- a local designator is unique only within its block, so two
     // instances of one block would otherwise emit two nets both named "R1.2",
     // and an importer that merges nets by name would short them.
-    std::string flatName = c.path.size() > 1
-                               ? flattenPath(c.path)
-                               : (c.designator.empty() ? c.identity : c.designator);
+    std::string flatName = flatDesignator(c);
     for (std::uint32_t p = 0; p < c.pins.size(); ++p) {
         std::uint32_t node = freshNode(c.pins[p].span);
         c.pins[p].node = node;
@@ -2287,7 +2286,7 @@ Design Elaborator::run(SymbolId topName, Span at) {
 
     for (const Component& c : design.components) {
         std::pair<std::string, std::string> entry{
-            flattenPath(c.path), c.designator.empty() ? c.identity : c.designator};
+            flattenPath(c.path), flatDesignator(c)};
         design.elaborationMap.push_back(std::move(entry));
     }
 

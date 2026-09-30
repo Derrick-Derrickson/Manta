@@ -55,6 +55,7 @@ bool readNetlist(const JsonValue& root, DiagEngine& diags, Design& out) {
             // Optional (revision 1.5): absent from every netlist written
             // before '&EDGE' existed, and absent since unless it was written.
             component.edge = std::string(c->str("edge"));
+            component.flatFormat = std::string(c->str("flatFormat"));
             if (const JsonValue* fields = c->find("fields");
                 fields && fields->kind == JsonKind::Object) {
                 for (const auto& [name, value] : fields->object) {
@@ -223,9 +224,7 @@ namespace {
 // The flat name a layout tool sees. Spec 13.4: "Export flattens the path to the
 // single unique string a BOM and a layout tool require."
 std::string flatName(const Component& c, std::string_view flatFormat) {
-    if (!flatFormat.empty()) return applyFlatFormat(flatFormat, c.path);
-    if (c.path.size() <= 1) return c.designator;
-    return flattenPath(c.path);
+    return flatDesignator(c, flatFormat);
 }
 
 void escapeSExpr(std::string& out, std::string_view text) {

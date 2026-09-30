@@ -70,6 +70,9 @@ struct Component {
     std::vector<std::string> path;
     std::string designator;      // "U1", or empty when unassigned
     std::string identity;        // path-derived identity, used when unassigned
+    // The '@FLATFORMAT' in force where the instance was written (spec 13.4),
+    // inherited from the enclosing blocks; empty means the default '_' join.
+    std::string flatFormat;
     SymbolId part = SymbolId::kInvalid;
     std::string partName;
     bool fitted = true;
@@ -221,5 +224,13 @@ void writeElaborationMap(const Design& design, std::string& out);
 // "$INSTANCE$" the enclosing instance path (spec 13.4).
 [[nodiscard]] std::string applyFlatFormat(std::string_view templateText,
                                           const std::vector<std::string>& path);
+
+// The single flat name every artifact uses for a component (spec 13.4): a
+// top-level part is its designator; a nested one is its path through the
+// template in force -- 'overrideFormat' (the export flag) first, then the
+// '@FLATFORMAT' the source declared, then the default '_' join. An
+// un-annotated instance falls back to its path-derived identity.
+[[nodiscard]] std::string flatDesignator(const Component& c,
+                                         std::string_view overrideFormat = {});
 
 }  // namespace manta

@@ -56,6 +56,10 @@
             "type": "string",
             "enum": ["LEFT", "RIGHT", "TOP", "BOTTOM"]
           },
+          "flatFormat": {
+            "description": "The '@FLATFORMAT' template in force where a nested instance was written (section 13.4), so an exporter flattens its path as the netlist did. Absent for a top-level part and when no template was declared.",
+            "type": "string"
+          },
           "fields": {
             "description": "User fields, carried through untouched (section 9.1). Values are rendered per section 14.7.",
             "type": "object",

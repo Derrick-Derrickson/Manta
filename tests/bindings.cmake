@@ -131,6 +131,61 @@ if(NOT imp_count EQUAL 2)
 endif()
 
 # ---------------------------------------------------------------------------
+# '@FLATFORMAT' in the source is applied (spec 13.4)
+# ---------------------------------------------------------------------------
+# The template on a block names every nested component in the netlist, the
+# BOM, the elaboration map and the export; '--flat-format' on export overrides
+# it. Until 2.0.1 the source template was read and never consulted.
+file(WRITE "${WORK}/flat.manta" "
+part RES { @~footprint = R; 1 : A &CASUAL; 2 : B &CASUAL; };
+block leaf {
+    @FLATFORMAT = \"$COMPONENT$-$INSTANCE$\";
+    >IN;
+    >>GND;
+    IN = .{R1~RES}. = GND;
+};
+block flat-top {
+    GND &TYPE=GROUND;
+    GND>>;
+    SIG = {BLK1~leaf}.IN;
+    SIG = {BLK2~leaf}.IN;
+    SIG = .{R9~RES}. = GND;
+};
+")
+run_manta(compile -o "${WORK}/flat/" "${WORK}/flat.manta")
+run_manta(link --top flat-top -L "${WORK}/flat" -o "${WORK}/flat.mantaNets"
+          --bom "${WORK}/flat.csv" --map "${WORK}/flat.map")
+file(READ "${WORK}/flat.mantaNets" flat_net)
+foreach(want "\"designator\": \"R1-BLK1\"" "\"designator\": \"R1-BLK2\"" "\"designator\": \"R9\"")
+    string(FIND "${flat_net}" "${want}" at)
+    if(at EQUAL -1)
+        message(FATAL_ERROR "@FLATFORMAT not applied in the netlist: expected ${want}")
+    endif()
+endforeach()
+if(flat_net MATCHES "BLK1_R1")
+    message(FATAL_ERROR "the default '_' join survived a source @FLATFORMAT")
+endif()
+file(READ "${WORK}/flat.csv" flat_bom)
+if(NOT flat_bom MATCHES "\nR1-BLK1,")
+    message(FATAL_ERROR "@FLATFORMAT not applied in the BOM:\n${flat_bom}")
+endif()
+file(READ "${WORK}/flat.map" flat_map)
+if(NOT flat_map MATCHES "R1-BLK1")
+    message(FATAL_ERROR "@FLATFORMAT not applied in the elaboration map:\n${flat_map}")
+endif()
+run_manta(export --format kicad -o "${WORK}/flat.net" "${WORK}/flat.mantaNets")
+file(READ "${WORK}/flat.net" flat_kicad)
+if(NOT flat_kicad MATCHES "\\(ref \"R1-BLK1\"\\)")
+    message(FATAL_ERROR "@FLATFORMAT not applied in the KiCad export")
+endif()
+run_manta(export --format kicad --flat-format "$INSTANCE$/$COMPONENT$"
+          -o "${WORK}/flat2.net" "${WORK}/flat.mantaNets")
+file(READ "${WORK}/flat2.net" flat_kicad2)
+if(NOT flat_kicad2 MATCHES "\\(ref \"BLK1/R1\"\\)")
+    message(FATAL_ERROR "--flat-format did not override the source template")
+endif()
+
+# ---------------------------------------------------------------------------
 # W-01 counts a chain-bound pin as bound
 # ---------------------------------------------------------------------------
 # Spec 16.2: "A declared part has pins appearing in no chain and no binding."

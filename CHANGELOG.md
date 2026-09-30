@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.1 — 2026-09-30
+
+### Tool
+
+- **`@FLATFORMAT` is applied.** The template on a block (§13.4) was read into
+  the elaborator's scope and then never consulted: every artifact used the
+  default `_` join, and only `manta export --flat-format` had any effect, so
+  the BOM, which takes no such flag, could never carry a designer's format.
+  The template in force where an instance is written now names it in the
+  netlist, the BOM, the elaboration map and every export; `--flat-format`
+  still overrides it at export. Reported by a user against 2.0.0.
+
 ## 2.0.0 — 2026-09-07
 
 ### Why 2.0
