@@ -1,0 +1,8 @@
+// Two resistors written with one designator in one block.
+part RES { @~footprint = R-0603; @type = resistor; 1 : A &CASUAL; 2 : B &CASUAL; };
+
+block b {
+    GND &TYPE=GROUND;
+    IN> = .{R1~RES}. = GND;
+    OUT> = .{R1~RES}. = GND;
+};

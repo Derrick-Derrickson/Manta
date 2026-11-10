@@ -99,6 +99,16 @@ struct Component {
     std::string edge;
     std::vector<ComponentPin> pins;
     Span span;
+    // Where an unassigned designator was written: the bytes after its prefix,
+    // and, filled in by the link driver, the source's base name and a location
+    // that formatting cannot move. 'manta annotate' counts the components that
+    // share one site in one block instance, which is the only way to learn how
+    // many copies a '[[ ]]' made -- the width comes from the connection, which
+    // only the linker sees. sitePath is empty once assigned.
+    Span designatorSpan;
+    std::string sitePath;
+    std::uint32_t siteLine = 0;
+    std::uint32_t siteColumn = 0;
 };
 
 // One declared port of an instantiated block, resolved to the design-wide net

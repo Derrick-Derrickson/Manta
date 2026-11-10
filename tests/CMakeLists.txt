@@ -92,5 +92,6 @@ add_test(NAME example
          COMMAND ${CMAKE_COMMAND}
                  -DMANTA=$<TARGET_FILE:manta>
                  -DEXAMPLE_DIR=${CMAKE_SOURCE_DIR}/examples/blinky
+                 -DBOM_TEMPLATE=${CMAKE_CURRENT_SOURCE_DIR}/bom/grouped.toml
                  -DWORK=${CMAKE_CURRENT_BINARY_DIR}/example-work
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/example.cmake)

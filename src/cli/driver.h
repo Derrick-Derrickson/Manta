@@ -37,4 +37,14 @@ int runRender(const Options& opts);
 [[nodiscard]] std::string baseName(std::string_view path);
 [[nodiscard]] bool isDirectory(const std::string& path);
 
+// Where a byte sits, in terms 'manta fmt' cannot move: the 1-based line, and
+// the 0-based column counted from the line's first non-blank character. The
+// formatter rewrites only leading indentation, so a netlist that records a
+// site this way is unchanged by formatting. {0, 0} when out of range.
+struct SiteLocation {
+    std::uint32_t line = 0;
+    std::uint32_t column = 0;
+};
+[[nodiscard]] SiteLocation siteLocation(std::string_view text, std::uint32_t offset);
+
 }  // namespace manta

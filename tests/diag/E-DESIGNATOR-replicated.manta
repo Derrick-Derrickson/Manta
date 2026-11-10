@@ -1,0 +1,7 @@
+// A fixed designator on a two-copy group gives both copies the same one.
+part RES { @~footprint = R-0603; @type = resistor; 1 : A &CASUAL; 2 : B &CASUAL; };
+
+block b {
+    GND &TYPE=GROUND;
+    IN> = (.{R1~RES}.)|2 = GND;
+};

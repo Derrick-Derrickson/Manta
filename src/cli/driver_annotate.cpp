@@ -15,6 +15,7 @@
 #include <format>
 #include <memory>
 
+#include "base/flat_map.h"
 #include "cli/console.h"
 #include "cli/driver.h"
 #include "export/exporters.h"
@@ -92,7 +93,8 @@ private:
             }
             case ElementKind::Replication:
                 // A replication's copy count follows from the connection width,
-                // which only the linker knows; the netlist supplies it.
+                // which only the linker knows; the netlist supplies it, in
+                // runAnnotate, from the components that share this site.
                 segment(el->replication->body, copies);
                 return;
             case ElementKind::Net:
@@ -263,6 +265,52 @@ int runAnnotate(const Options& opts) {
         return std::find(opts.reopenPrefixes.begin(), opts.reopenPrefixes.end(), prefix) !=
                opts.reopenPrefixes.end();
     };
+
+    // How many components each unassigned site made in one block instance,
+    // from the netlist. A '[[ ]]' copies its body once per wire, a width only
+    // the linker knows, so without this a four-wide replication would be given
+    // one designator for all four copies.
+    struct SiteCount {
+        std::string source;
+        std::uint32_t line = 0;
+        std::uint32_t column = 0;
+        std::int64_t copies = 0;
+    };
+    std::vector<SiteCount> siteCounts;
+    {
+        FlatMap<std::string, std::int64_t> perScope;
+        for (const Component& c : design.components) {
+            if (c.sitePath.empty()) continue;
+            std::string key = std::format("{}\n{}:{}\n", c.sitePath, c.siteLine, c.siteColumn);
+            for (std::size_t i = 0; i + 1 < c.path.size(); ++i) key += c.path[i] + '/';
+            auto [slot, inserted] = perScope.insert(key, 0);
+            ++*slot;
+            bool found = false;
+            for (SiteCount& s : siteCounts) {
+                if (s.source == c.sitePath && s.line == c.siteLine && s.column == c.siteColumn) {
+                    s.copies = std::max(s.copies, *slot);
+                    found = true;
+                }
+            }
+            if (!found) {
+                siteCounts.push_back(SiteCount{c.sitePath, c.siteLine, c.siteColumn, *slot});
+            }
+        }
+    }
+    // The netlist names a source by its base name. Two sources sharing one
+    // base name and a site at the same line and column would share a count;
+    // the larger wins, which can only reserve a number too many.
+    for (Site& site : sites) {
+        if (site.kind != DesignatorKind::Unassigned) continue;
+        SiteLocation at = siteLocation(files[site.fileIndex]->text, site.span.offset);
+        for (const SiteCount& s : siteCounts) {
+            if (s.line == at.line && s.column == at.column &&
+                s.source == baseName(files[site.fileIndex]->path)) {
+                site.copies = s.copies;
+                break;
+            }
+        }
+    }
 
     NumberAllocator allocator;
     for (const auto& [prefix, n] : opts.startAt) allocator.startAt(prefix, n);

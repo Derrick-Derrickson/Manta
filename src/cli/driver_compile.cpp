@@ -40,6 +40,21 @@ std::string baseName(std::string_view path) {
     return std::string(slash == std::string_view::npos ? path : path.substr(slash + 1));
 }
 
+SiteLocation siteLocation(std::string_view text, std::uint32_t offset) {
+    if (offset > text.size()) return {};
+    std::uint32_t line = 1;
+    std::size_t lineStart = 0;
+    for (std::size_t i = 0; i < offset; ++i) {
+        if (text[i] == '\n') {
+            ++line;
+            lineStart = i + 1;
+        }
+    }
+    std::size_t firstBlank = lineStart;
+    while (firstBlank < offset && (text[firstBlank] == ' ' || text[firstBlank] == '\t')) ++firstBlank;
+    return {line, static_cast<std::uint32_t>(offset - firstBlank)};
+}
+
 bool isDirectory(const std::string& path) {
     std::error_code ec;
     return std::filesystem::is_directory(path, ec);

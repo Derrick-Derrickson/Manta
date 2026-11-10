@@ -224,6 +224,16 @@ ParseOutcome parseOptions(const std::vector<std::string>& args, Options& out) {
                 if (!err.empty()) break;
                 if (takeValue(c, "--bom", "", value, err)) { out.bomPath = value; continue; }
                 if (!err.empty()) break;
+                if (takeValue(c, "--bom-template", "", value, err)) {
+                    out.bomTemplatePath = value;
+                    continue;
+                }
+                if (!err.empty()) break;
+                if (takeValue(c, "--footprint-map", "", value, err)) {
+                    out.footprintMapPath = value;
+                    continue;
+                }
+                if (!err.empty()) break;
                 if (takeValue(c, "--map", "", value, err)) { out.mapPath = value; continue; }
                 if (!err.empty()) break;
                 if (a == "--no-erc") { out.noErc = true; continue; }
@@ -302,6 +312,11 @@ ParseOutcome parseOptions(const std::vector<std::string>& args, Options& out) {
                     continue;
                 }
                 if (!err.empty()) break;
+                if (takeValue(c, "--footprint-dir", "", value, err)) {
+                    out.footprintDirs.push_back(value);
+                    continue;
+                }
+                if (!err.empty()) break;
                 break;
 
             case Command::Render:
@@ -353,6 +368,13 @@ ParseOutcome parseOptions(const std::vector<std::string>& args, Options& out) {
         result.error = "'--footprint-lib' takes a library nickname, without ':'";
         return result;
     }
+    // The pads are read from KiCad footprint files, which no other target uses.
+    if (out.command == Command::Export && !out.footprintDirs.empty() && out.format != "kicad") {
+        result.ok = false;
+        result.exitCode = kExitUsage;
+        result.error = "'--footprint-dir' checks KiCad footprints and needs '--format kicad'";
+        return result;
+    }
     // 'link' and 'check' may take their objects entirely from -L: spec 20.8
     // builds with "manta link --top power-and-signal -L build/ ..." and no
     // positional arguments at all.
@@ -368,6 +390,14 @@ ParseOutcome parseOptions(const std::vector<std::string>& args, Options& out) {
 
     // "manta check" is defined as "manta link --no-emit" (spec 15.5).
     if (out.command == Command::Check) out.noEmit = true;
+    // 'check' loads a template to validate it; 'link' needs somewhere to put
+    // what it renders.
+    if (out.command == Command::Link && !out.bomTemplatePath.empty() && out.bomPath.empty()) {
+        result.ok = false;
+        result.exitCode = kExitUsage;
+        result.error = "'--bom-template' shapes the '--bom' file; give '--bom <file>' too";
+        return result;
+    }
 
     return result;
 }
@@ -438,7 +468,15 @@ Run 'manta <command> --help' for the options of one command.
       --assembly        Also write a netlist and BOM for every cable a
                         connector on this board mates with. Separate files;
                         the board's own outputs are unchanged.
-  --bom <file>          Also emit a BOM as CSV.
+  --bom <file>          Also emit a BOM as CSV, one row per component: the
+                        fixed columns, then one column per '#' field any
+                        component carries (#mpn, #value, ...).
+  --bom-template <file> Write the --bom file in the shape this TOML file's
+                        [[output]] with kind = "bom" describes: grouping,
+                        columns, quoting. See docs/bom-template.md.
+  --footprint-map <file>
+                        Resolve footprints for the template's {footprint},
+                        {footprint_name} and {lib}, as export does.
   --no-erc              Skip ERC and emit regardless.
   --no-emit             Run every stage including ERC, emit nothing.
   --map <file>          Write the elaboration map: instance path to designator.
@@ -494,6 +532,11 @@ Equivalent to 'manta link --no-emit'. Accepts the same options.
   --footprint-lib <nick>
                         Library nickname for any footprint the map does not
                         cover and that names no library itself. KiCad only.
+  --footprint-dir <dir> A directory of KiCad '<Library>.pretty' folders, such
+                        as /usr/share/kicad/footprints. Repeatable; searched in
+                        order. Checks every part's pins against its
+                        footprint's pads, and writes nothing if a pin is not a
+                        pad. KiCad only.
 )";
             break;
 

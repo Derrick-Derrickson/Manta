@@ -205,6 +205,7 @@ private:
     void applyStatementDirectives(const Stmt* stmt, std::span<const std::uint32_t> nodes,
                                   Scope& scope);
     void collectMatchGroups(Design& design);
+    void checkDesignators(const Design& design);
     void collectNetclasses();
 
     // ---- helpers ---------------------------------------------------------------

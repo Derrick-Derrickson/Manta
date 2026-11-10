@@ -70,8 +70,10 @@ struct Options {
     std::string format;
     std::string constraintsPath;
     std::string flatFormat;
-    std::string footprintMapPath;
+    std::string footprintMapPath;  // export, and link for --bom-template
+    std::string bomTemplatePath;
     std::string footprintLib;
+    std::vector<std::string> footprintDirs;
 
     // render
     std::string title;

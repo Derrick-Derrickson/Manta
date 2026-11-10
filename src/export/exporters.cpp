@@ -43,6 +43,9 @@ bool readNetlist(const JsonValue& root, DiagEngine& diags, Design& out) {
             component.fitted = c->boolean_("fitted", true);
             component.bom = c->boolean_("bom", true);
             component.footprint = std::string(c->str("footprint"));
+            component.sitePath = std::string(c->str("source"));
+            component.siteLine = static_cast<std::uint32_t>(c->integer("line", 0));
+            component.siteColumn = static_cast<std::uint32_t>(c->integer("column", 0));
             component.type = std::string(c->str("type"));
             if (component.type.empty()) component.type = "board_part";
             bool typeNearMiss = false;
@@ -81,6 +84,7 @@ bool readNetlist(const JsonValue& root, DiagEngine& diags, Design& out) {
                         PortDir parsed{};
                         if (lookupPortDir(dir, parsed)) pin.direction = parsed;
                     }
+                    pin.unbound = p->boolean_("open");
                     pin.declOrder = static_cast<std::int32_t>(component.pins.size());
                     component.pins.push_back(std::move(pin));
                 }
@@ -354,6 +358,32 @@ std::string exportKiCad(const Design& design, const ExportOptions& options, Diag
     }
     out += "  )\n";
 
+    // One libpart per part, listing every declared pin. The nets section only
+    // names pins that landed on a net, so without this a layout tool cannot
+    // tell a pin declared NC from a pad the part never mentions. Every instance
+    // of a part carries the part's pins, so the first instance speaks for all;
+    // first-seen order keeps the section deterministic.
+    out += "  (libparts\n";
+    FlatSet<std::string> listed;
+    for (const Component& c : design.components) {
+        if (listed.contains(c.partName)) continue;
+        listed.insert(c.partName);
+        out += "    (libpart (lib \"manta\") (part ";
+        escapeSExpr(out, c.partName);
+        out += ")\n      (pins\n";
+        for (const ComponentPin& pin : c.pins) {
+            out += "        (pin (num ";
+            escapeSExpr(out, pin.physical);
+            out += ") (name ";
+            escapeSExpr(out, pin.logical);
+            out += ") (type ";
+            escapeSExpr(out, kicadPinType(pin.type, pin.direction));
+            out += "))\n";
+        }
+        out += "      )\n    )\n";
+    }
+    out += "  )\n";
+
     out += "  (nets\n";
     std::size_t code = 1;
     for (const Net& net : design.nets) {
@@ -377,6 +407,31 @@ std::string exportKiCad(const Design& design, const ExportOptions& options, Diag
             out += "))\n";
         }
         out += "    )\n";
+    }
+    // A pin left open on purpose gets a net of its own, named and typed the way
+    // KiCad's own exporter does for a pin with a no-connect flag. A layout tool
+    // then sees the pad as deliberately open, and a one-node net draws no
+    // ratsnest.
+    for (const Component& c : design.components) {
+        std::string ref = flatName(c, options.flatFormat);
+        for (const ComponentPin& pin : c.pins) {
+            if (!pin.unbound || pin.net >= 0) continue;
+            out += std::format("    (net (code \"{}\") (name ", code++);
+            escapeSExpr(out, std::format("unconnected-({}-{}-Pad{})", ref, pin.logical,
+                                         pin.physical));
+            out += ")\n      (node (ref ";
+            escapeSExpr(out, ref);
+            out += ") (pin ";
+            escapeSExpr(out, pin.physical);
+            out += ") (pinfunction ";
+            escapeSExpr(out, pin.logical);
+            out += ") (pintype ";
+            // An NC pin is already typed no_connect; KiCad does not repeat it.
+            std::string type(kicadPinType(pin.type, pin.direction));
+            if (pin.type != PinType::NC) type += "+no_connect";
+            escapeSExpr(out, type);
+            out += "))\n    )\n";
+        }
     }
     out += "  )\n)\n";
     return out;

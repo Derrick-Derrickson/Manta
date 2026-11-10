@@ -54,6 +54,21 @@ MANTA_DIAG(Unannotated, "E-UNANNOTATED", "unannotated", Severity::Error,
 // '--footprint-map' or '--footprint-lib' is how you silence it, and
 // '-Werror=footprint' is how you refuse to ship one that would not place.
 MANTA_DIAG(Footprint, "W-FOOTPRINT", "footprint", Severity::Warning, "{}")
+// 'export --footprint-dir': a part's pin numbers checked against the pads of
+// the footprint it resolved to. A pin that is no pad connects nothing, so it is
+// an error; a pad no pin names breaks the parts rule that every pad is
+// declared, mechanical ones included, which is worth saying but not fatal.
+MANTA_DIAG(Pad,           "E-PAD", "pad",            Severity::Error,   "{}")
+MANTA_DIAG(UndeclaredPad, "W-PAD", "undeclared-pad", Severity::Warning, "{}")
+// 'link --bom-template': the template file is malformed, or the design does
+// not fit it -- a column that differs within one group, a value that cannot be
+// written under quote = "never". The BOM is the user's format, so a BOM that
+// misdescribes a part is an error, not a warning.
+MANTA_DIAG(BomTemplate,   "E-BOM", "bom-template",   Severity::Error,   "{}")
+// Two components with one reference (spec 13.3: "designator uniqueness is per
+// scope"). Every artifact keys a component on its flattened designator, so a
+// duplicate is two parts a layout tool sees as one.
+MANTA_DIAG(DuplicateDesignator, "E-DESIGNATOR", "duplicate-designator", Severity::Error, "{}")
 // A '&RENDER=WIRE' net the renderer had to connect by name after all
 // (spec 11.3, revision 1.6). The message says which net, where and why.
 MANTA_DIAG(Render, "W-RENDER", "render", Severity::Warning, "{}")

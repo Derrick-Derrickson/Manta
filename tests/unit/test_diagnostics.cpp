@@ -254,6 +254,10 @@ TEST_CASE("W-04 undecoupled supply pin") { expectFires("W-04"); }
 TEST_CASE("W-07 identifiers differing only by '-' versus '_'") { expectFires("W-07"); }
 TEST_CASE("W-08 frozen swap group") { expectFires("W-08"); }
 TEST_CASE("W-TYPE near miss on a structural role") { expectFires("W-TYPE"); }
+TEST_CASE("E-DESIGNATOR one designator twice in a block") { expectFires("E-DESIGNATOR"); }
+TEST_CASE("E-DESIGNATOR a fixed designator on a replicated group") {
+    expectFiresOn("E-DESIGNATOR", "E-DESIGNATOR-replicated");
+}
 
 // ---------------------------------------------------------------------------
 // The table itself

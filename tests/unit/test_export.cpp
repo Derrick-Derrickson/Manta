@@ -12,6 +12,7 @@
 #include "diag/engine.h"
 #include "export/exporters.h"
 #include "export/footprint_map.h"
+#include "export/pad_check.h"
 #include "export/uuid.h"
 #include "harness.h"
 
@@ -265,6 +266,53 @@ TEST_CASE("a supply pin's direction decides which way KiCad thinks it drives") {
     CHECK(contains(exportOf(design, options, nullptr), "(pintype \"no_connect\")"));
 }
 
+TEST_CASE("libparts lists every declared pin once per part, connected or not") {
+    Design design = tinyDesign();
+    ComponentPin nc;
+    nc.physical = "4";
+    nc.logical = "NC";
+    nc.type = PinType::NC;
+    design.components[0].pins.push_back(nc);
+    // A second instance of the same part must not list it again.
+    Component u2 = design.components[0];
+    u2.path = {"U2"};
+    u2.designator = "U2";
+    u2.identity = "U2";
+    design.components.push_back(std::move(u2));
+
+    ExportOptions options;
+    options.footprintLib = "Lib";
+    std::string out = exportOf(design, options, nullptr);
+    CHECK(contains(out, "(libpart (lib \"manta\") (part \"LDO-3V3\")\n      (pins\n"
+                        "        (pin (num \"5\") (name \"VOUT\") (type \"power_out\"))\n"
+                        "        (pin (num \"4\") (name \"NC\") (type \"no_connect\"))\n"));
+    CHECK_EQ(out.find("(libpart ("), out.rfind("(libpart ("));
+}
+
+TEST_CASE("a pin left open on purpose gets KiCad's one-node unconnected net") {
+    Design design = tinyDesign();
+    ComponentPin open;
+    open.physical = "3";
+    open.logical = "EN";
+    open.type = PinType::Signal;
+    open.direction = PortDir::In;
+    open.unbound = true;
+    design.components[0].pins.push_back(open);
+    ComponentPin forgotten;
+    forgotten.physical = "2";
+    forgotten.logical = "GND";
+    design.components[0].pins.push_back(forgotten);
+
+    ExportOptions options;
+    options.footprintLib = "Lib";
+    std::string out = exportOf(design, options, nullptr);
+    CHECK(contains(out, "    (net (code \"2\") (name \"unconnected-(U1-EN-Pad3)\")\n"
+                        "      (node (ref \"U1\") (pin \"3\") (pinfunction \"EN\") "
+                        "(pintype \"input+no_connect\"))\n    )\n"));
+    // A pin nobody mentioned is not claimed to be deliberate.
+    CHECK(!contains(out, "Pad2"));
+}
+
 TEST_CASE("a top-level component sits on the root sheet") {
     ExportOptions options;
     options.footprintLib = "Lib";
@@ -355,3 +403,50 @@ TEST_CASE("'#mpn' and '#manufacturer' ride the description lines") {
 }
 
 TEST_MAIN()
+
+// ---------------------------------------------------------------------------
+// Pins against footprint pads
+// ---------------------------------------------------------------------------
+
+TEST_CASE("pad names are read quoted and bare, once each, holes left out") {
+    std::vector<std::string> pads = kicadPadNames(
+        "(footprint \"X\" (pad \"1\" smd rect) (pad \"A6\" smd) (pad 2 thru_hole)\n"
+        "  (pad \"1\" smd) (pad \"\" np_thru_hole) (pad_to_mask_clearance 0))");
+    CHECK_EQ(pads.size(), std::size_t{3});
+    CHECK_EQ(pads[0], std::string("1"));
+    CHECK_EQ(pads[1], std::string("A6"));
+    CHECK_EQ(pads[2], std::string("2"));
+}
+
+TEST_CASE("a pin that is no pad is an error, a pad no pin declares a warning") {
+    Design design = tinyDesign();
+    ExportOptions options;
+    options.footprintLib = "Lib";
+    std::string asked;
+    FootprintLoader load = [&](std::string_view lib, std::string_view fp, std::string& text) {
+        asked = std::string(lib) + ":" + std::string(fp);
+        text = "(footprint \"SOT-23-5\" (pad \"1\" smd) (pad \"2\" smd))";
+        return true;
+    };
+    SourceManager sources;
+    DiagEngine diags(sources);
+    checkPads(design, options, load, diags);
+    CHECK_EQ(asked, std::string("Lib:SOT-23-5"));
+    CHECK_EQ(diags.errorCount(), std::size_t{1});    // pin 5 is no pad
+    CHECK_EQ(diags.warningCount(), std::size_t{1});  // pads 1 and 2, in one warning
+}
+
+TEST_CASE("a footprint that cannot be found warns once and is not checked") {
+    Design design = tinyDesign();
+    Component u2 = design.components[0];
+    u2.path = {"U2"};
+    design.components.push_back(std::move(u2));
+    ExportOptions options;
+    options.footprintLib = "Lib";
+    FootprintLoader load = [](std::string_view, std::string_view, std::string&) { return false; };
+    SourceManager sources;
+    DiagEngine diags(sources);
+    checkPads(design, options, load, diags);
+    CHECK_EQ(diags.errorCount(), std::size_t{0});
+    CHECK_EQ(diags.warningCount(), std::size_t{1});
+}

@@ -1,5 +1,56 @@
 # Changelog
 
+## 2.1.0 — 2026-11-10
+
+### Tool
+
+- **`manta export --footprint-dir <dir>` checks pins against pads.** For a
+  KiCad export, each footprint is looked up as `<dir>/<Library>.pretty/
+  <Footprint>.kicad_mod` (repeatable, searched in order). A declared pin
+  whose number is not a pad is **E-PAD** and nothing is written: the pin
+  would connect nothing. A pad the part does not declare is **W-PAD**; a
+  footprint not found is **W-FOOTPRINT**, so its pads went unchecked.
+- **The KiCad netlist has a `libparts` section**, one entry per part with
+  every declared pin and its electrical type, `no_connect` for `&TYPE=NC`.
+  The nets list only connected pins, so a layout tool could not otherwise
+  tell an NC pin from a pad the part never mentions.
+- **A pin left open on purpose reaches the layout tool.** `.PIN = ?` is
+  recorded as `"open": true` on the pin in `.mantaNets`, and the KiCad export
+  gives each such pin a one-node net named `unconnected-(REF-PIN-PadN)` with a
+  `+no_connect` pin type, as KiCad's own exporter does for a pin with a
+  no-connect flag.
+- **`manta link --bom-template FILE` writes a user-defined BOM.** A TOML
+  file describes grouping, columns, sorting and quoting
+  with placeholders (`{refs}`, `{qty}`, `{value}`, `{field:NAME|default}`,
+  ...). manta builds no supplier format in. A column that differs within a
+  group is **E-BOM**, never the first member's value; `check` validates a
+  template without writing. `--footprint-map` on `link` resolves the
+  footprint placeholders. See `docs/bom-template.md`.
+- **A designator used twice in one block is E-DESIGNATOR.** Spec 13.3
+  makes designators unique per scope, and nothing checked it: two
+  components written with one designator, a fixed designator on an N-copy
+  group, or overlapping `%[...]` ranges all linked clean and reached the
+  netlist as one reference with two sets of pins. Two paths a `@FLATFORMAT`
+  flattens to one name are caught too.
+- **`annotate` gives a `[[ ]]` replication one designator per copy.** It
+  wrote a single number for the whole replication -- the copy count comes
+  from the connection width, which only the linker sees -- so a four-wide
+  `[[.{R?~R}.]]` annotated to four components all named, say, `R12`. The
+  netlist now records each unassigned designator's site (`source`, `line`,
+  `column`, all unchanged by `fmt`) and annotate counts the copies made there
+  in one block instance: `R%[12:15]`.
+- **`export` writes nothing when it has errors**, including a warning
+  promoted by `-Werror`. It used to write the file and exit 1.
+- `link --help` says the BOM carries a column per `#` field. It always has;
+  the old wording read as a fixed column set.
+
+### Example
+
+- blinky had two `R9` (a fixed designator on a two-copy group) and two `R11`
+  (overlapping ranges); they are `R%[9,17]` and `R%[18:19]` now.
+- blinky's USB-C shell pad is `SH`, as KiCad 10's HRO footprint names it
+  (it was `S1`, the drawing's name, which KiCad 9 used).
+
 ## 2.0.1 — 2026-09-30
 
 ### Tool

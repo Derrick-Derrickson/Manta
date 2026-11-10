@@ -190,6 +190,12 @@ Write a time.
 Metric only. Package codes like `0603` are identifiers naming a footprint
 family, not measurements, and are unaffected.
 
+**E-DESIGNATOR — two components share a designator**
+In one block, or two blocks whose `@FLATFORMAT` flattens them to one name. A
+replicated instance needs one designator per copy: `(.{R%[9,17]~R}.)|2`, not
+`(.{R9~R}.)|2`. Two ranges must not overlap. Or write `?` and run
+`manta annotate`.
+
 **E-UNANNOTATED — an instance still carries `?`**
 Run `manta annotate`. To bootstrap a design that has never been annotated,
 demote the check for the one link that produces the netlist to annotate from:
@@ -261,7 +267,17 @@ says which net, on which page, and why.
 
 **W-FOOTPRINT — a footprint names no library** *(export only)*
 KiCad resolves `Library:Footprint`, and a bare package name will not place.
-`--footprint-map` or `--footprint-lib` supplies the library.
+`--footprint-map` or `--footprint-lib` supplies the library. With
+`--footprint-dir`, the same code says a footprint was not found in any of the
+directories, so its pads went unchecked: add the one holding its `.pretty`.
+
+**E-PAD — a pin is not a pad** *(export with `--footprint-dir`)*
+The part's pin number is not a pad on the footprint, so the pin connects
+nothing. Fix the part's pin numbers to the footprint's pad names, or map the
+package to the right footprint. Nothing is written.
+
+**W-PAD — a pad the part does not declare** *(export with `--footprint-dir`)*
+Declare it, mechanical and thermal pads included: `MP : MOUNT;`.
 
 ## A net driven from the next board
 

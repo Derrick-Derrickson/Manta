@@ -8,6 +8,9 @@
 #include <filesystem>
 #include <format>
 
+#include "export/footprint_map.h"
+#include "link/bom_template.h"
+#include "toml/toml.h"
 #include "cli/console.h"
 #include "cli/driver.h"
 #include "cli/rules_loader.h"
@@ -219,6 +222,62 @@ int runLink(const Options& opts) {
 
     if (diags.hasErrors()) return finish(diags, opts, kExitError);
 
+    // An unassigned designator's site names its source as link loaded it, so
+    // 'manta annotate', given the same paths, can find it again.
+    auto nameSites = [&](Design& d) {
+        for (Component& c : d.components) {
+            if (!c.designator.empty() || !c.designatorSpan.valid()) continue;
+            const SourceFile* file = sources.get(c.designatorSpan.file);
+            if (!file || file->text().empty()) continue;  // source not on disk
+            SiteLocation at = siteLocation(file->text(), c.designatorSpan.offset);
+            // The base name, not the path: a netlist must not change because the
+            // same sources were built from another directory.
+            c.sitePath = baseName(file->path());
+            c.siteLine = at.line;
+            c.siteColumn = at.column;
+        }
+    };
+    nameSites(design);
+
+    // A user-defined BOM is rendered before anything is written: a design that
+    // does not fit its template is an error, and errors mean no output. Under
+    // 'check' this is what validates the template.
+    BomTemplate bomTemplate;
+    FootprintMap footprints;
+    const bool templated = !opts.bomTemplatePath.empty();
+    if (templated) {
+        std::string text;
+        std::string readError;
+        TomlValue root;
+        if (!readFileBinary(opts.bomTemplatePath, text, readError)) {
+            diags.report(DiagId::Io, Span{}, std::format("{}: {}", opts.bomTemplatePath, readError));
+        } else if (!parseToml(text, root, readError)) {
+            diags.report(DiagId::BomTemplate, Span{},
+                         std::format("{}: {}", opts.bomTemplatePath, readError));
+        } else {
+            (void)loadBomTemplate(root, opts.bomTemplatePath, diags, bomTemplate);
+        }
+        if (!opts.footprintMapPath.empty()) {
+            if (!readFileBinary(opts.footprintMapPath, text, readError)) {
+                diags.report(DiagId::Io, Span{},
+                             std::format("{}: {}", opts.footprintMapPath, readError));
+            } else {
+                (void)loadFootprintMap(text, opts.footprintMapPath, diags, footprints);
+            }
+        }
+    }
+    const FootprintMap* footprintMap = opts.footprintMapPath.empty() ? nullptr : &footprints;
+    auto writeAnyBom = [&](const Design& d, std::string& out) {
+        if (!templated) {
+            writeBom(d, out);
+            return;
+        }
+        (void)renderBomTemplate(d, bomTemplate, footprintMap, diags, out);
+    };
+    std::string bom;
+    if (templated && !diags.hasErrors()) writeAnyBom(design, bom);
+    if (diags.hasErrors()) return finish(diags, opts, kExitError);
+
     // 6. Emit.
     if (opts.noEmit) return finish(diags, opts);
 
@@ -237,8 +296,7 @@ int runLink(const Options& opts) {
     }
 
     if (!opts.bomPath.empty()) {
-        std::string bom;
-        writeBom(design, bom);
+        if (!templated) writeBom(design, bom);
         if (!writeFileBinary(opts.bomPath, bom, error)) {
             diags.report(DiagId::Io, Span{}, std::format("{}: {}", opts.bomPath, error));
         }
@@ -255,8 +313,10 @@ int runLink(const Options& opts) {
             return outDir.empty() ? name : (std::filesystem::path(outDir) / name).string();
         };
         for (const MatedCable& m : mates.mated()) {
+            Design cable = m.design;
+            nameSites(cable);
             std::string cableNetlist;
-            writeNetlist(m.design, cableNetlist);
+            writeNetlist(cable, cableNetlist);
             std::string path = beside(m.cableName + ".mantaNets");
             if (!writeFileBinary(path, cableNetlist, error)) {
                 diags.report(DiagId::Io, Span{}, std::format("{}: {}", path, error));
@@ -264,7 +324,7 @@ int runLink(const Options& opts) {
             }
             if (!opts.bomPath.empty()) {
                 std::string cableBom;
-                writeBom(m.design, cableBom);
+                writeAnyBom(m.design, cableBom);
                 std::string bomPath = beside(m.cableName + ".bom.csv");
                 if (!writeFileBinary(bomPath, cableBom, error)) {
                     diags.report(DiagId::Io, Span{}, std::format("{}: {}", bomPath, error));

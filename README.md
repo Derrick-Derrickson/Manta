@@ -65,6 +65,11 @@ The two-stage model of specification §15.1:
 | `manta render` | one `.mantaNets` | a clickable HTML schematic |
 | `manta fmt` | sources | re-indented sources |
 
+`link --bom` writes one row per component with a column per `#` field. For any
+other shape -- grouped by value, columns named for whoever receives it -- add
+`--bom-template <file>`: a TOML file of grouping, columns and quoting. manta
+builds no supplier format in. See `docs/bom-template.md`.
+
 `link` and `check` also take `--rules <file>`: a `.mantaRules` file of
 project-specific checks — logic-level compatibility, current budgets, library
 policy — over `#` fields the design carries. Because `#` is already the open

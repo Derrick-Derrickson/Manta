@@ -60,6 +60,20 @@
             "description": "The '@FLATFORMAT' template in force where a nested instance was written (section 13.4), so an exporter flattens its path as the netlist did. Absent for a top-level part and when no template was declared.",
             "type": "string"
           },
+          "source": {
+            "description": "For an unassigned ('?') designator only: the base name of the source file it was written in. With 'line' and 'column', the site 'manta annotate' counts copies of, since a '[[ ]]' replicates its body once per wire and only the linker knows the width.",
+            "type": "string"
+          },
+          "line": {
+            "description": "With 'source': the 1-based line of the designator.",
+            "type": "integer",
+            "minimum": 1
+          },
+          "column": {
+            "description": "With 'source': the designator's column counted from the line's first non-blank character, so that formatting, which rewrites only indentation, does not change it.",
+            "type": "integer",
+            "minimum": 0
+          },
           "fields": {
             "description": "User fields, carried through untouched (section 9.1). Values are rendered per section 14.7.",
             "type": "object",
@@ -90,6 +104,11 @@
                   "description": "Absent when the pin carries no arrow.",
                   "type": "string",
                   "enum": ["in", "out", "bidir"]
+                },
+                "open": {
+                  "description": "True when the instance leaves the pin unconnected on purpose ('.PIN = ?', '&NET=?'). Absent otherwise.",
+                  "type": "boolean",
+                  "const": true
                 }
               }
             }

@@ -39,7 +39,7 @@ block blinky {
     // meets the main ground once, through paralleled 0R links.
     GND  &TYPE=GROUND;
     AGND &TYPE=GROUND;
-    AGND = (.{R9~R-0R-0603}.)|2 = GND;
+    AGND = (.{R%[9,17]~R-0R-0603}.)|2 = GND;
     [3V3, GND]>>;
 
     VBUS &CLASS=power &PEAK=1A5;
@@ -159,7 +159,7 @@ block blinky {
     // Two option switches read at boot, pulled up so an open switch reads 1.
     // Each pole is its own pair of pads on the one package.
     3V3 *= CFG-PULL[0:1];
-    CFG-PULL[0:1] = [[.{R%[11:12]~R-10kR-0603}.]] = CFG[0:1];
+    CFG-PULL[0:1] = [[.{R%[18:19]~R-10kR-0603}.]] = CFG[0:1];
     CFG[0] = A1.{SW1~SW-DIP-2}.B1 = GND ^ CFG[1] = A2.{SW1}.B2 = GND;
     CFG[0:1] &RENDER=LABEL;
 

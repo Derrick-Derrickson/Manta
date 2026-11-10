@@ -114,6 +114,12 @@ void writeNetlist(const Design& design, std::string& out) {
         // netlist flattens the path exactly as the netlist itself did. Emitted
         // only when the source declared one.
         if (!c.flatFormat.empty() && c.path.size() > 1) w.field("flatFormat", c.flatFormat);
+        // Unassigned only, so an annotated design's netlist is unchanged.
+        if (c.designator.empty() && !c.sitePath.empty()) {
+            w.field("source", c.sitePath);
+            w.field("line", static_cast<std::int64_t>(c.siteLine));
+            w.field("column", static_cast<std::int64_t>(c.siteColumn));
+        }
         w.key("fields");
         w.beginObject();
         for (const auto& [name, value] : c.fields) w.field(name, value);
@@ -132,6 +138,9 @@ void writeNetlist(const Design& design, std::string& out) {
             if (pin.direction != PortDir::None) {
                 w.field("direction", portDirName(pin.direction));
             }
+            // Left open on purpose ('.PIN = ?'), as against forgotten. Per
+            // instance, so it lives here and not in the part.
+            if (pin.unbound) w.field("open", true);
             w.endObject();
         }
         w.endArray();

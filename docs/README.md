@@ -31,3 +31,6 @@ The entries worth knowing before writing any design:
 - **D4** — no warning is off by default, and why W-06 went.
 - **D5** — un-annotated designators are an error at link, and the bootstrap that
   makes annotation possible anyway.
+
+**`bom-template.md`** — the TOML file `manta link --bom-template` reads to
+write a BOM in a shape the user defines.

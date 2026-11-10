@@ -46,7 +46,7 @@ minimal, so it doubles as a tour:
 | A `static` part private to one file | `TESTPOINT` in `board.manta` |
 | `@VERSION`, `@FLATFORMAT`, `@bom`, `@fitted` by substitution | `indicator`, `TESTPOINT`, `J3` |
 | Global field import and export | `>#author`, `#!>board-rev` |
-| Two declared grounds, tied through a parallel group | `AGND = (.{R9~R-0R-0603}.)|2 = GND` |
+| Two declared grounds, tied through a parallel group | `AGND = (.{R%[9,17]~R-0R-0603}.)|2 = GND` |
 | List-form global export | `[3V3, GND]>>` |
 | `=`, `==`, `^`, `=*`, `*=` | the LDO chain, the DIP switch, the PWM summer, `CFG-PULL` |
 | Named, casual and pin-range terminals | `A.{D1}.K`, `.{R1}.`, `A[0:1].{D3}.K` |

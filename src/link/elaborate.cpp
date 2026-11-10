@@ -559,6 +559,7 @@ std::uint32_t Elaborator::instantiatePart(const Instance* inst, const PartInfo& 
 
     c.path = scope.path;
     c.span = inst->span;
+    c.designatorSpan = inst->designator.assignmentSpan;
     c.pins = part.pins;
     c.section = scope.activeSection;
     c.flatFormat = scope.flatFormat;
@@ -2251,6 +2252,42 @@ void Elaborator::collectBlockInstances(Design& design) {
     }
 }
 
+// Spec 13.3: "designator uniqueness is per scope". Two components with one
+// designator in one block -- written twice, a fixed designator on an N-copy
+// replication, or two '%[...]' ranges that overlap -- reach the netlist as one
+// reference with two sets of pins, and a layout tool merges or drops them. The
+// flat name is what every artifact keys on, so that is what is checked: it
+// also catches two different paths a '@FLATFORMAT' flattens to one string.
+// An unassigned '?' instance has a path-derived identity, unique already.
+void Elaborator::checkDesignators(const Design& design) {
+    FlatMap<std::string, std::size_t> seen;
+    for (std::size_t i = 0; i < design.components.size(); ++i) {
+        const Component& c = design.components[i];
+        if (c.designator.empty()) continue;
+        auto [slot, inserted] = seen.insert(flatDesignator(c), i);
+        if (inserted) continue;
+        const Component& first = design.components[*slot];
+        if (first.path == c.path) {
+            // Both copies of one replicated instance share its source span.
+            bool replicated = first.span.file == c.span.file && first.span.offset == c.span.offset;
+            std::string message =
+                replicated
+                    ? std::format("designator '{}' is given to every copy of a replicated "
+                                  "instance; write one per copy, as '{}%[...]'",
+                                  c.designator,
+                                  c.designator.substr(0, c.designator.find_first_of("0123456789")))
+                    : std::format("designator '{}' is used twice in one block", c.designator);
+            diags_.report(DiagId::DuplicateDesignator, c.span, message)
+                .note(first.span, "first used here");
+        } else {
+            diags_.report(DiagId::DuplicateDesignator, c.span,
+                          std::format("'{}' and '{}' both flatten to '{}'", flattenPath(first.path),
+                                      flattenPath(c.path), flatDesignator(c)))
+                .note(first.span, "first used here");
+        }
+    }
+}
+
 Design Elaborator::run(SymbolId topName, Span at) {
     Design design;
     design.top = std::string(interner_.text(topName));
@@ -2283,6 +2320,7 @@ Design Elaborator::run(SymbolId topName, Span at) {
     buildNets(design);
     collectBlockInstances(design);
     collectMatchGroups(design);
+    checkDesignators(design);
 
     for (const Component& c : design.components) {
         std::pair<std::string, std::string> entry{

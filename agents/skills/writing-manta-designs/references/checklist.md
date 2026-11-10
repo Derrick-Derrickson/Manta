@@ -10,6 +10,7 @@ manta check --top <block> -L build/ --rules <project>.mantaRules -Werror
 manta link  --top <block> -L build/ --rules <project>.mantaRules -Werror \
             --assembly --bom build/bom.csv -o build/<block>.mantaNets
 manta export --format kicad --footprint-map <project>.fpmap -Werror \
+             --footprint-dir /usr/share/kicad/footprints --footprint-dir lib/ \
              -o build/<block>.net build/<block>.mantaNets
 ```
 

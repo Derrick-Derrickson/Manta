@@ -76,7 +76,8 @@ part LDO-3V3 {
    library path; the project's `.fpmap` translates it. `#value`, `@!type`
    (`resistor`, `capacitor`, `diode`, `led`, `mcu`, `regulator`, `connector`
    …), `#~mpn`, `#!manufacturer`, and `#tolerance`, `#voltage`, `#power`
-   where they apply. Only `capacitor` is read by a check (W-04). The
+   where they apply. Every `#` field becomes a BOM column and a KiCad
+   footprint property. Only `capacitor` is read by a check (W-04). The
    renderer draws a symbol for `resistor`, `capacitor`, `electrolytic`,
    `inductor`, `ferrite`, `diode`, `zener`, `tvs`, `led`, `crystal`,
    `nmos`, `pmos`, `npn`, `pnp`, `opamp`, `switch`, `fuse` and `testpoint`;
@@ -158,5 +159,15 @@ manta compile -o build/ lib/*.manta
 manta check --top <block> -L build/ -Werror
 ```
 
-Then open the footprint the `.fpmap` names and confirm every pin number is a
-pad on it. The compiler cannot see a footprint; this step is yours.
+Then check every pin number is a pad on the footprint the `.fpmap` names:
+
+```sh
+manta export --format kicad --footprint-map <project>.fpmap \
+    --footprint-dir /usr/share/kicad/footprints --footprint-dir lib/ -Werror <board>.mantaNets
+```
+
+**E-PAD** is a pin that is no pad: it connects nothing. **W-PAD** is a pad
+the part does not declare. **W-FOOTPRINT** "in no --footprint-dir" means the
+pads went unchecked; add the directory holding that `<Library>.pretty`. Pad
+names change between KiCad versions (the HRO USB-C shell went `S1` → `SH` in
+KiCad 10), so rerun this after upgrading KiCad.

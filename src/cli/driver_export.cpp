@@ -6,6 +6,7 @@
 #include "cli/console.h"
 #include "cli/driver.h"
 #include "export/exporters.h"
+#include "export/pad_check.h"
 
 namespace manta {
 
@@ -62,6 +63,22 @@ int runExport(const Options& opts) {
     exportOptions.footprintLib = opts.footprintLib;
 
     std::string rendered = exportDesign(design, format, exportOptions, diags);
+
+    if (!opts.footprintDirs.empty()) {
+        auto load = [&](std::string_view library, std::string_view footprint,
+                        std::string& module) {
+            std::string ignored;
+            for (const std::string& dir : opts.footprintDirs) {
+                std::string path = std::format("{}/{}.pretty/{}.kicad_mod", dir, library, footprint);
+                if (readFileBinary(path, module, ignored)) return true;
+            }
+            return false;
+        };
+        checkPads(design, exportOptions, load, diags);
+    }
+    // Errors mean no output. That covers a pin that is no pad, which would
+    // connect nothing, and a warning promoted by -Werror.
+    if (diags.hasErrors()) return finish(diags, opts, kExitError);
 
     std::string outputPath = opts.output.empty()
                                  ? withExtension(input, exportExtension(format))

@@ -21,7 +21,7 @@ HDR-1x05        Connector_PinHeader_2.54mm:PinHeader_1x05_P2.54mm_Vertical
 TP-PAD          TestPoint:TestPoint_Pad_D1.5mm
 
 # A footprint's pads have to be the pins the part declares, by name. The
-# receptacle's pads are A1..B12 and S1 and the part declares exactly those;
+# receptacle's pads are A1..B12 and SH and the part declares exactly those;
 # the Qwiic connector's two mechanical pads are both called MP.
 USB-C-HRO       Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12
 QWIIC-SH-4      Connector_JST:JST_SH_SM04B-SRSS-TB_1x04-1MP_P1.00mm_Horizontal

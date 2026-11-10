@@ -1,0 +1,15 @@
+# A grouped BOM, one row per distinct value and footprint. Used by
+# tests/example.cmake against blinky, which must fit it with no errors.
+
+[[output]]
+kind     = "bom"
+group_by = ["{value}", "{footprint}", "{field:mpn}"]
+skip     = ["dnp"]
+columns  = [
+    ["Value", "{value}"],
+    ["References", "{refs}"],
+    ["Footprint", "{footprint_name}"],
+    ["Library", "{lib}"],
+    ["Quantity", "{qty}"],
+    ["MPN", "{field:mpn|}"],
+]

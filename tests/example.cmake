@@ -5,7 +5,7 @@
 # matter: a checker that never fires is useless, and one that always fires is
 # worse.
 #
-# Expects: MANTA, EXAMPLE_DIR, WORK.
+# Expects: MANTA, EXAMPLE_DIR, BOM_TEMPLATE, WORK.
 
 function(run_manta)
     set(cmd "${MANTA}")
@@ -39,6 +39,23 @@ run_manta(check --top blinky -L "${WORK}/build" --rules "${RULES}" -Werror)
 
 run_manta(link --top blinky -L "${WORK}/build" --rules "${RULES}" -Werror
           --bom "${WORK}/bom.csv" -o "${WORK}/blinky.mantaNets")
+
+# A user-defined BOM, twice: blinky must fit the template, and the output must
+# be byte-identical run to run (spec 15.8).
+foreach(run 1 2)
+    run_manta(link --top blinky -L "${WORK}/build" --bom "${WORK}/grouped-${run}.csv"
+              --bom-template "${BOM_TEMPLATE}" --footprint-map "${EXAMPLE_DIR}/blinky.fpmap"
+              -o "${WORK}/grouped-${run}.mantaNets")
+endforeach()
+file(SHA256 "${WORK}/grouped-1.csv" grouped_1)
+file(SHA256 "${WORK}/grouped-2.csv" grouped_2)
+if(NOT grouped_1 STREQUAL grouped_2)
+    message(FATAL_ERROR "a templated BOM differs between two identical runs")
+endif()
+file(READ "${WORK}/grouped-1.csv" grouped)
+if(NOT grouped MATCHES "^Value,References,Footprint,Library,Quantity,MPN\n")
+    message(FATAL_ERROR "the templated BOM has the wrong header:\n${grouped}")
+endif()
 
 foreach(format kicad altium orcad allegro)
     run_manta(export --format ${format} -o "${WORK}/blinky.${format}"
@@ -76,6 +93,12 @@ endforeach()
 # pads are lettered would place the part and connect none of it.
 set(KICAD_FOOTPRINTS "/usr/share/kicad/footprints")
 if(IS_DIRECTORY "${KICAD_FOOTPRINTS}")
+    # manta's own check first, which also catches a pad the part forgets to
+    # declare. The loop below stays as an oracle that does not share its code.
+    run_manta(export --format kicad --footprint-map "${FPMAP}"
+              --footprint-dir "${KICAD_FOOTPRINTS}" -Werror
+              -o "${WORK}/blinky-pads.net" "${WORK}/blinky.mantaNets")
+
     file(STRINGS "${WORK}/blinky.net" fp_lines REGEX "\\(footprint \"")
     list(LENGTH fp_lines fp_count)
     if(NOT fp_count EQUAL comp_count)
